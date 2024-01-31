@@ -1,9 +1,8 @@
-#' title
-#' description
-#' @file xxx.R
+#' constants
+#'
+#' @file constants.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
-# ------ libraries ------
+#' @date 2024.1.31
 # ------ constants ------
 # https://webofscience.help.clarivate.com/ja-jp/Content/wos-core-collection/wos-core-collection.htm
 # https://images.webofknowledge.com/WOKRS59B4/help/ja/WOS/hp_research_areas_easca.html
@@ -292,4 +291,24 @@ ConvertListToDf <- function(list_data, element_name1, element_name2) {
   map(~ tibble(uid = .x$uid, !!element_name2 := unlist(.x$category_info[[element_name1]][[element_name2]]))) %>%
   map_df(as.data.frame)
 }
-# ------ main ------
+CombineContent <- function(subjects_list, ascatype_filter = "extended") {
+  df_subject <- subjects_list %>%
+    map_dfr(~ tibble(
+      uid = .x$uid,
+      ascatype = map_chr(.x$subject, "ascatype"),
+      content = map_chr(.x$subject, "content")
+    ))
+
+  df_subject_combined <- df_subject %>%
+    group_by(uid, ascatype) %>%
+    summarize(content = paste(content, collapse = ";"), .groups = 'drop') %>%
+    filter(ascatype == ascatype_filter) %>%
+    ungroup()
+  res <- df_subject_combined %>% select(c("uid", "content"))
+  if (ascatype_filter == "extended"){
+    colnames(res) <- c("uid", "Categories/ Classification")
+  } else {
+    colnames(res) <- c("uid", "Web of Science Categories")
+  }
+  return(res)
+}

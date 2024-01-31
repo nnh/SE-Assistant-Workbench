@@ -1,18 +1,19 @@
-#' title
-#' description
-#' @file xxx.R
+#' wos-tools issue99
+#'
+#' @file issue99.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
+#' @date 2024.1.31
 rm(list=ls())
 # ------ libraries ------
 library(tidyverse)
 library(here)
 library(jsonlite)
+library(openxlsx)
 source(here("programs", "constants.R"), encoding ="utf-8")
 # ------ main ------
-rawJson <- here("input", "raw.json") %>% read_json()
+rawJson <- "~/Library/CloudStorage/Box-Box/Projects/NHO 臨床研究支援部/英文論文/wos-tools/result/result_20240109174857/raw/raw.json" %>% read_json()
 rec <- rawJson %>% map( ~ .$Data$Records$records$REC)
-# fullrecord_metadataとUIDだけを抽出する
+# Extract only fullrecord_metadata and UID
 fullrecord_metadata_list <- rec %>% map( ~ {
   rec1 <- .
   rec2 <- rec1 %>% map( ~ list(uid=.$UID, fullrecord_metadata=.$static_data$fullrecord_metadata))
@@ -20,12 +21,20 @@ fullrecord_metadata_list <- rec %>% map( ~ {
 }) %>% list_flatten()
 # category_info
 category_info_list <- fullrecord_metadata_list %>% map( ~ return(list(uid=.$uid, category_info=.$fullrecord_metadata$category_info)))
-# headings
-df_heading <- ConvertListToDf(category_info_list, "headings", "heading")
 # subheadings
 df_subheading <- ConvertListToDf(category_info_list, "subheadings", "subheading")
-subheading <- df_subheading %>% left_join(kDfHeading, by=c("subheading"="heading"))
+subheading_life_sciences_and_biomedicine <- df_subheading %>% filter(subheading == "Life Sciences & Biomedicine")
 # subjects
 subjects_list <- category_info_list %>% map( ~ return(list(uid=.$uid, subject=.$category_info$subjects$subject)))
-df_subject <- map_dfr(subjects_list, ~ tibble(uid = .x$uid, content = map_chr(.x$subject, "content")))
-subjects <- df_subject %>% left_join(kDfSubHeading, by=c("content"="subheading"))
+df_subject_categories_classification <- subjects_list %>% CombineContent()
+df_subject_wos_categories <- subjects_list %>% CombineContent("traditional")
+df_subject_categories <- df_subject_categories_classification %>%
+  inner_join(df_subject_wos_categories, by="uid")
+# output
+df_output <- subheading_life_sciences_and_biomedicine %>%
+  left_join(df_subject_categories, by="uid")
+df_output$url <- str_c('=HYPERLINK("https://www.webofscience.com/wos/woscc/full-record/', df_output$uid, '")')
+wb <- createWorkbook()
+addWorksheet(wb, "Sheet1")
+writeData(wb, "Sheet1", df_output, startCol=1, startRow=1)
+saveWorkbook(wb, here("output", "issue99.xlsx"), overwrite=T)
