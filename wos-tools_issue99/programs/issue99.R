@@ -33,8 +33,12 @@ df_subject_categories <- df_subject_categories_classification %>%
 # output
 df_output <- subheading_life_sciences_and_biomedicine %>%
   left_join(df_subject_categories, by="uid")
-df_output$url <- str_c('=HYPERLINK("https://www.webofscience.com/wos/woscc/full-record/', df_output$uid, '")')
 wb <- createWorkbook()
 addWorksheet(wb, "Sheet1")
 writeData(wb, "Sheet1", df_output, startCol=1, startRow=1)
-saveWorkbook(wb, here("output", "issue99.xlsx"), overwrite=T)
+url <- str_c("https://www.webofscience.com/wos/woscc/full-record/", df_output$uid)
+names(url) <- url
+class(url) <- "hyperlink"
+writeData(wb, "Sheet1", url, startCol=5, startRow=2)
+writeData(wb, "Sheet1", c("url"), startCol=5, startRow=1)
+saveWorkbook(wb, "~/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2023/20240131/wos-tools_issue99/issue99.xlsx", overwrite=T)
