@@ -1,6 +1,6 @@
 # Get PDF Files from URL
 
-This script retrieves PDF files from a specified URL and saves them to a Google Drive folder.
+This script handles the saving of `'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000165585.html'` PDF files to the specified Google Drive folder.
 
 ## Usage
 
