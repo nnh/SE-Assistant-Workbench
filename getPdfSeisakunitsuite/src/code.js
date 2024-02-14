@@ -53,7 +53,7 @@ class GetPdf {
           return;
         }
         const tempContents = tempValues[0].match(
-          /\/content\/[0-9/]*\.pdf">(.*?)<\/a>/g
+          /(\/content\/[0-9/]*\.pdf">(.*?)<\/a>)|(\/file\/06-Seisakujouhou-10800000-Iseikyoku\/[0-9/]*\.pdf"(.*?)<\/a>)/g
         );
         if (tempContents === null) {
           return;
@@ -63,7 +63,9 @@ class GetPdf {
           if (temp === null) {
             return [null, null];
           }
-          const url = temp[0].match(/\/content\/[0-9/]*\.pdf/);
+          const url = temp[0].match(
+            /(\/content\/[0-9/]*\.pdf)|(\/file\/06-Seisakujouhou-10800000-Iseikyoku\/[0-9/]*\.pdf)/
+          );
           const hospName = temp[0].split('>');
           if (url === null || hospName === null) {
             return [null, null];
