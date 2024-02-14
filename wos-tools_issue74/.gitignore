@@ -1,0 +1,7 @@
+/input/
+*.json
+*.xlsx
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
