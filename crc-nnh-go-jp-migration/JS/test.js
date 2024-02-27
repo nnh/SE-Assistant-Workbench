@@ -64,10 +64,9 @@ const writeLinksToFile = (links, filename) => {
 const testOpenPage = async (driver, url) => {
   try {
     await driver.get(url);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const htmlString = await driver.getPageSource();
-    console.log(url);
     const [links, title] = await getLinksFromHtmlString(htmlString);
-    console.log(title);
     writeLinksToFile(links, `${title}.txt`);
   } catch (e) {
     console.log(e);
