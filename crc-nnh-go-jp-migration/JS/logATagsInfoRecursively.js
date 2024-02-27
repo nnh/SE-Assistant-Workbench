@@ -75,10 +75,25 @@ const logATagsInfo = (filePath) => {
   return links;
 };
 
-// 配列をファイルに出力する関数
 const writeArrayToFile = (array, filename) => {
-  const data = array.map((item) => JSON.stringify(item)).join("\n");
-  fs.writeFileSync(filename, data);
+  const csvData = array
+    .map((item, index) => {
+      if (index === 0) {
+        return Object.keys(item)
+          .map((key) => {
+            return `"${key}"`;
+          })
+          .join(",");
+      } else {
+        return Object.values(item)
+          .map((value) => {
+            return `"${value}"`;
+          })
+          .join(",");
+      }
+    })
+    .join("\n");
+  fs.writeFileSync(filename, csvData);
 };
 
 // フォルダ内のHTMLファイルを再帰的に取得し、Aタグの情報をconsole.logに出力する関数
@@ -87,6 +102,7 @@ const logATagsInfoRecursively = (folderPath, outputFile) => {
   const allLinks = [];
   for (const htmlFile of htmlFiles) {
     const links = logATagsInfo(htmlFile);
+    links.forEach((link) => (link.htmlFile = htmlFile.replace(folderPath, "")));
     allLinks.push(...links);
   }
   writeArrayToFile(allLinks, outputFile);
