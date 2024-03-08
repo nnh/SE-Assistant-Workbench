@@ -74,6 +74,7 @@ hokkaido_canc_ctr <- list()
 nagoya_med_ctr <- list()
 kinki_chuo_chest_med_ctr <- list()
 okayama_med_ctr <- list()
+nishisaitama_chuo_natl_hosp <- list()
 mito_med_ctr <- list()
 check_nho_ad <- target_list_uid_and_address_spec |> map( ~ {
   filename_uid_address <- .
