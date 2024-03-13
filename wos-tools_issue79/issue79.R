@@ -11,7 +11,7 @@ library(rvest)
 library(jsonlite)
 source(here("issue79_check_ad.R"), encoding="utf-8")
 # ------ constants ------
-kNhoString <- c("(?i)nho ", "(?i)natl hosp org", "(?i) nho,")
+kNhoString <- c("(?i)nho ", "(?i)natl hosp org", "(?i) nho,", "(?i)^nho,")
 kParentPath <- "/Users/mariko/Library/CloudStorage/Box-Box/Projects/NHO 臨床研究支援部/英文論文/wos-tools/result/result_20240109174857"
 # ------ functions ------
 ReadDivIds <- function(html_file_path) {
@@ -56,28 +56,5 @@ target_list_uid_and_address_spec <- list_uid_and_address_spec |> map( ~ {
 }) |> keep( ~ !is.null(.))
 # adに一人でもNHO職員がいればチェック対象外
 check_nho_ad <- CheckAd(target_list_uid_and_address_spec)
-# ooに一人でもNHO職員がいればチェック対象外
-#check_nho_oo <- check_nho_ad |> map( ~ {
-#  filename_uid_address <- .
-#  address <- filename_uid_address$address_spec
-#  for (i in 1:length(address)) {
-#    organizations <- address[[i]]$organizations
-#    if (length(organizations) > 0){
-#      organization <- organizations$organization
-#      for (j in 1:length(organization)) {
-#        content <- organization[[j]]$content
-#        if (str_detect(content, kNhoString[1]) | str_detect(content, kNhoString[2]) | str_detect(content, kNhoString[3])){
-#          organizations <- NULL
-#          break
-#        }
-#      }
-#      if (is.null(organizations)){
-#        break
-#      }
-#    }
-#  }
-#  if (is.null(organizations)){
-#    return(NULL)
-#  }
-#  return(filename_uid_address)
-#})
+check_ad_hosp_list <- CheckAd2(check_ad_hosp_list)
+# raw.jsonからHTMLに出力されていないuidを抽出する
