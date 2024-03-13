@@ -10,6 +10,7 @@ library(here)
 library(rvest)
 library(jsonlite)
 source(here("issue79_check_ad.R"), encoding="utf-8")
+source(here("issue79_non_output.R"), encoding="utf-8")
 # ------ constants ------
 kNhoString <- c("(?i)nho ", "(?i)natl hosp org", "(?i) nho,", "(?i)^nho,")
 kParentPath <- "/Users/mariko/Library/CloudStorage/Box-Box/Projects/NHO 臨床研究支援部/英文論文/wos-tools/result/result_20240109174857"
@@ -36,12 +37,21 @@ GetAddressSpec <- function(rec){
   })
   return(addresses)
 }
+GetDoctype <- function(rec){
+  doctypes <- rec %>% map( ~ {
+    uid <- .$UID
+    doctype <- .$static_data$summary$doctypes$doctype
+    return(list(uid=uid, doctype=doctype))
+  })
+  return(doctypes)
+}
 # ------ main ------
 html_directory_path <- kParentPath |> file.path("html")
 html_files <- html_directory_path |> list.files(pattern = "publication_20[0-9]{2}_[0-9]{2}\\.html$", full.names = TRUE)
 html_uids <- html_files |> map_df( ~ ReadDivIds(.)) |> distinct()
 json_directory_path <- kParentPath |> file.path("raw")
 raw_json <- json_directory_path |> file.path("raw.json") |>　read_json()
+all_papers_json <- json_directory_path |> file.path("all_papers.json") |>　read_json()
 rec <- raw_json |> map( ~ .$Data$Records$records$REC)
 list_uid_and_address_spec <- rec |> map( ~ GetAddressSpec(.)) |> list_flatten()
 # raw.jsonからHTMLに出力されているuidだけ抽出する
@@ -56,5 +66,7 @@ target_list_uid_and_address_spec <- list_uid_and_address_spec |> map( ~ {
 }) |> keep( ~ !is.null(.))
 # adに一人でもNHO職員がいればチェック対象外
 check_nho_ad <- CheckAd(target_list_uid_and_address_spec)
+# HTMLファイルに出力されている、NHO職員が一人もいない可能性のある論文リスト
 check_ad_hosp_list <- CheckAd2(check_ad_hosp_list)
-# raw.jsonからHTMLに出力されていないuidを抽出する
+# HTMLファイルに出力されている、NHO職員が存在する可能性のある論文リスト
+check_non_output_uids <- getNonOutput()
