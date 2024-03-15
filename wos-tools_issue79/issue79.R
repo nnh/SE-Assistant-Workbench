@@ -70,3 +70,16 @@ check_nho_ad <- CheckAd(target_list_uid_and_address_spec)
 check_ad_hosp_list <- CheckAd2(check_ad_hosp_list)
 # HTMLファイルに出力されている、NHO職員が存在する可能性のある論文リスト
 check_non_output_uids <- getNonOutput()
+df_non_output_uids_ad_sortdate <- check_non_output_uids %>% map_df( ~ {
+  uid <- .$uid
+  doctype <- .$doctype
+  sortdate <- .$sortdate
+  ad <- .$address_spec %>% map_vec( ~ .$full_address)
+  res <- list(uid=uid, ad=ad, doctype=doctype, sortdate=sortdate)
+  return(res)
+}) %>% distinct() %>% arrange(sortdate, uid)
+df_non_output_uids <- df_non_output_uids_ad_sortdate %>% select(uid) %>% distinct()
+# all_paper.jsonに存在するか
+all_papers_json_uid <- all_papers_json %>% map_vec( ~ .$uid) %>% data.frame(uid=.)
+exist_all_papers_uid <- df_non_output_uids %>% inner_join(all_papers_json_uid, by="uid")
+non_exist_all_papers_uid <- df_non_output_uids %>% anti_join(all_papers_json_uid,  by="uid")
