@@ -37,8 +37,8 @@ function getToken_() {
 }
 
 class GetZoomData {
-  constructor(baseUrl, accessToken){
-    this.baseUrl = baseUrl;    
+  constructor(baseUrl, accessToken) {
+    this.baseUrl = baseUrl;
     this.accessToken = accessToken;
   }
   getJsonData(nextPageToken) {
@@ -46,7 +46,7 @@ class GetZoomData {
       nextPageToken !== ''
         ? `${this.baseUrl}&next_page_token=${nextPageToken}`
         : this.baseUrl;
-    try{
+    try {
       const response = UrlFetchApp.fetch(url, {
         method: 'get',
         headers: {
@@ -55,7 +55,7 @@ class GetZoomData {
       });
       const dataJson = JSON.parse(response.getContentText());
       return dataJson;
-    } catch(e){
+    } catch (e) {
       return null;
     }
   }
@@ -64,7 +64,10 @@ class GetZoomData {
     if (dataJson === null) {
       return null;
     }
-    if (dataJson.next_page_token !== '') {
+    if (
+      dataJson.next_page_token !== '' &&
+      dataJson.next_page_token !== undefined
+    ) {
       const updatedValues =
         valuesSoFar !== null
           ? [...valuesSoFar, ...dataJson[targetProperty]]
@@ -88,20 +91,30 @@ function getMeetingList_(access_token) {
   const userId = PropertiesService.getScriptProperties().getProperty('userId');
   const baseUrl = `https://api.zoom.us/v2/users/${userId}/meetings?page_size=300`;
   const getZoomData = new GetZoomData(baseUrl, access_token);
-  const res = getZoomData.getDataList(null, "", getZoomData, "meetings");
+  const res = getZoomData.getDataList(null, '', getZoomData, 'meetings');
   return res;
 }
 
 function getRegistrationList_(meetingId, access_token) {
   const baseUrl = `https://api.zoom.us/v2/meetings/${meetingId}/registrants?page_size=300`;
   const getZoomData = new GetZoomData(baseUrl, access_token);
-  const res = getZoomData.getDataList(null, "", getZoomData, "registrants");
+  const res = getZoomData.getDataList(null, '', getZoomData, 'registrants');
   return res;
 }
 
 function getParticipantList_(meetingId, access_token) {
   const baseUrl = `https://api.zoom.us/v2/report/meetings/${meetingId}/participants?page_size=300`;
   const getZoomData = new GetZoomData(baseUrl, access_token);
-  const res = getZoomData.getDataList(null, "", getZoomData, "participants");
+  const res = getZoomData.getDataList(null, '', getZoomData, 'participants');
+  return res;
+}
+
+function getSurveyList_(meetingId, access_token) {
+  const baseUrl = `https://api.zoom.us/v2/report/meetings/${meetingId}/survey?page_size=300`;
+  const getZoomData = new GetZoomData(baseUrl, access_token);
+  const res = getZoomData.getDataList(null, '', getZoomData, 'survey_answers');
+  if (res === undefined) {
+    return null;
+  }
   return res;
 }
