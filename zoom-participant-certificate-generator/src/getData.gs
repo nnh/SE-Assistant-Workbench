@@ -35,117 +35,73 @@ function getToken_() {
     return null; // or throw an error if you prefer
   }
 }
-function getMeetingList_(valuesSoFar, accessToken, nextPageToken) {
-  const userId = PropertiesService.getScriptProperties().getProperty('userId');
-  const baseUrl = `https://api.zoom.us/v2/users/${userId}/meetings?page_size=300`;
-  const url =
-    nextPageToken !== ''
-      ? `${baseUrl}&next_page_token=${nextPageToken}`
-      : baseUrl;
-  const response = UrlFetchApp.fetch(url, {
-    method: 'get',
-    headers: {
-      Authorization: 'Bearer ' + accessToken,
-    },
-  });
-  const meetingList = JSON.parse(response.getContentText());
-  if (meetingList.next_page_token !== '') {
-    const updatedValues =
-      valuesSoFar !== null
-        ? [...valuesSoFar, ...meetingList.meetings]
-        : meetingList.meetings;
-    return getMeetingList_(
-      updatedValues,
-      accessToken,
-      meetingList.next_page_token
-    );
-  } else {
-    // 再帰のベースケース: 最終ページの場合、合計の結果を返す
-    return valuesSoFar !== null
-      ? [...valuesSoFar, ...meetingList.meetings]
-      : meetingList.meetings;
+
+class GetZoomData {
+  constructor(baseUrl, accessToken){
+    this.baseUrl = baseUrl;    
+    this.accessToken = accessToken;
   }
-}
-
-function getRegistrationList_(
-  meetingId,
-  valuesSoFar,
-  accessToken,
-  nextPageToken
-) {
-  const options = {
-    method: 'get',
-    headers: {
-      Authorization: 'Bearer ' + accessToken,
-    },
-  };
-  const baseUrl = `https://api.zoom.us/v2/meetings/${meetingId}/registrants?page_size=300`;
-  const url =
-    nextPageToken !== ''
-      ? `${baseUrl}&next_page_token=${nextPageToken}`
-      : baseUrl;
-  try {
-    const registrantsResponse = UrlFetchApp.fetch(url, options);
-    const registrantsInfo = JSON.parse(registrantsResponse.getContentText());
-
-    if (registrantsInfo.next_page_token !== '') {
+  getJsonData(nextPageToken) {
+    const url =
+      nextPageToken !== ''
+        ? `${this.baseUrl}&next_page_token=${nextPageToken}`
+        : this.baseUrl;
+    try{
+      const response = UrlFetchApp.fetch(url, {
+        method: 'get',
+        headers: {
+          Authorization: 'Bearer ' + this.accessToken,
+        },
+      });
+      const dataJson = JSON.parse(response.getContentText());
+      return dataJson;
+    } catch(e){
+      return null;
+    }
+  }
+  getDataList(valuesSoFar, nextPageToken, getZoomData, targetProperty) {
+    const dataJson = getZoomData.getJsonData(nextPageToken);
+    if (dataJson === null) {
+      return null;
+    }
+    if (dataJson.next_page_token !== '') {
       const updatedValues =
         valuesSoFar !== null
-          ? [...valuesSoFar, ...registrantsInfo.registrants]
-          : registrantsInfo.registrants;
-      return getRegistrationList_(
-        meetingId,
+          ? [...valuesSoFar, ...dataJson[targetProperty]]
+          : dataJson[targetProperty];
+      return this.getDataList(
         updatedValues,
-        accessToken,
-        registrantsInfo.next_page_token
+        dataJson.next_page_token,
+        getZoomData,
+        targetProperty
       );
     } else {
       // 再帰のベースケース: 最終ページの場合、合計の結果を返す
       return valuesSoFar !== null
-        ? [...valuesSoFar, ...registrantsInfo.registrants]
-        : registrantsInfo.registrants;
+        ? [...valuesSoFar, ...dataJson[targetProperty]]
+        : dataJson[targetProperty];
     }
-  } catch (e) {
-    return null;
   }
 }
 
-function getParticipantList_(
-  meetingId,
-  valuesSoFar,
-  accessToken,
-  nextPageToken
-) {
-  const options = {
-    method: 'get',
-    headers: {
-      Authorization: 'Bearer ' + accessToken,
-    },
-  };
+function getMeetingList_(access_token) {
+  const userId = PropertiesService.getScriptProperties().getProperty('userId');
+  const baseUrl = `https://api.zoom.us/v2/users/${userId}/meetings?page_size=300`;
+  const getZoomData = new GetZoomData(baseUrl, access_token);
+  const res = getZoomData.getDataList(null, "", getZoomData, "meetings");
+  return res;
+}
+
+function getRegistrationList_(meetingId, access_token) {
+  const baseUrl = `https://api.zoom.us/v2/meetings/${meetingId}/registrants?page_size=300`;
+  const getZoomData = new GetZoomData(baseUrl, access_token);
+  const res = getZoomData.getDataList(null, "", getZoomData, "registrants");
+  return res;
+}
+
+function getParticipantList_(meetingId, access_token) {
   const baseUrl = `https://api.zoom.us/v2/report/meetings/${meetingId}/participants?page_size=300`;
-  const url =
-    nextPageToken !== ''
-      ? `${baseUrl}&next_page_token=${nextPageToken}`
-      : baseUrl;
-
-  const userInfoResponse = UrlFetchApp.fetch(url, options);
-  const userInfo = JSON.parse(userInfoResponse.getContentText());
-
-  if (userInfo.next_page_token !== '') {
-    const updatedValues =
-      valuesSoFar !== null
-        ? [...valuesSoFar, ...userInfo.participants]
-        : userInfo.participants;
-    return getParticipantList_(
-      meetingId,
-      updatedValues,
-      accessToken,
-      userInfo.next_page_token
-    );
-  } else {
-    // 再帰のベースケース: 最終ページの場合、合計の結果を返す
-    return valuesSoFar !== null
-      ? [...valuesSoFar, ...userInfo.participants]
-      : userInfo.participants;
-  }
+  const getZoomData = new GetZoomData(baseUrl, access_token);
+  const res = getZoomData.getDataList(null, "", getZoomData, "participants");
+  return res;
 }

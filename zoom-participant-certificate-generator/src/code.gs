@@ -1,3 +1,6 @@
+const mapTargetAddress = new Map([
+  ["meetingTopic", "B1"]
+]);
 function execGetParticipantList() {
   const googleUserList = SpreadsheetApp.openById(
     PropertiesService.getScriptProperties().getProperty('googleUserListId')
@@ -16,7 +19,7 @@ function execGetParticipantList() {
   if (!/[0-9]{11}/.test(meetingId)) {
     return;
   }
-  const meetingTopic = mainSheet.getRange('B1').getValue();
+  const meetingTopic = mainSheet.getRange(mapTargetAddress.get("meetingTopic")).getValue();
   if (meetingTopic === '') {
     return;
   }
@@ -25,11 +28,11 @@ function execGetParticipantList() {
   if (token === null) {
     return;
   }
-  const participantList = getParticipantList_(meetingId, '', token, '');
+  const participantList = getParticipantList_(meetingId, token);
   if (participantList === null) {
     return;
   }
-  const registrationList = getRegistrationList_(meetingId, '', token, '');
+  const registrationList = getRegistrationList_(meetingId, token);
   const registration = getRegistrationData_(registrationList);
   const userList = editParticipantList_(
     participantList,
@@ -77,7 +80,7 @@ function execGetMeetingList() {
   if (token === null) {
     return;
   }
-  const meetingList = getMeetingList_('', token, '');
+  const meetingList = getMeetingList_(token);
   if (meetingList === null) {
     return;
   }
@@ -108,7 +111,7 @@ function execGetMeetingList() {
     .getValues()
     .flat();
 
-  const ruleRange = mainSheet.getRange('B1');
+  const ruleRange = mainSheet.getRange(mapTargetAddress.get("meetingTopic"));
   if (ruleRange.getDataValidation() != null) {
     ruleRange.clearDataValidations();
   }
