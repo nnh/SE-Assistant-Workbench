@@ -34,7 +34,6 @@ function execGetParticipantList() {
     return;
   }
   const registrationList = getRegistrationList_(meetingId, token);
-  //const registration = getRegistrationData_(registrationList);
   const registration = getEmailAndDetails_(
     registrationList,
     'create_time',
@@ -66,11 +65,47 @@ function getEmailAndDetails_(targetList, filterName, detailName) {
   const targetKey = filterLatestDates_(
     targetList.map(x => [x.email, x[filterName]])
   );
+  // Get maximum number of responses
+  const detailLength = targetList.map(target => target[detailName].length);
+  const areAllEqual = detailLength.every((x, _, arr) => x === arr[0]);
+  const editTargetList = !areAllEqual
+    ? setArrayDummy_(targetList, detailName)
+    : targetList;
   const res = targetKey.map(([email, _]) => {
-    const target = targetList.filter(x => x.email === email)[0];
+    const target = editTargetList.filter(x => x.email === email)[0];
     return [email, target[detailName]];
   });
   return new Map(res);
+}
+
+function setArrayDummy_(targetList, detailName) {
+  const indexIdx = 1;
+  const targetData = targetList
+    .map((target, index) => [target[detailName].length, index])
+    .sort((a, b) => b[0] - a[0]);
+  const target = targetList[targetData[0][indexIdx]];
+  const targetKeys = target[detailName].map(x => Object.keys(x))[0];
+  const targetHeader = targetKeys[0];
+  const targetBody = targetKeys[1];
+  const header = target[detailName].map(x => x[targetHeader]);
+  const res = targetList.map(target => {
+    const editArray = header.map(head => {
+      const test = target[detailName]
+        .map(x => (x[targetHeader] === head ? x : null))
+        .filter(x => x !== null);
+      if (test.length === 0) {
+        const obj = {};
+        obj[targetHeader] = head;
+        obj[targetBody] = '';
+        return obj;
+      } else {
+        return test[0];
+      }
+    });
+    target[detailName] = editArray;
+    return target;
+  });
+  return res;
 }
 
 function execGetMeetingList() {
@@ -184,9 +219,20 @@ function editParticipantList_(
     registration !== null
       ? [...baseHeaders, ...registration.get(emailList[0]).map(x => x.title)]
       : baseHeaders;
+  let surveyHeader = null;
+  if (survey !== null) {
+    for (let i = 0; i < emailList.length; i++) {
+      surveyHeader = survey.has(emailList[i])
+        ? survey.get(emailList[i]).map(x => x.question)
+        : null;
+      if (surveyHeader !== null) {
+        break;
+      }
+    }
+  }
   const headers =
-    survey !== null
-      ? [...headers_base_reg, ...survey.get(emailList[0]).map(x => x.question)]
+    surveyHeader !== null
+      ? [...headers_base_reg, ...surveyHeader]
       : baseHeaders;
   const outputData = [
     headers,
