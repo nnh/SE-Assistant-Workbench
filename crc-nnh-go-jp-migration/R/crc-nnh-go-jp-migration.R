@@ -10,6 +10,24 @@ library(here)
 library(rvest)
 library(googlesheets4)
 # ------ constants ------
+kSheetName <- "20240327"
+kTopUrl <- 'https://crc.nnh.go.jp/'
+kLevel2 <- c("about_us/",
+             "accomplishments/",
+             "aro/",
+             "clinical_trial_services/",
+             "contact/",
+             "departments/",
+             "education_and_public_relations/",
+             "en/",
+             "form/",
+             "links/",
+             "news/",
+             "public_information/",
+             "publication/",
+             "seminar/",
+             "sitemap/",
+             "staff/")
 # ------ functions ------
 ReadSheetId <- function(file_path) {
   if (file.exists(file_path)) {
@@ -20,35 +38,32 @@ ReadSheetId <- function(file_path) {
   }
 }
 
-SaveLinksToGoogleSheet <- function(url, sheet_id_file, sheet_name) {
-  tryCatch({
-    # HTMLを取得
-    html <- read_html(url)
-
-    # コンテンツ内のすべてのリンクを取得
-    links <- html_nodes(html, "#content a")
-
-    # リンクのURLとテキストをデータフレームに保存
-    linkData <- lapply(links, function(link) {
-      href <- html_attr(link, "href")
-      text <- html_text(link)
-      data.frame(URL = href, Text = text, stringsAsFactors = FALSE)
-    })
-    linkDataFrame <- do.call(rbind, linkData) %>% filter(URL != "#")
-
-    # Google Sheetsに接続
-    gs4_auth()
-
-    # スプレッドシートを開く
-    googlesheets4::write_sheet(linkDataFrame, sheet_id, sheet_name)
-    cat(paste("リンク一覧を Google スプレッドシートの", sheet_name, "シートに保存しました。\n"))
-  }, error = function(e) {
-    cat("エラーが発生しました:", conditionMessage(e), "\n")
-  })
+GetLinkData <- function(url) {
+  # HTMLを取得
+  html <- read_html(url)
+  Sys.sleep(1)
+  # コンテンツ内のすべてのリンクを取得
+  targetHtml <- html %>% html_elements(xpath='//*[@id="content"]')
+  links <- targetHtml %>% html_elements("a")
+  title <- html %>% html_element(xpath='/html/head/title') %>% html_text()
+  # リンクのURLとテキストをデータフレームに保存
+  linkData <- links %>% map_df( ~ {
+    link <- .
+    href <- html_attr(link, "href")
+    text <- html_text(link)
+    return(list(title=title, parent=url, url=href, text=text, xpath=""))
+  }) %>% filter(url != "#")
+  return(linkData)
+}
+WriteToSs <- function(df, sheet_name) {
+  sheet_id <- here("sheet_id.txt") %>% ReadSheetId() %>% .[1] # Google スプレッドシートのIDが書かれたファイルのパスをここに入力
+  gs4_auth()
+  googlesheets4::write_sheet(df, sheet_id, sheet_name)
 }
 
-# テスト用のURLとGoogle スプレッドシートの情報を指定して処理を実行
-testUrl <- 'https://crc.nnh.go.jp/' # テスト用のURLをここに入力
-sheet_id <- here("sheet_id.txt") %>% ReadSheetId() %>% .[1] # Google スプレッドシートのIDが書かれたファイルのパスをここに入力
-sheet_name <- "sheet1" # シート名をここに入力
-SaveLinksToGoogleSheet(testUrl, sheet_id, sheet_name)
+# 階層2
+level2Url <- str_c(kTopUrl, kLevel2)
+testUrl <- list(kTopUrl, "http://crc.nnh.go.jp/aro/", "http://crc.nnh.go.jp/aro/edc")
+testUrl <- testUrl %>% append(level2Url)
+df <- testUrl %>% map_df( ~ GetLinkData(.))
+WriteToSs(df, kSheetName)
