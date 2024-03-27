@@ -1,15 +1,9 @@
 // form.test.js
 const { Builder, By, WebElement } = require("selenium-webdriver");
 const assert = require("assert");
-const fs = require("fs");
+const { getUserInfo } = require("./defineTest.js");
 
-const user = (() => {
-  const csvFilePath = "./user.csv";
-  const data = fs.readFileSync(csvFilePath, "utf8").trim();
-  const [username, password] = data.split(",");
-  return { username, password };
-})();
-
+const user = getUserInfo();
 let driver;
 const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
 const targetUrlList = [[topPageUrl, '//*[@id="menu-main_menu"]']];
