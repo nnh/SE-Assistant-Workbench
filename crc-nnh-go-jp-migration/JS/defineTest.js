@@ -177,4 +177,8 @@ const linkClickTestHeaderFooterMenu = targetUrlList
   })
   .flat();
 
-module.exports = { linkClickTestListIndex, linkClickTestHeaderFooterMenu }; // 関数をエクスポート
+module.exports = {
+  linkClickTestListIndex,
+  linkClickTestHeaderFooterMenu,
+  targetUrlList,
+}; // 関数をエクスポート
