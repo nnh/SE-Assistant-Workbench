@@ -28,7 +28,7 @@ const headerFooterMenuList = [
     commonXpath.get("header"),
     '//*[@id="masthead"]/div/div[1]/h1/div[1]',
     "https://nagoya.hosp.go.jp/",
-    "名古屋医療センターロゴ",
+    "ヘッダー：名古屋医療センターロゴ",
   ],
   [
     commonXpath.get("header"),
@@ -77,6 +77,24 @@ const headerFooterMenuList = [
     '//*[@id="menu-item-14588"]/a',
     `${topPageUrl}public_information/`,
     "公開情報",
+  ],
+  [
+    commonXpath.get("header"),
+    '//*[@id="masthead"]/div/div[2]/div[1]/ul/li[2]/a',
+    `${topPageUrl}en/`,
+    "English",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="colophon"]/div/div[1]/a[1]',
+    "https://nagoya.hosp.go.jp/",
+    "フッター：名古屋医療センターロゴ",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="colophon"]/div/div[1]/a[2]',
+    topPageUrl,
+    "フッター：臨床研究センター",
   ],
   [
     commonXpath.get("footer"),

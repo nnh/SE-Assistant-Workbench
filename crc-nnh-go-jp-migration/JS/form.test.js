@@ -8,7 +8,7 @@ const {
 
 let driver;
 
-describe("ヘッダーとフッター、言語以外のリンククリックテスト", () => {
+describe("ヘッダーとフッター、リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
   beforeAll(() => {
     driver = new Builder().forBrowser("chrome").build();
