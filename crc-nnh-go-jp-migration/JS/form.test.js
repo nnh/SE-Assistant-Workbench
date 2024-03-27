@@ -3,12 +3,12 @@ const { Builder, By, WebElement } = require("selenium-webdriver");
 const assert = require("assert");
 const {
   linkClickTestListIndex,
-  linkClickTestHeaderMenu,
+  linkClickTestHeaderFooterMenu,
 } = require("./defineTest.js");
 
 let driver;
 
-describe("ヘッダー、言語以外のリンククリックテスト", () => {
+describe("ヘッダーとフッター、言語以外のリンククリックテスト", () => {
   // テスト開始前にドライバーを起動
   beforeAll(() => {
     driver = new Builder().forBrowser("chrome").build();
@@ -16,7 +16,7 @@ describe("ヘッダー、言語以外のリンククリックテスト", () => {
 
   // テスト終了後にドライバーを終了
   afterAll(() => driver.quit());
-  linkClickTestHeaderMenu.forEach(async (target) => {
+  linkClickTestHeaderFooterMenu.forEach(async (target) => {
     const url = target[linkClickTestListIndex.get("url")];
     const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
     const aXpath = target[linkClickTestListIndex.get("aXpath")];

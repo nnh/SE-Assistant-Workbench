@@ -23,7 +23,7 @@ const linkClickTestListIndex = new Map([
   ["nextDir", 3],
   ["label", 4],
 ]);
-const headerMenuList = [
+const headerFooterMenuList = [
   [
     commonXpath.get("header"),
     '//*[@id="masthead"]/div/div[1]/h1/div[1]',
@@ -78,13 +78,85 @@ const headerMenuList = [
     `${topPageUrl}public_information/`,
     "公開情報",
   ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-11"]/a',
+    "https://nagoya.hosp.go.jp/",
+    "名古屋医療センター",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16256"]/a',
+    topPageUrl,
+    "臨床研究センター",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16257"]/a',
+    `${topPageUrl}about_us/`,
+    "ご挨拶",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16258"]/a',
+    `${topPageUrl}departments/`,
+    "部門",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16259"]/a',
+    `${topPageUrl}aro/`,
+    "ＡＲＯ",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16260"]/a',
+    `${topPageUrl}clinical_trial_services/`,
+    "治験・臨床研究",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16261"]/a',
+    `${topPageUrl}staff/`,
+    "スタッフ",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16262"]/a',
+    `${topPageUrl}departments/education_and_public_relations/seminar/`,
+    "セミナー情報",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-138"]/a',
+    `${topPageUrl}news/`,
+    "ニュース",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16265"]/a',
+    `${topPageUrl}contact/`,
+    "連絡先",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16263"]/a',
+    `${topPageUrl}links/`,
+    "リンク",
+  ],
+  [
+    commonXpath.get("footer"),
+    '//*[@id="menu-item-16264"]/a',
+    `${topPageUrl}sitemap/`,
+    "サイトマップ",
+  ],
 ];
-const linkClickTestHeaderMenu = targetUrlList
+const linkClickTestHeaderFooterMenu = targetUrlList
   .map((url) => {
-    return headerMenuList.map((menu) => {
+    return headerFooterMenuList.map((menu) => {
       return [url, ...menu];
     });
   })
   .flat();
 
-module.exports = { linkClickTestListIndex, linkClickTestHeaderMenu }; // 関数をエクスポート
+module.exports = { linkClickTestListIndex, linkClickTestHeaderFooterMenu }; // 関数をエクスポート
