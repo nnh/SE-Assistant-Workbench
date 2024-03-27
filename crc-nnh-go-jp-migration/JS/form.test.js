@@ -1,39 +1,13 @@
 // form.test.js
 const { Builder, By, WebElement } = require("selenium-webdriver");
 const assert = require("assert");
-const { getUserInfo } = require("./defineTest.js");
+const {
+  linkClickTestListIndex,
+  linkClickTestMenuMainMenu,
+} = require("./defineTest.js");
 
-const user = getUserInfo();
 let driver;
-const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
-const targetUrlList = [[topPageUrl, '//*[@id="menu-main_menu"]']];
-const linkClickTestListIndex = new Map([
-  ["url", 0],
-  ["targetXpath", 1],
-  ["aXpath", 2],
-  ["nextDir", 3],
-  ["label", 4],
-]);
-const menuMainMenuList = [
-  ['//*[@id="menu-item-14585"]/a', "about_us/", "ご挨拶"],
-  ['//*[@id="menu-item-14586"]/a', "departments/", "部門"],
-  ['//*[@id="menu-item-16255"]/a', "aro/", "ARO"],
-  [
-    '//*[@id="menu-item-16154"]/a',
-    "clinical_trial_services/",
-    "治験・臨床研究",
-  ],
-  ['//*[@id="menu-item-14587"]/a', "staff/", "スタッフ"],
-  ['//*[@id="menu-item-721907"]/a', "accomplishments/", "研究成果"],
-  ['//*[@id="menu-item-14588"]/a', "public_information/", "公開情報"],
-];
-const linkClickTestMenuMainMenu = targetUrlList
-  .map((target) => {
-    return menuMainMenuList.map((menu) => {
-      return [...target, ...menu];
-    });
-  })
-  .flat();
+
 describe("リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
   beforeAll(() => {
