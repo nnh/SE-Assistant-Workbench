@@ -66,7 +66,7 @@ WriteToSs <- function(df, sheet_name) {
 
 # 階層2
 level2Url <- str_c(kTopUrl, kLevel2)
-testUrl <- list(kTopUrl, "http://crc.nnh.go.jp/aro/", "http://crc.nnh.go.jp/aro/edc")
+testUrl <- list(kTopUrl)
 testUrl <- testUrl %>% append(level2Url)
 df <- testUrl %>% map_df( ~ GetLinkData(.))
 output_df <- df %>% filter(is.na(new_window)) %>% select(-"new_window")

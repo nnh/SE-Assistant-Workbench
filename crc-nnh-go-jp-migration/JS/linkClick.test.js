@@ -76,7 +76,10 @@ async function execLinkClickTest(target) {
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
     .click();
 
-  const currentUrl = await driver.getCurrentUrl();
+  const currentUrl = await driver.wait(async () => {
+    const currentUrl = await driver.getCurrentUrl();
+    return currentUrl !== url ? currentUrl : null;
+  }, 10000);
   assert.equal(currentUrl, nextUrl);
 }
 function editTestString(text, target) {
@@ -108,9 +111,9 @@ describe("リンククリックテスト", () => {
   newWindowList.forEach(async (target) => {
     await execLinkClickNewWindowTestMain(target, "testtest");
   });
-  /*  linkList.forEach(async (target) => {
+  linkList.forEach(async (target) => {
     await execLinkClickTestMain(target, "testtest");
-  });*/
+  });
   /*  linkClickTestHeaderFooterMenu.forEach(async (target) => {
     await execLinkClickTestMain(target, "ページ共通headerFooter");
   });*/
