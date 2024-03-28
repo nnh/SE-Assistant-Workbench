@@ -2,11 +2,8 @@
 const {
   linkClickTestListIndex,
   targetUrlList,
+  commonXpath,
 } = require("./defineTestCommonInfo.js");
-const commonXpath = new Map([
-  ["header", '//*[@id="masthead"]/div'],
-  ["footer", '//*[@id="colophon"]'],
-]);
 const topPageUrl = targetUrlList[0];
 const headerFooterMenuList = [
   [

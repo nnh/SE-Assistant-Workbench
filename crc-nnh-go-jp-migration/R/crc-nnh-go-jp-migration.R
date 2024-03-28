@@ -2,7 +2,7 @@
 #' description
 #' @file crc-nnh-go-jp-migration.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
+#' @date 2024.3.28
 rm(list=ls())
 # ------ libraries ------
 library(tidyverse)
@@ -10,7 +10,8 @@ library(here)
 library(rvest)
 library(googlesheets4)
 # ------ constants ------
-kSheetName <- "20240327"
+kSheetName <- "wk"
+kNewWindowSheetName <- str_c(kSheetName, "_newWindow")
 kTopUrl <- 'https://crc.nnh.go.jp/'
 kLevel2 <- c("about_us/",
              "accomplishments/",
@@ -28,6 +29,8 @@ kLevel2 <- c("about_us/",
              "seminar/",
              "sitemap/",
              "staff/")
+kTargetXpath <- '//*[@id="content"]'
+kConstText <- 'commonXpath.get("bodyContents")'
 # ------ functions ------
 ReadSheetId <- function(file_path) {
   if (file.exists(file_path)) {
@@ -43,21 +46,21 @@ GetLinkData <- function(url) {
   html <- read_html(url)
   Sys.sleep(1)
   # コンテンツ内のすべてのリンクを取得
-  targetHtml <- html %>% html_elements(xpath='//*[@id="content"]')
+  targetHtml <- html %>% html_elements(xpath=kTargetXpath)
   links <- targetHtml %>% html_elements("a")
   title <- html %>% html_element(xpath='/html/head/title') %>% html_text()
   # リンクのURLとテキストをデータフレームに保存
   linkData <- links %>% map_df( ~ {
     link <- .
+    new_window <- html_attr(link, "target")
     href <- html_attr(link, "href")
     text <- html_text(link)
-    return(list(title=title, parent=url, url=href, text=text, xpath=""))
-  }) %>% filter(url != "#")
+    return(list(title=title, url=url, targetContents=kTargetXpath ,aXpath="", nextDir=href, label=text, new_window=new_window))
+  }) %>% filter(nextDir != "#")
   return(linkData)
 }
 WriteToSs <- function(df, sheet_name) {
   sheet_id <- here("sheet_id.txt") %>% ReadSheetId() %>% .[1] # Google スプレッドシートのIDが書かれたファイルのパスをここに入力
-  gs4_auth()
   googlesheets4::write_sheet(df, sheet_id, sheet_name)
 }
 
@@ -66,4 +69,8 @@ level2Url <- str_c(kTopUrl, kLevel2)
 testUrl <- list(kTopUrl, "http://crc.nnh.go.jp/aro/", "http://crc.nnh.go.jp/aro/edc")
 testUrl <- testUrl %>% append(level2Url)
 df <- testUrl %>% map_df( ~ GetLinkData(.))
-WriteToSs(df, kSheetName)
+output_df <- df %>% filter(is.na(new_window)) %>% select(-"new_window")
+new_window_df <- df %>% filter(!is.na(new_window)) %>% select(-"new_window")
+gs4_auth()
+WriteToSs(output_df, kSheetName)
+WriteToSs(new_window_df, kNewWindowSheetName)
