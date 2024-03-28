@@ -11,7 +11,7 @@ const getUserInfo = () => {
 
 const user = getUserInfo();
 const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
-const targetUrlList = [topPageUrl];
+const targetUrlList = [topPageUrl, `${topPageUrl}about_us/`];
 const linkClickTestListIndex = new Map([
   ["url", 0],
   ["targetXpath", 1],

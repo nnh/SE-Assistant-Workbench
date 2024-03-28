@@ -20,15 +20,15 @@ describe("リンククリックテスト", () => {
   linkClickTestHeaderFooterMenu.forEach(async (target) => {
     const url = target[linkClickTestListIndex.get("url")];
     const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
-    const aXpath = target[linkClickTestListIndex.get("aXpath")];
     const nextUrl = target[linkClickTestListIndex.get("nextDir")];
-    const label = target[linkClickTestListIndex.get("label")];
-    test(`ページ共通headerFooter_${url}_${label}_${targetXpath}`, async () => {
+    test(`ページ共通headerFooter_${url}_${
+      target[linkClickTestListIndex.get("label")]
+    }_${targetXpath}`, async () => {
       // テスト対象のページへアクセス
       await driver.get(url);
       await driver
         .findElement(By.xpath(targetXpath))
-        .findElement(By.xpath(aXpath))
+        .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
         .click();
 
       // エラーメッセージを取得して、エラー文言が正しいかチェックする
