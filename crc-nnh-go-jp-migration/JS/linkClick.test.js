@@ -8,6 +8,27 @@ const {
 } = require("./defineTestLinkClick.js");
 
 let driver;
+async function execLinkClickTest(target) {
+  const url = target[linkClickTestListIndex.get("url")];
+  const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
+  const nextUrl = target[linkClickTestListIndex.get("nextDir")];
+  // テスト対象のページへアクセス
+  await driver.get(url);
+  await driver
+    .findElement(By.xpath(targetXpath))
+    .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
+    .click();
+
+  // エラーメッセージを取得して、エラー文言が正しいかチェックする
+  const currentUrl = await driver.getCurrentUrl();
+  assert.equal(currentUrl, nextUrl);
+}
+function editTestString(text, target) {
+  const url = target[linkClickTestListIndex.get("url")];
+  const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
+  const label = target[linkClickTestListIndex.get("label")];
+  return `${text}_${url}_${targetXpath}_${label}`;
+}
 
 describe("リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
@@ -18,23 +39,14 @@ describe("リンククリックテスト", () => {
   // テスト終了後にドライバーを終了
   afterAll(() => driver.quit());
   linkClickTestHeaderFooterMenu.forEach(async (target) => {
-    const url = target[linkClickTestListIndex.get("url")];
-    const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
-    const nextUrl = target[linkClickTestListIndex.get("nextDir")];
-    test(`ページ共通headerFooter_${url}_${
-      target[linkClickTestListIndex.get("label")]
-    }_${targetXpath}`, async () => {
-      // テスト対象のページへアクセス
-      await driver.get(url);
-      await driver
-        .findElement(By.xpath(targetXpath))
-        .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
-        .click();
-
-      // エラーメッセージを取得して、エラー文言が正しいかチェックする
-      const currentUrl = await driver.getCurrentUrl();
-      assert.equal(currentUrl, nextUrl);
-    }, 30000); // タイムアウトを30秒に設定
+    const testString = editTestString("ページ共通headerFooter", target);
+    test(
+      testString,
+      async () => {
+        await execLinkClickTest(target);
+      },
+      30000
+    ); // タイムアウトを30秒に設定
     await new Promise((resolve) => setTimeout(resolve, 1000));
   });
   targetUrlList.forEach(async (url) => {
