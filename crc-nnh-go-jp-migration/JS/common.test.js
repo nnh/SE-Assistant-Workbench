@@ -1,5 +1,5 @@
 // form.test.js
-const { Builder, By, WebElement } = require("selenium-webdriver");
+const { Builder, By } = require("selenium-webdriver");
 const assert = require("assert");
 const {
   linkClickTestListIndex,
