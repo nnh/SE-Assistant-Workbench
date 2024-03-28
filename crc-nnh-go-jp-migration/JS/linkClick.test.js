@@ -29,6 +29,17 @@ function editTestString(text, target) {
   const label = target[linkClickTestListIndex.get("label")];
   return `${text}_${url}_${targetXpath}_${label}`;
 }
+async function execLinkClickTestMain(target, testStringHead) {
+  const testString = editTestString(testStringHead, target);
+  test(
+    testString,
+    async () => {
+      await execLinkClickTest(target);
+    },
+    30000
+  ); // タイムアウトを30秒に設定
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
 
 describe("リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
@@ -39,15 +50,7 @@ describe("リンククリックテスト", () => {
   // テスト終了後にドライバーを終了
   afterAll(() => driver.quit());
   linkClickTestHeaderFooterMenu.forEach(async (target) => {
-    const testString = editTestString("ページ共通headerFooter", target);
-    test(
-      testString,
-      async () => {
-        await execLinkClickTest(target);
-      },
-      30000
-    ); // タイムアウトを30秒に設定
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await execLinkClickTestMain(target, "ページ共通headerFooter");
   });
   targetUrlList.forEach(async (url) => {
     test("ページトップに戻るリンクをクリックするとページのトップに戻る", async () => {
