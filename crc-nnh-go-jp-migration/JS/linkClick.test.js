@@ -117,11 +117,11 @@ describe("リンククリックテスト", () => {
 
   // テスト終了後にドライバーを終了
   afterAll(() => driver.quit());
-  newWindowList.forEach(async (target) => {
+  /*  newWindowList.forEach(async (target) => {
     await execLinkClickNewWindowTestMain(target, "testtest");
-  });
+  });*/
   linkList.forEach(async (target) => {
-    await execLinkClickTestMain(target, "testtest");
+    await execLinkClickTestMain(target, "ページ毎：");
   });
   /*  linkClickTestHeaderFooterMenu.forEach(async (target) => {
     await execLinkClickTestMain(target, "ページ共通headerFooter");

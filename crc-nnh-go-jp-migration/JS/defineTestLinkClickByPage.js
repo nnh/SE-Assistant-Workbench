@@ -7,14 +7,20 @@ const {
 const replaceUrl = "https://crc.nnh.go.jp/";
 const replaceUrl2 = "http://crc.nnh.go.jp/";
 const replaceUrl3 = targetUrlList[0].replace("https://", "http://");
-console.log(replaceUrl3);
 function getLinkList(filePath) {
   const nextDirReplaceList = [
+    [
+      new RegExp(`${targetUrlList[0]}seminar/`, "i"),
+      `${targetUrlList[0]}/departments/education_and_public_relations/seminar/`,
+    ],
     [
       new RegExp(`${targetUrlList[0]}education_and_public_relations/`, "i"),
       `${targetUrlList[0]}departments/education_and_public_relations/`,
     ],
+    [/^\/crc\/departments\//i, "/departments/"],
     [/^\/crc\/staff\//i, "/staff/"],
+    [new RegExp("//departments"), "/departments"],
+    [new RegExp("staff//"), "staff/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
   const linkListArray = csvToArray(filePath);
@@ -43,16 +49,13 @@ function getLinkList(filePath) {
       .replace(/^"|"$/g, "");
     row[linkClickTestListIndex.get("nextDir")] = row[
       linkClickTestListIndex.get("nextDir")
-    ]
-      .replace(replaceUrl, targetUrlList[0])
-      .replace(replaceUrl2, replaceUrl3);
+    ].replace(replaceUrl, targetUrlList[0]);
     for (let i = 0; i < nextDirReplaceList.length; i++) {
       const [beforeText, afterText] = nextDirReplaceList[i];
       if (beforeText.test(row[linkClickTestListIndex.get("nextDir")])) {
         row[linkClickTestListIndex.get("nextDir")] = row[
           linkClickTestListIndex.get("nextDir")
         ].replace(beforeText, afterText);
-        break;
       }
     }
     if (/^\//.test(row[linkClickTestListIndex.get("nextDir")])) {

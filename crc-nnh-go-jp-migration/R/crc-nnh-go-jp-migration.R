@@ -13,6 +13,7 @@ library(googlesheets4)
 kSheetName <- "wk"
 kDownloadSheetName <- str_c(kSheetName, "_download")
 kNewWindowSheetName <- str_c(kSheetName, "_newWindow")
+kAnchorSheetName <- str_c(kSheetName, "_anchor")
 kTargetXpath <- '//*[@id="content"]'
 kConstText <- 'commonXpath.get("bodyContents")'
 source(here("testUrl.R"), encoding="utf-8")
@@ -68,13 +69,15 @@ df <- df_list %>% map( ~ {
   res <- temp %>% keep( ~ is.data.frame(.))
   return(res)
 }) %>% bind_rows()
-
-download_df <- df %>% filter(str_detect(nextDir, ".xls") | str_detect(nextDir, "\\.doc"))
-no_download_df <-  df %>% filter(!str_detect(nextDir, ".xls") & !str_detect(nextDir, "\\.doc"))
+anchor_df <- df %>% filter(str_detect(nextDir, "^#"))
+no_anchor_df <- df %>% filter(!str_detect(nextDir, "^#"))
+download_df <- no_anchor_df %>% filter(str_detect(nextDir, ".xls") | str_detect(nextDir, "\\.doc") | str_detect(nextDir, "\\.zip"))
+no_download_df <-  no_anchor_df %>% filter(!str_detect(nextDir, ".xls") & !str_detect(nextDir, "\\.doc") & !str_detect(nextDir, "\\.zip"))
 output_df <- no_download_df %>% filter(is.na(new_window)) %>% select(-"new_window")
 new_window_df <- no_download_df %>% filter(!is.na(new_window)) %>% select(-"new_window")
 
 gs4_auth()
+WriteToSs(anchor_df, kAnchorSheetName)
 WriteToSs(download_df, kDownloadSheetName)
 WriteToSs(output_df, kSheetName)
 WriteToSs(new_window_df, kNewWindowSheetName)
