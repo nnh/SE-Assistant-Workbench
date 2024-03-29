@@ -56,7 +56,17 @@ WriteToSs <- function(df, sheet_name) {
   googlesheets4::write_sheet(df, sheet_id, sheet_name)
 }
 # ------ main ------
-df <- testUrl %>% map( ~ GetLinkData(.))
+testUrl <- split(targetUrl, (seq_along(targetUrl) - 1) %/% 20)
+df_list <- testUrl %>% map( ~ {
+  url_list <- .
+  df <- url_list %>% map( ~ GetLinkData(.))
+  return(df)
+})
+df <- df_list %>% map( ~ {
+  temp <- .
+  res <- temp %>% keep( ~ is.data.frame(.))
+  return(res)
+}) %>% bind_rows()
 output_df <- df %>% filter(is.na(new_window)) %>% select(-"new_window")
 new_window_df <- df %>% filter(!is.na(new_window)) %>% select(-"new_window")
 
