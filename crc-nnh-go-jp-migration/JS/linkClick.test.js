@@ -44,14 +44,23 @@ async function execLinkClickNewWindowTest(target) {
   // 新しいウィンドウのURLを取得
   const newWindowUrl = await driver.getCurrentUrl();
 
-  // アサーション: 新しいウィンドウのURLが期待されるURLと一致することを確認
-  assert.equal(newWindowUrl, nextUrl);
-
   // 新しいウィンドウを閉じる
   await driver.close();
-
+  // 新しいウィンドウが閉じられるまで待つ
+  await driver.wait(async () => {
+    const handles = await driver.getAllWindowHandles();
+    return handles.length === 1; // 新しいウィンドウが閉じた後はハンドルが1つになる
+  }, 10000); // 例: 10秒間待機
   // 元のウィンドウに戻る
   await driver.switchTo().window(currentWindowHandle);
+  // 元のウィンドウに戻るのを待つ
+  await driver.wait(async () => {
+    const currentHandle = await driver.getWindowHandle();
+    return currentHandle === currentWindowHandle;
+  }, 10000); // 例: 10秒間待機
+
+  // アサーション: 新しいウィンドウのURLが期待されるURLと一致することを確認
+  assert.equal(newWindowUrl, nextUrl);
 }
 
 async function execLinkClickNewWindowTestMain(target, testStringHead) {
