@@ -11,6 +11,7 @@ library(rvest)
 library(googlesheets4)
 # ------ constants ------
 kSheetName <- "wk"
+kDownloadSheetName <- str_c(kSheetName, "_download")
 kNewWindowSheetName <- str_c(kSheetName, "_newWindow")
 kTargetXpath <- '//*[@id="content"]'
 kConstText <- 'commonXpath.get("bodyContents")'
@@ -67,9 +68,13 @@ df <- df_list %>% map( ~ {
   res <- temp %>% keep( ~ is.data.frame(.))
   return(res)
 }) %>% bind_rows()
-output_df <- df %>% filter(is.na(new_window)) %>% select(-"new_window")
-new_window_df <- df %>% filter(!is.na(new_window)) %>% select(-"new_window")
+
+download_df <- df %>% filter(str_detect(nextDir, ".xls") | str_detect(nextDir, "\\.doc"))
+no_download_df <-  df %>% filter(!str_detect(nextDir, ".xls") & !str_detect(nextDir, "\\.doc"))
+output_df <- no_download_df %>% filter(is.na(new_window)) %>% select(-"new_window")
+new_window_df <- no_download_df %>% filter(!is.na(new_window)) %>% select(-"new_window")
 
 gs4_auth()
+WriteToSs(download_df, kDownloadSheetName)
 WriteToSs(output_df, kSheetName)
 WriteToSs(new_window_df, kNewWindowSheetName)
