@@ -1,5 +1,4 @@
 // defineTestLinkClickByPage.js
-const { be } = require("date-fns/locale");
 const {
   linkClickTestListIndex,
   targetUrlList,
