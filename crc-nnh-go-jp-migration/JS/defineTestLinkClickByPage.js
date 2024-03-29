@@ -5,6 +5,9 @@ const {
   csvToArray,
 } = require("./defineTestCommonInfo.js");
 const replaceUrl = "https://crc.nnh.go.jp/";
+const replaceUrl2 = "http://crc.nnh.go.jp/";
+const replaceUrl3 = targetUrlList[0].replace("https://", "http://");
+console.log(replaceUrl3);
 function getLinkList(filePath) {
   const nextDirReplaceList = [
     [
@@ -12,6 +15,7 @@ function getLinkList(filePath) {
       `${targetUrlList[0]}departments/education_and_public_relations/`,
     ],
     [/^\/crc\/staff\//i, "/staff/"],
+    [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
   const linkListArray = csvToArray(filePath);
   const array = linkListArray
@@ -39,7 +43,9 @@ function getLinkList(filePath) {
       .replace(/^"|"$/g, "");
     row[linkClickTestListIndex.get("nextDir")] = row[
       linkClickTestListIndex.get("nextDir")
-    ].replace(replaceUrl, targetUrlList[0]);
+    ]
+      .replace(replaceUrl, targetUrlList[0])
+      .replace(replaceUrl2, replaceUrl3);
     for (let i = 0; i < nextDirReplaceList.length; i++) {
       const [beforeText, afterText] = nextDirReplaceList[i];
       if (beforeText.test(row[linkClickTestListIndex.get("nextDir")])) {
