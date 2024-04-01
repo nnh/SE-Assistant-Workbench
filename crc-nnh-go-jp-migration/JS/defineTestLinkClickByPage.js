@@ -10,6 +10,13 @@ const replaceUrl3 = targetUrlList[0].replace("https://", "http://");
 function getLinkList(filePath) {
   const nextDirReplaceList = [
     [
+      new RegExp(
+        `${targetUrlList[0]}departments/clinical_trial_services/`,
+        "i"
+      ),
+      `${targetUrlList[0]}clinical_trial_services/`,
+    ],
+    [
       new RegExp(`${targetUrlList[0]}seminar/`, "i"),
       `${targetUrlList[0]}/departments/education_and_public_relations/seminar/`,
     ],

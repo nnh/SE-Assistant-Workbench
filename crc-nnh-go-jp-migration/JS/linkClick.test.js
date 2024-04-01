@@ -80,6 +80,7 @@ async function execLinkClickTest(target) {
   const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
   await driver.get(url);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   await driver
     .findElement(By.xpath(targetXpath))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
@@ -106,7 +107,6 @@ async function execLinkClickTestMain(target, testStringHead) {
     },
     30000
   ); // タイムアウトを30秒に設定
-  await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
 describe("リンククリックテスト", () => {
