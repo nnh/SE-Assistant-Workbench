@@ -63,7 +63,9 @@ function getLinkList(filePath) {
       linkClickTestListIndex.get("aXpath")
     ]
       .replace(new RegExp('""', "g"), '"')
-      .replace(/^"|"$/g, "");
+      .replace(/^"|"$/g, "")
+      .replace(/"\(/, "(")
+      .replace(/\[2\]"$/, "[2]");
     row[linkClickTestListIndex.get("nextDir")] = row[
       linkClickTestListIndex.get("nextDir")
     ].replace(replaceUrl, targetUrlList[0]);
