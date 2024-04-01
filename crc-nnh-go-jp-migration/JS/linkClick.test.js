@@ -6,7 +6,11 @@ const {
   linkClickTestHeaderFooterMenu,
   targetUrlList,
 } = require("./defineTestLinkClick.js");
-const { linkList, newWindowList } = require("./defineTestLinkClickByPage.js");
+const {
+  linkList,
+  newWindowList,
+  testUrl,
+} = require("./defineTestLinkClickByPage.js");
 
 let driver;
 async function execLinkClickNewWindowTest(target) {
@@ -90,7 +94,11 @@ async function execLinkClickTest(target) {
     const currentUrl = await driver.getCurrentUrl();
     return currentUrl !== url ? currentUrl : null;
   }, 10000);
-  assert.equal(currentUrl, nextUrl);
+  try {
+    assert.equal(currentUrl, nextUrl);
+  } catch (error) {
+    assert.equal(currentUrl, nextUrl.replace(new RegExp(testUrl), ""));
+  }
 }
 function editTestString(text, target) {
   const url = target[linkClickTestListIndex.get("url")];

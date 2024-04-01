@@ -3,10 +3,11 @@ const {
   linkClickTestListIndex,
   targetUrlList,
   csvToArray,
+  user,
 } = require("./defineTestCommonInfo.js");
 const replaceUrl = "https://crc.nnh.go.jp/";
-const replaceUrl2 = "http://crc.nnh.go.jp/";
-const replaceUrl3 = targetUrlList[0].replace("https://", "http://");
+const testUrl = `${user.username}:${user.password}@`;
+
 function getLinkList(filePath) {
   const nextDirReplaceList = [
     [
@@ -28,6 +29,15 @@ function getLinkList(filePath) {
     [/^\/crc\/staff\//i, "/staff/"],
     [new RegExp("//departments"), "/departments"],
     [new RegExp("staff//"), "staff/"],
+    [
+      new RegExp("https://doi.org/10.1016/j.jiac.2022.03.030"),
+      "https://www.jiac-j.com/article/S1341-321X(22)00111-8/abstract",
+    ],
+    [
+      new RegExp("https://doi.org/10.1002/jia2.26086"),
+      "https://onlinelibrary.wiley.com/doi/10.1002/jia2.26086",
+    ],
+    [new RegExp("http://acrf.jp"), "https://www.acrf.jp/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
   const linkListArray = csvToArray(filePath);
@@ -79,4 +89,5 @@ const newWindowList = getLinkList("./linkList - linkNewWindow.csv");
 module.exports = {
   linkList,
   newWindowList,
+  testUrl,
 };

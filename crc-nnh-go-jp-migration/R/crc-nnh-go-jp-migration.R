@@ -73,8 +73,25 @@ anchor_df <- df %>% filter(str_detect(nextDir, "^#"))
 no_anchor_df <- df %>% filter(!str_detect(nextDir, "^#"))
 download_df <- no_anchor_df %>% filter(str_detect(nextDir, ".xls") | str_detect(nextDir, "\\.doc") | str_detect(nextDir, "\\.zip"))
 no_download_df <-  no_anchor_df %>% filter(!str_detect(nextDir, ".xls") & !str_detect(nextDir, "\\.doc") & !str_detect(nextDir, "\\.zip"))
-output_df <- no_download_df %>% filter(is.na(new_window)) %>% select(-"new_window")
-new_window_df <- no_download_df %>% filter(!is.na(new_window)) %>% select(-"new_window")
+edit_no_download_df <- no_download_df
+temp <- edit_no_download_df$nextDir %>% str_remove("#.*$") %>% map_vec( ~ {
+  url <- .
+  url_split <- url %>% str_split("/") %>% unlist()
+  url_last <- url_split[length(url_split)]
+  if (url_last == "") {
+    return(url)
+  }
+  if (str_detect(url_last, "\\.")) {
+    return(url)
+  }
+  return(str_c(url, "/"))
+
+})
+edit_no_download_df$nextDir <- temp
+rm(temp)
+
+output_df <- edit_no_download_df %>% filter(is.na(new_window)) %>% select(-"new_window")
+new_window_df <- edit_no_download_df %>% filter(!is.na(new_window)) %>% select(-"new_window")
 
 gs4_auth()
 WriteToSs(anchor_df, kAnchorSheetName)

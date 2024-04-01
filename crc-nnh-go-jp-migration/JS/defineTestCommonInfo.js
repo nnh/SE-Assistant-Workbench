@@ -42,4 +42,5 @@ module.exports = {
   pageMap,
   commonXpath,
   csvToArray,
+  user,
 }; // 関数をエクスポート
