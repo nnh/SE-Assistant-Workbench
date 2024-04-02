@@ -90,10 +90,17 @@ async function execLinkClickTest(target) {
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
     .click();
 
-  const currentUrl = await driver.wait(async () => {
-    const currentUrl = await driver.getCurrentUrl();
-    return currentUrl !== url ? currentUrl : null;
-  }, 10000);
+  const currentUrl = await driver
+    .wait(async () => {
+      const currentUrl = await driver.getCurrentUrl();
+      return currentUrl !== url ? currentUrl : null;
+    }, 10000)
+    .catch((error) => {
+      if (url === nextUrl) {
+        return url;
+      }
+      assert.fail(`Error occurred while waiting for the URL:", ${nextUrl}`);
+    });
   try {
     assert.equal(currentUrl, nextUrl);
   } catch (error) {
