@@ -144,12 +144,12 @@ describe("リンククリックテスト", () => {
   /*  newWindowList.forEach(async (target) => {
     await execLinkClickNewWindowTestMain(target, "testtest");
   });*/
-  linkList.forEach(async (target) => {
+  /*linkList.forEach(async (target) => {
     await execLinkClickTestMain(target, "ページ毎：");
-  });
-  /*  linkClickTestHeaderFooterMenu.forEach(async (target) => {
-    await execLinkClickTestMain(target, "ページ共通headerFooter");
   });*/
+  linkClickTestHeaderFooterMenu.forEach(async (target) => {
+    await execLinkClickTestMain(target, "ページ共通headerFooter");
+  });
   /*  targetUrlList.forEach(async (url) => {
     test("ページトップに戻るリンクをクリックするとページのトップに戻る", async () => {
       // テスト対象のURLを指定

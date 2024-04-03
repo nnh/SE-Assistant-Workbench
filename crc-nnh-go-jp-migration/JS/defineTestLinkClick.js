@@ -3,6 +3,7 @@ const {
   linkClickTestListIndex,
   targetUrlList,
   commonXpath,
+  csvToArray,
 } = require("./defineTestCommonInfo.js");
 const topPageUrl = targetUrlList[0];
 const headerFooterMenuList = [
@@ -159,6 +160,7 @@ const linkClickTestHeaderFooterMenu = targetUrlList
   })
   .flat();
 
+console.log(linkClickTestHeaderFooterMenu);
 module.exports = {
   linkClickTestListIndex,
   linkClickTestHeaderFooterMenu,

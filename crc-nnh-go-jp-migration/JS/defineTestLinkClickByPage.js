@@ -4,8 +4,9 @@ const {
   targetUrlList,
   csvToArray,
   user,
+  replaceUrl,
+  inputLinkListName,
 } = require("./defineTestCommonInfo.js");
-const replaceUrl = "https://crc.nnh.go.jp/";
 const testUrl = `${user.username}:${user.password}@`;
 const excludeUrlList = [`${targetUrlList[0]}aro/edc/`];
 const excludeXpathText = /EXCLUDED_ITEM/;
@@ -129,7 +130,7 @@ function getLinkList(filePath) {
     );
   return res;
 }
-const linkList = getLinkList("./linkList - linkList.csv");
+const linkList = getLinkList(inputLinkListName);
 const newWindowList = getLinkList("./linkList - linkNewWindow.csv");
 module.exports = {
   linkList,

@@ -1,6 +1,7 @@
 // defineTestCommonInfo.js
 const fs = require("fs");
 
+const inputLinkListName = "./linkList - linkList.csv";
 // ユーザー情報を取得する関数を定義
 const getUserInfo = () => {
   const csvFilePath = "./user.csv";
@@ -17,13 +18,13 @@ function csvToArray(filePath) {
 }
 
 const user = getUserInfo();
-//const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
-const topPageUrl = `https://crc.nnh.go.jp/`;
-const pageMap = new Map([
-  ["topPage", topPageUrl],
-  ["aboutUs", `${topPageUrl}about_us/`],
+const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
+//const topPageUrl = `https://crc.nnh.go.jp/`;
+const replaceUrl = "https://crc.nnh.go.jp/";
+const replaceUrlMap = new Map([
+  [replaceUrl, topPageUrl],
+  [replaceUrl.replace(/^https/, "http"), topPageUrl],
 ]);
-const targetUrlList = Array.from(pageMap.values());
 const linkClickTestListIndex = new Map([
   ["url", 0],
   ["targetXpath", 1],
@@ -31,6 +32,35 @@ const linkClickTestListIndex = new Map([
   ["nextDir", 3],
   ["label", 4],
 ]);
+
+function getTargetUrls(filePath) {
+  const linkListArray = csvToArray(filePath);
+  const array = linkListArray
+    .map((row) => {
+      row.shift();
+      return row;
+    })
+    .filter(
+      (row) =>
+        row[linkClickTestListIndex.get("aXpath")] !== "" && row.length > 0
+    );
+
+  const url = array.map((row) => {
+    let replaceUrl = null;
+    replaceUrlMap.forEach((value, key) => {
+      if (new RegExp(key).test(row[linkClickTestListIndex.get("url")])) {
+        replaceUrl = row[linkClickTestListIndex.get("url")].replace(
+          new RegExp(key),
+          value
+        );
+      }
+    });
+    return replaceUrl;
+  });
+  return [topPageUrl, ...Array.from(new Set(url))];
+}
+
+const targetUrlList = getTargetUrls(inputLinkListName);
 const commonXpath = new Map([
   ["header", '//*[@id="masthead"]/div'],
   ["footer", '//*[@id="colophon"]'],
@@ -40,8 +70,9 @@ const commonXpath = new Map([
 module.exports = {
   linkClickTestListIndex,
   targetUrlList,
-  pageMap,
   commonXpath,
   csvToArray,
   user,
+  replaceUrl,
+  inputLinkListName,
 }; // 関数をエクスポート
