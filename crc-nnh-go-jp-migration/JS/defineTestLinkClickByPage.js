@@ -44,6 +44,10 @@ function getLinkList(filePath) {
       ),
       "https://www.science.org/doi/10.1126/sciadv.abd3916",
     ],
+    [
+      new RegExp("http://crc.nnh.go.jp/wp-content/uploads/"),
+      "https://crc.nnh.go.jp/wp-content/uploads/",
+    ],
     [new RegExp("http://acrf.jp"), "https://www.acrf.jp/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
@@ -95,12 +99,14 @@ function getLinkList(filePath) {
     .filter(
       (row) =>
         !excludeUrlList.includes(row[linkClickTestListIndex.get("nextDir")])
+    )
+    .filter(
+      (row) => !excludeUrlList.includes(row[linkClickTestListIndex.get("url")])
     );
   return res;
 }
 const linkList = getLinkList("./linkList - linkList.csv");
 const newWindowList = getLinkList("./linkList - linkNewWindow.csv");
-console.log(linkList);
 module.exports = {
   linkList,
   newWindowList,

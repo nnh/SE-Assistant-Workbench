@@ -74,7 +74,7 @@ no_anchor_df <- df %>% filter(!str_detect(nextDir, "^#"))
 download_df <- no_anchor_df %>% filter(str_detect(nextDir, ".xls") | str_detect(nextDir, "\\.doc") | str_detect(nextDir, "\\.zip"))
 no_download_df <-  no_anchor_df %>% filter(!str_detect(nextDir, ".xls") & !str_detect(nextDir, "\\.doc") & !str_detect(nextDir, "\\.zip"))
 edit_no_download_df <- no_download_df
-temp <- edit_no_download_df$nextDir %>% str_remove("#.*$") %>% map_vec( ~ {
+temp <- edit_no_download_df$nextDir %>% map_vec( ~ {
   url <- .
   url_split <- url %>% str_split("/") %>% unlist()
   url_last <- url_split[length(url_split)]
@@ -84,7 +84,16 @@ temp <- edit_no_download_df$nextDir %>% str_remove("#.*$") %>% map_vec( ~ {
   if (str_detect(url_last, "\\.")) {
     return(url)
   }
-  return(str_c(url, "/"))
+  if (str_detect(url_last, "#")) {
+    return(url)
+  }
+  if (str_detect(url, "crc\\.nnh\\.go\\.jp")) {
+    return(str_c(url, "/"))
+  }
+  if (str_detect(url, "^/")) {
+    return(str_c(url, "/"))
+  }
+  return(url)
 
 })
 edit_no_download_df$nextDir <- temp
