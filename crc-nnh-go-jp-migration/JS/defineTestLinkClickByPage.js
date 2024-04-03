@@ -57,6 +57,18 @@ function getLinkList(filePath) {
       new RegExp("http://crc.nnh.go.jp/wp-content/uploads/"),
       "https://crc.nnh.go.jp/wp-content/uploads/",
     ],
+    [
+      new RegExp(
+        "https://us06web.zoom.us/meeting/register/tZUsceutrjorHdQGMp9SVfxNRGTzLLP-O62G"
+      ),
+      "https://us06web.zoom.us/meeting/register/tZUsceutrjorHdQGMp9SVfxNRGTzLLP-O62G#/registration",
+    ],
+    [
+      new RegExp(
+        "https://us06web.zoom.us/meeting/register/tZMpfu-rpz8uG9AvxDg5EXMrrYCpuMU12Il1"
+      ),
+      "https://us06web.zoom.us/meeting/register/tZMpfu-rpz8uG9AvxDg5EXMrrYCpuMU12Il1#/registration",
+    ],
     [new RegExp("http://acrf.jp"), "https://www.acrf.jp/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
