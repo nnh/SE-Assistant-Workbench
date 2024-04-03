@@ -8,6 +8,7 @@ const {
 const replaceUrl = "https://crc.nnh.go.jp/";
 const testUrl = `${user.username}:${user.password}@`;
 const excludeUrlList = [`${targetUrlList[0]}aro/edc/`];
+const excludeXpathText = /EXCLUDED_ITEM/;
 
 function getLinkList(filePath) {
   const nextDirReplaceList = [
@@ -107,6 +108,9 @@ function getLinkList(filePath) {
     .filter(
       (row) =>
         !excludeUrlList.includes(row[linkClickTestListIndex.get("nextDir")])
+    )
+    .filter(
+      (row) => !excludeXpathText.test(row[linkClickTestListIndex.get("aXpath")])
     )
     .filter(
       (row) => !excludeUrlList.includes(row[linkClickTestListIndex.get("url")])
