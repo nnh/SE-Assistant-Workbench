@@ -26,6 +26,14 @@ function getLinkList(filePath) {
       new RegExp(`${targetUrlList[0]}education_and_public_relations/`, "i"),
       `${targetUrlList[0]}departments/education_and_public_relations/`,
     ],
+    [
+      new RegExp("crc/departments#anc05"),
+      `${targetUrlList[0]}departments/#anc05`,
+    ],
+    [
+      /^\/crc\/departments\/clinical_trial_services\//,
+      "/clinical_trial_services/",
+    ],
     [/^\/crc\/departments\//i, "/departments/"],
     [/^\/crc\/staff\//i, "/staff/"],
     [new RegExp("//departments"), "/departments"],

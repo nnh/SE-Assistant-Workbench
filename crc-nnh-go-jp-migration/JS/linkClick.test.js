@@ -11,6 +11,7 @@ const {
   newWindowList,
   testUrl,
 } = require("./defineTestLinkClickByPage.js");
+const detailClickUrl = /clinical_trial_services\/clinical_research\/minutes\/$/;
 
 let driver;
 async function execLinkClickNewWindowTest(target) {
@@ -85,6 +86,14 @@ async function execLinkClickTest(target) {
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
   await driver.get(url);
   await new Promise((resolve) => setTimeout(resolve, 1000));
+  if (detailClickUrl.test(url)) {
+    const element = await driver.findElement(
+      By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
+    );
+    // 要素が見つかったらクリックします
+    await element.click();
+  }
+
   await driver
     .findElement(By.xpath(targetXpath))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
