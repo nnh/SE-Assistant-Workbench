@@ -32,6 +32,7 @@ const linkClickTestListIndex = new Map([
   ["nextDir", 3],
   ["label", 4],
 ]);
+const testUrl = `${user.username}:${user.password}@`;
 
 function getTargetUrls(filePath) {
   const linkListArray = csvToArray(filePath);
@@ -65,6 +66,7 @@ const commonXpath = new Map([
   ["header", '//*[@id="masthead"]/div'],
   ["footer", '//*[@id="colophon"]'],
   ["bodyContents", '//*[@id="content"]'],
+  ["headerEnglish", '//*[@id="masthead"]'],
 ]);
 
 module.exports = {
@@ -75,4 +77,5 @@ module.exports = {
   user,
   replaceUrl,
   inputLinkListName,
+  testUrl,
 }; // 関数をエクスポート

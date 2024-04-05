@@ -3,17 +3,22 @@ const { Builder, By } = require("selenium-webdriver");
 const assert = require("assert");
 const {
   linkClickTestListIndex,
-  linkClickTestHeaderFooterMenu,
+  urlAndlinkList,
   targetUrlList,
 } = require("./defineTestLinkClick.js");
-const {
+const { url } = require("inspector");
+/*const {
   linkList,
   newWindowList,
   testUrl,
-} = require("./defineTestLinkClickByPage.js");
+} = require("./defineTestLinkClickByPage.js");*/
 const detailClickUrl = /clinical_trial_services\/clinical_research\/minutes\/$/;
-
+const linkClickTestFlag = new Map([
+  ["byPage", 0],
+  ["pageCommon", 1],
+]);
 let driver;
+
 async function execLinkClickNewWindowTest(target) {
   // 現在のウィンドウハンドルを取得
   const currentWindowHandle = await driver.getWindowHandle();
@@ -80,12 +85,14 @@ async function execLinkClickNewWindowTestMain(target, testStringHead) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
-async function execLinkClickTest(target) {
-  const url = target[linkClickTestListIndex.get("url")];
+async function execLinkClickTest(url, target) {
+  try {
+    await driver.get(url);
+  } catch (error) {
+    assert.fail(`Error occurred while waiting for the URL:", ${url}`);
+  }
   const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
-  await driver.get(url);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
   if (detailClickUrl.test(url)) {
     const element = await driver.findElement(
       By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
@@ -93,7 +100,6 @@ async function execLinkClickTest(target) {
     // 要素が見つかったらクリックします
     await element.click();
   }
-
   await driver
     .findElement(By.xpath(targetXpath))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
@@ -116,40 +122,40 @@ async function execLinkClickTest(target) {
     assert.equal(currentUrl, nextUrl.replace(new RegExp(testUrl), ""));
   }
 }
-function editTestString(text, target) {
-  const url = target[linkClickTestListIndex.get("url")];
-  const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
-  const label = target[linkClickTestListIndex.get("label")];
-  return `${text}_${url}_${targetXpath}_${label}`;
-}
-async function execLinkClickTestMain(target, testStringHead) {
-  const testString = editTestString(testStringHead, target);
-  test(
-    testString,
-    async () => {
-      await execLinkClickTest(target);
-    },
-    30000
-  ); // タイムアウトを30秒に設定
-}
 
 describe("リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
   beforeAll(() => {
     driver = new Builder().forBrowser("chrome").build();
   });
-
   // テスト終了後にドライバーを終了
   afterAll(() => driver.quit());
+  describe("test", () => {
+    urlAndlinkList.forEach(async (targets, url) => {
+      targets.forEach(async (target) => {
+        test(`${url}`, async () => {
+          await execLinkClickTest(url, target);
+        }, 30000); // タイムアウトを30秒に設定
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      });
+    });
+  });
   /*  newWindowList.forEach(async (target) => {
     await execLinkClickNewWindowTestMain(target, "testtest");
   });*/
   /*linkList.forEach(async (target) => {
-    await execLinkClickTestMain(target, "ページ毎：");
+    await execLinkClickTestMain(target, "ページ毎：", linkClickTestFlag.get("byPage"));
   });*/
-  linkClickTestHeaderFooterMenu.forEach(async (target) => {
-    await execLinkClickTestMain(target, "ページ共通headerFooter");
-  });
+  //urlAndlinkList.forEach(async (target, url) => {
+  //  await execLinkClickTestMain(url, target, driver);
+  //});
+  /*  linkClickTestHeaderFooterMenu.forEach(async (target) => {
+    await execLinkClickTestMain(
+      target,
+      "ページ共通headerFooter",
+      linkClickTestFlag.get("pageCommon")
+    );
+  });*/
   /*  targetUrlList.forEach(async (url) => {
     test("ページトップに戻るリンクをクリックするとページのトップに戻る", async () => {
       // テスト対象のURLを指定

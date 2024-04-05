@@ -3,11 +3,10 @@ const {
   linkClickTestListIndex,
   targetUrlList,
   csvToArray,
-  user,
+  testUrl,
   replaceUrl,
   inputLinkListName,
 } = require("./defineTestCommonInfo.js");
-const testUrl = `${user.username}:${user.password}@`;
 const excludeUrlList = [`${targetUrlList[0]}aro/edc/`];
 const excludeXpathText = /EXCLUDED_ITEM/;
 
