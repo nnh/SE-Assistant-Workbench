@@ -133,46 +133,29 @@ describe("リンククリックテスト", () => {
   describe("test", () => {
     urlAndlinkList.forEach(async (targets, url) => {
       targets.forEach(async (target) => {
-        test(`${url}`, async () => {
+        test(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
+          target[linkClickTestListIndex.get("label")]
+        }`, async () => {
           await execLinkClickTest(url, target);
         }, 30000); // タイムアウトを30秒に設定
         await new Promise((resolve) => setTimeout(resolve, 100));
+      });
+      test(`${url}_ページトップに戻るリンクをクリックするとページのトップに戻る`, async () => {
+        await driver.get(url);
+        // ページの一番下に移動
+        await driver.executeScript(
+          "window.scrollTo(0, document.body.scrollHeight)"
+        );
+        // ページトップに戻るリンクをクリック
+        const pageTopLink = await driver.findElement(By.css(".btnPageTop"));
+        await pageTopLink.click();
+        // ページのトップに戻ったかどうかを確認
+        const currentUrl = await driver.getCurrentUrl();
+        assert.equal(currentUrl, url); // ページのトップに戻っていることを確認
       });
     });
   });
   /*  newWindowList.forEach(async (target) => {
     await execLinkClickNewWindowTestMain(target, "testtest");
-  });*/
-  /*linkList.forEach(async (target) => {
-    await execLinkClickTestMain(target, "ページ毎：", linkClickTestFlag.get("byPage"));
-  });*/
-  //urlAndlinkList.forEach(async (target, url) => {
-  //  await execLinkClickTestMain(url, target, driver);
-  //});
-  /*  linkClickTestHeaderFooterMenu.forEach(async (target) => {
-    await execLinkClickTestMain(
-      target,
-      "ページ共通headerFooter",
-      linkClickTestFlag.get("pageCommon")
-    );
-  });*/
-  /*  targetUrlList.forEach(async (url) => {
-    test("ページトップに戻るリンクをクリックするとページのトップに戻る", async () => {
-      // テスト対象のURLを指定
-      await driver.get(url);
-
-      // ページの一番下に移動
-      await driver.executeScript(
-        "window.scrollTo(0, document.body.scrollHeight)"
-      );
-
-      // ページトップに戻るリンクをクリック
-      const pageTopLink = await driver.findElement(By.css(".btnPageTop"));
-      await pageTopLink.click();
-
-      // ページのトップに戻ったかどうかを確認
-      const currentUrl = await driver.getCurrentUrl();
-      assert.equal(currentUrl, url); // ページのトップに戻っていることを確認
-    });
   });*/
 });
