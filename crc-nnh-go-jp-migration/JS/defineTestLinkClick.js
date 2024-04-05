@@ -200,18 +200,28 @@ function getHeaderFooterMenuListJpAndEn() {
 }
 function getTargetListByUrl() {
   const linkClickTestHeaderFooterMenu = getHeaderFooterMenuListJpAndEn();
-  const urlList = targetUrlList.map((url) => {
+  const urlListArray = targetUrlList.map((url) => {
     const links = linkList.filter(
       (link) => link[linkClickTestListIndex.get("url")] === url
     );
+    const windowList = newWindowList.filter(
+      (link) => link[linkClickTestListIndex.get("url")] === url
+    );
     const headerFooter = linkClickTestHeaderFooterMenu.get(url);
-    return [url, [...links, ...headerFooter]];
+    const clickList = [url, [...links, ...headerFooter]];
+    const clickListWindow = windowList.length > 0 ? [url, windowList] : null;
+    return [clickList, clickListWindow];
   });
-  return new Map(urlList);
+  const urlList = new Map(urlListArray.map((x) => x[0]));
+  const windowList = new Map(
+    urlListArray.map((x) => x[1]).filter((x) => x !== null)
+  );
+  return [urlList, windowList];
 }
-const urlAndlinkList = getTargetListByUrl();
+const [urlAndlinkList, urlAndWindowList] = getTargetListByUrl();
 module.exports = {
   linkClickTestListIndex,
   urlAndlinkList,
   targetUrlList,
+  urlAndWindowList,
 }; // 関数をエクスポート

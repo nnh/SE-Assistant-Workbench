@@ -6,6 +6,7 @@ const {
   testUrl,
   replaceUrl,
   inputLinkListName,
+  inputWindowListName,
 } = require("./defineTestCommonInfo.js");
 const excludeUrlList = [`${targetUrlList[0]}aro/edc/`];
 const excludeXpathText = /EXCLUDED_ITEM/;
@@ -130,7 +131,7 @@ function getLinkList(filePath) {
   return res;
 }
 const linkList = getLinkList(inputLinkListName);
-const newWindowList = getLinkList("./linkList - linkNewWindow.csv");
+const newWindowList = getLinkList(inputWindowListName);
 module.exports = {
   linkList,
   newWindowList,

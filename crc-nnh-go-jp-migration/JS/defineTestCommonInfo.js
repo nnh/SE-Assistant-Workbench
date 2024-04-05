@@ -2,6 +2,7 @@
 const fs = require("fs");
 
 const inputLinkListName = "./linkList - linkList.csv";
+const inputWindowListName = "./linkList - linkNewWindow.csv";
 // ユーザー情報を取得する関数を定義
 const getUserInfo = () => {
   const csvFilePath = "./user.csv";
@@ -35,7 +36,7 @@ const linkClickTestListIndex = new Map([
 const testUrl = `${user.username}:${user.password}@`;
 
 function getTargetUrls(filePath) {
-  const linkListArray = csvToArray(filePath);
+  const linkListArray = filePath.map((x) => csvToArray(x)).flat();
   const array = linkListArray
     .map((row) => {
       row.shift();
@@ -61,7 +62,7 @@ function getTargetUrls(filePath) {
   return [topPageUrl, ...Array.from(new Set(url))];
 }
 
-const targetUrlList = getTargetUrls(inputLinkListName);
+const targetUrlList = getTargetUrls([inputLinkListName, inputWindowListName]);
 const commonXpath = new Map([
   ["header", '//*[@id="masthead"]/div'],
   ["footer", '//*[@id="colophon"]'],
@@ -78,4 +79,5 @@ module.exports = {
   replaceUrl,
   inputLinkListName,
   testUrl,
+  inputWindowListName,
 }; // 関数をエクスポート

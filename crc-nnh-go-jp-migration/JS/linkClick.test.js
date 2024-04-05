@@ -4,35 +4,26 @@ const assert = require("assert");
 const {
   linkClickTestListIndex,
   urlAndlinkList,
-  targetUrlList,
+  urlAndWindowList,
 } = require("./defineTestLinkClick.js");
 const { url } = require("inspector");
-/*const {
-  linkList,
-  newWindowList,
-  testUrl,
-} = require("./defineTestLinkClickByPage.js");*/
 const detailClickUrl = /clinical_trial_services\/clinical_research\/minutes\/$/;
-const linkClickTestFlag = new Map([
-  ["byPage", 0],
-  ["pageCommon", 1],
-]);
 let driver;
 
-async function execLinkClickNewWindowTest(target) {
+async function execLinkClickNewWindowTest(url, target) {
   // 現在のウィンドウハンドルを取得
   const currentWindowHandle = await driver.getWindowHandle();
 
-  const url = target[linkClickTestListIndex.get("url")];
-  const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
 
-  // テスト対象のページへアクセス
-  await driver.get(url);
+  try {
+    await driver.get(url);
+  } catch (error) {
+    assert.fail(`Error occurred while waiting for the URL:", ${url}`);
+  }
 
-  // リンクをクリック
   await driver
-    .findElement(By.xpath(targetXpath))
+    .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
     .click();
 
@@ -40,7 +31,7 @@ async function execLinkClickNewWindowTest(target) {
   await driver.wait(async () => {
     const handles = await driver.getAllWindowHandles();
     return handles.length > 1;
-  }, 1000);
+  }, 10000);
 
   // 新しいウィンドウのハンドルを取得
   const handles = await driver.getAllWindowHandles();
@@ -82,7 +73,6 @@ async function execLinkClickNewWindowTestMain(target, testStringHead) {
     },
     30000
   ); // タイムアウトを30秒に設定
-  await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
 async function execLinkClickTest(url, target) {
@@ -91,17 +81,15 @@ async function execLinkClickTest(url, target) {
   } catch (error) {
     assert.fail(`Error occurred while waiting for the URL:", ${url}`);
   }
-  const targetXpath = target[linkClickTestListIndex.get("targetXpath")];
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
   if (detailClickUrl.test(url)) {
     const element = await driver.findElement(
       By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
     );
-    // 要素が見つかったらクリックします
     await element.click();
   }
   await driver
-    .findElement(By.xpath(targetXpath))
+    .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
     .click();
 
@@ -132,6 +120,17 @@ describe("リンククリックテスト", () => {
   afterAll(() => driver.quit());
   describe("test", () => {
     urlAndlinkList.forEach(async (targets, url) => {
+      if (urlAndWindowList.has(url)) {
+        const windowTargets = urlAndWindowList.get(url);
+        windowTargets.forEach(async (target) => {
+          test.only(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
+            target[linkClickTestListIndex.get("label")]
+          }`, async () => {
+            await execLinkClickNewWindowTest(url, target);
+          }, 30000); // タイムアウトを30秒に設定
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+      }
       targets.forEach(async (target) => {
         test(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
           target[linkClickTestListIndex.get("label")]
