@@ -10,37 +10,50 @@ const { url } = require("inspector");
 const detailClickUrl = /clinical_trial_services\/clinical_research\/minutes\/$/;
 let driver;
 
+async function clickElementByXpath(url, target) {
+  try {
+    await driver.get(url);
+    await driver
+      .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
+      .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
+      .click();
+  } catch (error) {
+    return false;
+  }
+  return true;
+}
+
 async function execLinkClickNewWindowTest(url, target) {
   // 現在のウィンドウハンドルを取得
   const currentWindowHandle = await driver.getWindowHandle();
 
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
-
-  try {
-    await driver.get(url);
-  } catch (error) {
+  const flag = await clickElementByXpath(url, target);
+  if (!flag) {
     assert.fail(`Error occurred while waiting for the URL:", ${url}`);
   }
 
-  await driver
-    .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
-    .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
-    .click();
-
-  // 新しいウィンドウが開かれるまで待機
-  await driver.wait(async () => {
+  try {
+    // 新しいウィンドウが開かれるまで待機
+    await driver.wait(async () => {
+      const handles = await driver.getAllWindowHandles();
+      return handles.length > 1;
+    }, 10000);
+  } catch (error) {
+    assert.fail(`New windows could not be opened:, ${nextUrl}`);
+  }
+  try {
+    // 新しいウィンドウのハンドルを取得
     const handles = await driver.getAllWindowHandles();
-    return handles.length > 1;
-  }, 10000);
+    const newWindowHandle = handles.find(
+      (handle) => handle !== currentWindowHandle
+    );
 
-  // 新しいウィンドウのハンドルを取得
-  const handles = await driver.getAllWindowHandles();
-  const newWindowHandle = handles.find(
-    (handle) => handle !== currentWindowHandle
-  );
-
-  // 新しいウィンドウに切り替える
-  await driver.switchTo().window(newWindowHandle);
+    // 新しいウィンドウに切り替える
+    await driver.switchTo().window(newWindowHandle);
+  } catch (error) {
+    assert.fail(`Failed to switch to new window.:, ${nextUrl}`);
+  }
 
   // 新しいウィンドウのURLを取得
   const newWindowUrl = await driver.getCurrentUrl();
