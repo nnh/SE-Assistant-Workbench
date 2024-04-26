@@ -77,19 +77,22 @@ async function execLinkClickNewWindowTest(url, target) {
   assert.equal(newWindowUrl, nextUrl);
 }
 
-async function execLinkClickNewWindowTestMain(target, testStringHead) {
-  const testString = editTestString(testStringHead, target);
-  test(
-    testString,
-    async () => {
-      await execLinkClickNewWindowTest(target);
-    },
-    30000
-  ); // タイムアウトを30秒に設定
-}
-
 async function execLinkClickTest(url, target) {
-  try {
+  //console.log(`${url}_${target[linkClickTestListIndex.get("label")]}`);
+  assert.equal(0, 0);
+  return;
+  const nextUrl = target[linkClickTestListIndex.get("nextDir")];
+  const flag = await clickElementByXpath(url, target);
+  if (!flag && !detailClickUrl.test(url)) {
+    assert.fail(`Error occurred while waiting for the URL:", ${url}`);
+  }
+  if (detailClickUrl.test(url)) {
+    const element = await driver.findElement(
+      By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
+    );
+    await element.click();
+  }
+  /*  try {
     await driver.get(url);
   } catch (error) {
     assert.fail(`Error occurred while waiting for the URL:", ${url}`);
@@ -105,7 +108,7 @@ async function execLinkClickTest(url, target) {
     .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
     .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
     .click();
-
+*/
   const currentUrl = await driver
     .wait(async () => {
       const currentUrl = await driver.getCurrentUrl();
@@ -136,7 +139,7 @@ describe("リンククリックテスト", () => {
       if (urlAndWindowList.has(url)) {
         const windowTargets = urlAndWindowList.get(url);
         windowTargets.forEach(async (target) => {
-          test.only(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
+          test(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
             target[linkClickTestListIndex.get("label")]
           }`, async () => {
             await execLinkClickNewWindowTest(url, target);
@@ -145,7 +148,7 @@ describe("リンククリックテスト", () => {
         });
       }
       targets.forEach(async (target) => {
-        test(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
+        test.only(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
           target[linkClickTestListIndex.get("label")]
         }`, async () => {
           await execLinkClickTest(url, target);

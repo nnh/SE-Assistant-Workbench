@@ -70,6 +70,10 @@ function getLinkList(filePath) {
       ),
       "https://us06web.zoom.us/meeting/register/tZMpfu-rpz8uG9AvxDg5EXMrrYCpuMU12Il1#/registration",
     ],
+    [
+      new RegExp("http://www.hiv-resistance.jp/"),
+      "https://www.hiv-resistance.jp/",
+    ],
     [new RegExp("http://acrf.jp"), "https://www.acrf.jp/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
   ];
