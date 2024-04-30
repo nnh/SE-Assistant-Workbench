@@ -199,6 +199,9 @@ function getHeaderFooterMenuListJpAndEn() {
   return res;
 }
 function getTargetListByUrl() {
+  const linkTargets = new Set(
+    linkList.map((x) => x[linkClickTestListIndex.get("url")])
+  );
   const linkClickTestHeaderFooterMenu = getHeaderFooterMenuListJpAndEn();
   const urlListArray = targetUrlList.map((url) => {
     const links = linkList.filter(
@@ -208,11 +211,18 @@ function getTargetListByUrl() {
       (link) => link[linkClickTestListIndex.get("url")] === url
     );
     const headerFooter = linkClickTestHeaderFooterMenu.get(url);
-    const clickList = [url, [...links, ...headerFooter]];
+    const targetHeaderFooter = headerFooter.filter(
+      (x) => x[linkClickTestListIndex.get("url")] === url
+    );
+    const clickList = linkTargets.has(url)
+      ? [url, [...links, ...targetHeaderFooter]]
+      : null;
     const clickListWindow = windowList.length > 0 ? [url, windowList] : null;
     return [clickList, clickListWindow];
   });
-  const urlList = new Map(urlListArray.map((x) => x[0]));
+  const urlList = new Map(
+    urlListArray.map((x) => x[0]).filter((x) => x !== null)
+  );
   const windowList = new Map(
     urlListArray.map((x) => x[1]).filter((x) => x !== null)
   );

@@ -92,10 +92,6 @@ async function execLinkClickTest(url, target) {
       .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
       .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
       .click();
-    //    const flag2 = await clickElementByXpath(url, target);
-    //    if (!flag2) {
-    //      assert.fail(`Error occurred while waiting for the URL:", ${url}`);
-    //    }
   }
 
   const currentUrl = await driver
