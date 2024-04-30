@@ -78,37 +78,26 @@ async function execLinkClickNewWindowTest(url, target) {
 }
 
 async function execLinkClickTest(url, target) {
-  //console.log(`${url}_${target[linkClickTestListIndex.get("label")]}`);
-  assert.equal(0, 0);
-  return;
   const nextUrl = target[linkClickTestListIndex.get("nextDir")];
   const flag = await clickElementByXpath(url, target);
   if (!flag && !detailClickUrl.test(url)) {
     assert.fail(`Error occurred while waiting for the URL:", ${url}`);
   }
-  if (detailClickUrl.test(url)) {
-    const element = await driver.findElement(
+  if (!flag && detailClickUrl.test(url)) {
+    const element2 = await driver.findElement(
       By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
     );
-    await element.click();
+    await element2.click();
+    await driver
+      .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
+      .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
+      .click();
+    //    const flag2 = await clickElementByXpath(url, target);
+    //    if (!flag2) {
+    //      assert.fail(`Error occurred while waiting for the URL:", ${url}`);
+    //    }
   }
-  /*  try {
-    await driver.get(url);
-  } catch (error) {
-    assert.fail(`Error occurred while waiting for the URL:", ${url}`);
-  }
-  const nextUrl = target[linkClickTestListIndex.get("nextDir")];
-  if (detailClickUrl.test(url)) {
-    const element = await driver.findElement(
-      By.xpath('//*[@id="post-2994"]/div/details[7]/summary/span')
-    );
-    await element.click();
-  }
-  await driver
-    .findElement(By.xpath(target[linkClickTestListIndex.get("targetXpath")]))
-    .findElement(By.xpath(target[linkClickTestListIndex.get("aXpath")]))
-    .click();
-*/
+
   const currentUrl = await driver
     .wait(async () => {
       const currentUrl = await driver.getCurrentUrl();
@@ -118,7 +107,9 @@ async function execLinkClickTest(url, target) {
       if (url === nextUrl) {
         return url;
       }
-      assert.fail(`Error occurred while waiting for the URL:", ${nextUrl}`);
+      assert.fail(
+        `Error occurred while waiting for the URL:", ${nextUrl}|url:${url}`
+      );
     });
   try {
     assert.equal(currentUrl, nextUrl);

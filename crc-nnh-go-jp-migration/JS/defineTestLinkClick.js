@@ -39,7 +39,7 @@ function getHeaderFooterMenuListJpAndEn() {
   const headerFooterMenuList = [
     [
       commonXpath.get("header"),
-      '//*[@id="masthead"]/div/div[1]/h1/div[1]',
+      '//*[@id="masthead"]/div/div[1]/h1/div[1]/a',
       "https://nagoya.hosp.go.jp/",
       "ヘッダー：名古屋医療センターロゴ",
     ],
