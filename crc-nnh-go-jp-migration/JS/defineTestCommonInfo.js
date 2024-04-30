@@ -19,7 +19,7 @@ function csvToArray(filePath) {
 }
 
 const user = getUserInfo();
-const topPageUrl = `http://${user.username}:${user.password}@crcnnh.a-and.net/`;
+const topPageUrl = `https://${user.username}:${user.password}@nnh.skr.jp/crc/`;
 //const topPageUrl = `https://crc.nnh.go.jp/`;
 const replaceUrl = "https://crc.nnh.go.jp/";
 const replaceUrlMap = new Map([
