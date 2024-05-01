@@ -22,10 +22,7 @@ const user = getUserInfo();
 const topPageUrl = `https://${user.username}:${user.password}@nnh.skr.jp/crc/`;
 //const topPageUrl = `https://crc.nnh.go.jp/`;
 const replaceUrl = "https://crc.nnh.go.jp/";
-const replaceUrlMap = new Map([
-  [replaceUrl, topPageUrl],
-  [replaceUrl.replace(/^https/, "http"), topPageUrl],
-]);
+const replaceUrlMap = new Map([[replaceUrl, topPageUrl]]);
 const linkClickTestListIndex = new Map([
   ["url", 0],
   ["targetXpath", 1],

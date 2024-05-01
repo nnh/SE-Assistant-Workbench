@@ -234,4 +234,5 @@ module.exports = {
   urlAndlinkList,
   targetUrlList,
   urlAndWindowList,
+  testUrl,
 }; // 関数をエクスポート
