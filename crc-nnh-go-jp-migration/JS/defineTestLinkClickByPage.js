@@ -11,6 +11,7 @@ const {
 const excludeUrlList = [`${targetUrlList[0]}aro/edc/`];
 const excludeXpathText = /EXCLUDED_ITEM/;
 const replaceUrlHttp = "https://crc.nnh.go.jp/";
+const replaceUrlHttp2 = "http://crc.nnh.go.jp/";
 
 function getLinkList(filePath) {
   const nextDirReplaceList = [
@@ -41,7 +42,6 @@ function getLinkList(filePath) {
     [/^\/crc\/staff\//i, "/staff/"],
     [new RegExp("//departments"), "/departments"],
     [new RegExp("staff//"), "staff/"],
-    [new RegExp("/crc/crc/"), "/crc/"],
     [
       new RegExp("https://doi.org/10.1016/j.jiac.2022.03.030"),
       "https://www.jiac-j.com/article/S1341-321X(22)00111-8/abstract",
@@ -78,6 +78,10 @@ function getLinkList(filePath) {
     ],
     [new RegExp("http://acrf.jp"), "https://www.acrf.jp/"],
     [new RegExp("http://www.shikuken.jp/"), "https://www.shikuken.jp/"],
+    [
+      new RegExp("//www.ncbi.nlm.nih.gov/pubmed/"),
+      "//pubmed.ncbi.nlm.nih.gov/",
+    ],
   ];
   const linkListArray = csvToArray(filePath);
   const array = linkListArray
@@ -131,6 +135,15 @@ function getLinkList(filePath) {
           linkClickTestListIndex.get("nextDir")
         ].replace(replaceUrlHttp, targetUrlList[0]);
       }
+      if (
+        new RegExp(replaceUrlHttp2).test(
+          row[linkClickTestListIndex.get("nextDir")]
+        )
+      ) {
+        row[linkClickTestListIndex.get("nextDir")] = row[
+          linkClickTestListIndex.get("nextDir")
+        ].replace(replaceUrlHttp2, targetUrlList[0]);
+      }
       return row;
     })
     .filter(
@@ -146,7 +159,6 @@ function getLinkList(filePath) {
   return res;
 }
 const linkList = getLinkList(inputLinkListName);
-//console.log(linkList);
 const newWindowList = getLinkList(inputWindowListName);
 module.exports = {
   linkList,
