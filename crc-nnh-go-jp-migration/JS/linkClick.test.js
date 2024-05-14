@@ -5,6 +5,7 @@ const {
   linkClickTestListIndex,
   urlAndlinkList,
   urlAndWindowList,
+  targetUrlList,
   testUrl,
 } = require("./defineTestLinkClick.js");
 const { url } = require("inspector");
@@ -368,35 +369,38 @@ async function execLinkClickNewWindowTest(url, target) {
   } catch (error) {
     assert.fail(`Failed to switch to new window.:, ${nextUrl}`);
   }
-
-  // 新しいウィンドウのURLを取得
-  const newWindowUrl = await driver.getCurrentUrl();
-
-  // 新しいウィンドウを閉じる
-  await driver.close();
-  // 新しいウィンドウが閉じられるまで待つ
-  await driver.wait(async () => {
-    const handles = await driver.getAllWindowHandles();
-    return handles.length === 1; // 新しいウィンドウが閉じた後はハンドルが1つになる
-  }, 10000); // 例: 10秒間待機
-  // 元のウィンドウに戻る
-  await driver.switchTo().window(currentWindowHandle);
-  // 元のウィンドウに戻るのを待つ
-  await driver.wait(async () => {
-    const currentHandle = await driver.getWindowHandle();
-    return currentHandle === currentWindowHandle;
-  }, 10000); // 例: 10秒間待機
-
-  // アサーション: 新しいウィンドウのURLが期待されるURLと一致することを確認
   try {
-    assert.equal(newWindowUrl, nextUrl);
+    // 新しいウィンドウのURLを取得
+    const newWindowUrl = await driver.getCurrentUrl();
+
+    // 新しいウィンドウを閉じる
+    await driver.close();
+    // 新しいウィンドウが閉じられるまで待つ
+    await driver.wait(async () => {
+      const handles = await driver.getAllWindowHandles();
+      return handles.length === 1; // 新しいウィンドウが閉じた後はハンドルが1つになる
+    }, 10000); // 例: 10秒間待機
+    // アサーション: 新しいウィンドウのURLが期待されるURLと一致することを確認
+    try {
+      assert.equal(newWindowUrl, nextUrl);
+    } catch (error) {
+      const targetNewWindowUrl = newWindowUrl.replace(/\/$/, "");
+      const targetUrl = nextUrl
+        .replace(/http:/, "https:")
+        .replace(new RegExp(testUrl), "")
+        .replace(/\/$/, "");
+      assert.equal(targetNewWindowUrl, targetUrl);
+    }
   } catch (error) {
-    const targetNewWindowUrl = newWindowUrl.replace(/\/$/, "");
-    const targetUrl = nextUrl
-      .replace(/http:/, "https:")
-      .replace(new RegExp(testUrl), "")
-      .replace(/\/$/, "");
-    assert.equal(targetNewWindowUrl, targetUrl);
+    assert.fail(`Failed to switch to new window.:, ${nextUrl}`);
+  } finally {
+    // 元のウィンドウに戻る
+    await driver.switchTo().window(currentWindowHandle);
+    // 元のウィンドウに戻るのを待つ
+    await driver.wait(async () => {
+      const currentHandle = await driver.getWindowHandle();
+      return currentHandle === currentWindowHandle;
+    }, 10000); // 例: 10秒間待機
   }
 }
 
@@ -436,7 +440,6 @@ async function execLinkClickTest(url, target) {
     assert.equal(currentUrl, nextUrl.replace(new RegExp(testUrl), ""));
   }
 }
-
 describe("リンククリックテスト", () => {
   // テスト開始前にドライバーを起動
   beforeAll(() => {
@@ -457,7 +460,7 @@ describe("リンククリックテスト", () => {
           await new Promise((resolve) => setTimeout(resolve, 100));
         });
       }
-      /*      targets.forEach(async (target) => {
+      targets.forEach(async (target) => {
         test(`${url}_${target[linkClickTestListIndex.get("nextDir")]}_${
           target[linkClickTestListIndex.get("label")]
         }`, async () => {
@@ -465,7 +468,7 @@ describe("リンククリックテスト", () => {
         }, 30000); // タイムアウトを30秒に設定
         await new Promise((resolve) => setTimeout(resolve, 100));
       });
-      test(`${url}_ページトップに戻るリンクをクリックするとページのトップに戻る`, async () => {
+      test.only(`${url}_ページトップに戻るリンクをクリックするとページのトップに戻る`, async () => {
         if (
           new RegExp("aro/regenerative_medicine_committee/minutes").test(url)
         ) {
@@ -511,7 +514,272 @@ describe("リンククリックテスト", () => {
             }
           }
         }
-      });*/
+      });
     });
   });
 });
+
+/*
+describe("画像読み込みテスト", () => {
+  // テスト開始前にドライバーを起動
+  beforeAll(() => {
+    driver = new Builder().forBrowser("chrome").build();
+  });
+  // テスト終了後にドライバーを終了
+  afterAll(() => driver.quit());
+  describe("test", () => {
+    const urlList = [
+      `${targetUrlList[0]}about_us/`,
+      `${targetUrlList[0]}accomplishments/`,
+      `${targetUrlList[0]}aro/`,
+      `${targetUrlList[0]}clinical_trial_services/`,
+      `${targetUrlList[0]}contact/`,
+      `${targetUrlList[0]}departments/`,
+      `${targetUrlList[0]}education_and_public_relations/`,
+      `${targetUrlList[0]}en/`,
+      `${targetUrlList[0]}form/`,
+      `${targetUrlList[0]}links/`,
+      `${targetUrlList[0]}news/`,
+      `${targetUrlList[0]}public_information/`,
+      `${targetUrlList[0]}publication/`,
+      `${targetUrlList[0]}seminar/`,
+      `${targetUrlList[0]}sitemap/`,
+      `${targetUrlList[0]}staff/`,
+      `${targetUrlList[0]}accomplishments/capital/`,
+      `${targetUrlList[0]}accomplishments/j_talc2/`,
+      `${targetUrlList[0]}aro/access/`,
+      `${targetUrlList[0]}aro/audit_committee/`,
+      `${targetUrlList[0]}aro/cirb/`,
+      `${targetUrlList[0]}aro/consultation/`,
+      `${targetUrlList[0]}aro/contact/`,
+      `${targetUrlList[0]}aro/datacenter/`,
+      `${targetUrlList[0]}aro/edc/`,
+      `${targetUrlList[0]}aro/education/`,
+      `${targetUrlList[0]}aro/members/`,
+      `${targetUrlList[0]}aro/network/`,
+      `${targetUrlList[0]}aro/regenerative_medicine_committee/`,
+      `${targetUrlList[0]}aro/studies/`,
+      `${targetUrlList[0]}clinical_trial_services/about_us/`,
+      `${targetUrlList[0]}clinical_trial_services/cknnavi/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/data_and_specimen_provision`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/irb`,
+      `${targetUrlList[0]}clinical_trial_services/contact/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/`,
+      `${targetUrlList[0]}clinical_trial_services/medical_expert/`,
+      `${targetUrlList[0]}clinical_trial_services/news-2/`,
+      `${targetUrlList[0]}clinical_trial_services/patient2/`,
+      `${targetUrlList[0]}clinical_trial_services/pms/`,
+      `${targetUrlList[0]}clinical_trial_services/request_person/`,
+      `${targetUrlList[0]}crc/departments/`,
+      `${targetUrlList[0]}crc/staff/nishimura_rieko`,
+      `${targetUrlList[0]}departments/cell_therapy/`,
+      `${targetUrlList[0]}departments/clinical_research/`,
+      `${targetUrlList[0]}departments/education_and_public_relations/`,
+      `${targetUrlList[0]}departments/education_and_public_relations/seminar`,
+      `${targetUrlList[0]}departments/infectious_diseases/`,
+      `${targetUrlList[0]}departments/information_system_research/`,
+      `${targetUrlList[0]}departments/pathology/`,
+      `${targetUrlList[0]}departments/stem_cell_research/`,
+      `${targetUrlList[0]}en/contact/`,
+      `${targetUrlList[0]}en/departments/`,
+      `${targetUrlList[0]}en/links/`,
+      `${targetUrlList[0]}en/news/`,
+      `${targetUrlList[0]}en/sitemap/`,
+      `${targetUrlList[0]}en/staff/`,
+      `${targetUrlList[0]}public_information/animal/`,
+      `${targetUrlList[0]}public_information/core_hospital/`,
+      `${targetUrlList[0]}public_information/ethics/`,
+      `${targetUrlList[0]}public_information/performance/`,
+      `${targetUrlList[0]}public_information/templates/`,
+      `${targetUrlList[0]}public_information/trials2/`,
+      `${targetUrlList[0]}publication/year2022/`,
+      `${targetUrlList[0]}publication/year2023/`,
+      `${targetUrlList[0]}seminar/chiken/`,
+      `${targetUrlList[0]}staff/crc/departments`,
+      `${targetUrlList[0]}staff/futamura_masaki/`,
+      `${targetUrlList[0]}staff/hashimoto_hiroya/`,
+      `${targetUrlList[0]}staff/hattori_hiroyoshi/`,
+      `${targetUrlList[0]}staff/horibe_keizo/`,
+      `${targetUrlList[0]}staff/iida_hiroatsu/`,
+      `${targetUrlList[0]}staff/imahashi_mayumi/`,
+      `${targetUrlList[0]}staff/ito_noriko/`,
+      `${targetUrlList[0]}staff/iwatani_yasumasa/`,
+      `${targetUrlList[0]}staff/katayama_masao/`,
+      `${targetUrlList[0]}staff/kogure_yoshihito/`,
+      `${targetUrlList[0]}staff/kondo_takahisa/`,
+      `${targetUrlList[0]}staff/nagai_hirokazu/`,
+      `${targetUrlList[0]}staff/nishimura_rieko/`,
+      `${targetUrlList[0]}staff/oiwa_mikinao/`,
+      `${targetUrlList[0]}staff/saito_akiko/`,
+      `${targetUrlList[0]}staff/saito_toshiki/`,
+      `${targetUrlList[0]}staff/saka_hideo/`,
+      `${targetUrlList[0]}staff/sanada_masashi/`,
+      `${targetUrlList[0]}staff/sekimizu_masahiro/`,
+      `${targetUrlList[0]}staff/suenaga_masaya/`,
+      `${targetUrlList[0]}staff/yasuda_takahiko/`,
+      `${targetUrlList[0]}staff/yokomaku_yoshiyuki/`,
+      `${targetUrlList[0]}2011/05/40/`,
+      `${targetUrlList[0]}2011/10/42/`,
+      //      `${targetUrlList[0]}2012/02/120/`,  // 元からリンク切れなので対象外にする
+      `${targetUrlList[0]}2012/09/16133/`,
+      `${targetUrlList[0]}2013/03/16135/`,
+      `${targetUrlList[0]}2013/04/16137/`,
+      `${targetUrlList[0]}2013/11/16139/`,
+      `${targetUrlList[0]}2013/11/16141/`,
+      `${targetUrlList[0]}2013/11/16143/`,
+      `${targetUrlList[0]}2013/11/16145/`,
+      `${targetUrlList[0]}2019/04/69420/`,
+      `${targetUrlList[0]}2019/04/69422/`,
+      `${targetUrlList[0]}2019/04/69426/`,
+      `${targetUrlList[0]}2019/04/69438/`,
+      `${targetUrlList[0]}2019/04/70945/`,
+      `${targetUrlList[0]}2019/05/75189/`,
+      `${targetUrlList[0]}2019/06/78099/`,
+      `${targetUrlList[0]}2019/07/85037/`,
+      `${targetUrlList[0]}2019/08/88983/`,
+      `${targetUrlList[0]}2019/09/94739/`,
+      `${targetUrlList[0]}2019/10/96890/`,
+      `${targetUrlList[0]}2019/11/102065/`,
+      `${targetUrlList[0]}2019/12/102354/`,
+      `${targetUrlList[0]}2020/01/102412/`,
+      `${targetUrlList[0]}2020/01/106316/`,
+      `${targetUrlList[0]}2020/02/113187/`,
+      `${targetUrlList[0]}2020/09/171649/`,
+      `${targetUrlList[0]}2021/04/245493/`,
+      `${targetUrlList[0]}2022/05/654429/`,
+      `${targetUrlList[0]}2022/10/699032/`,
+      `${targetUrlList[0]}2023/01/714240/`,
+      `${targetUrlList[0]}2023/08/720008/`,
+      `${targetUrlList[0]}2024/03/751544/`,
+      `${targetUrlList[0]}aro/consultation/form/`,
+      `${targetUrlList[0]}clinical_trial_services/rmc/forms/`,
+      `${targetUrlList[0]}aro/regenerative_medicine_committee/minutes/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/crb/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/data_and_specimen_provision/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/form/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/irb/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/member/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/minutes/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/nho/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/permission-application/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/schedule/`,
+      `${targetUrlList[0]}clinical_trial_services/clinical_research/sop/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/manual/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/member/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2019-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2020-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2021-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2022-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2023-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/2024-2`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/schedule/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/spec/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/spec/kensa_nmc`,
+      `${targetUrlList[0]}clinical_trial_services/patient2/about_clinicalstudy/`,
+      `${targetUrlList[0]}clinical_trial_services/patient2/about_effect/`,
+      `${targetUrlList[0]}clinical_trial_services/patient2/aboutclinical_part2/`,
+      `${targetUrlList[0]}clinical_trial_services/patient2/aboutclinical_part3/`,
+      `${targetUrlList[0]}clinical_trial_services/pms/form/`,
+      `${targetUrlList[0]}clinical_trial_services/pms/form2/`,
+      `${targetUrlList[0]}crc/departments/cell_therapy/`,
+      `${targetUrlList[0]}crc/departments/clinical_research/`,
+      `${targetUrlList[0]}crc/departments/clinical_trial_services/`,
+      `${targetUrlList[0]}crc/departments/infectious_diseases/`,
+      `${targetUrlList[0]}crc/departments/pathology/`,
+      `${targetUrlList[0]}crc/staff/futamura_masaki/`,
+      `${targetUrlList[0]}crc/staff/hashimoto_hiroya/`,
+      `${targetUrlList[0]}crc/staff/hattori_hiroyoshi/`,
+      `${targetUrlList[0]}crc/staff/horibe_keizo/`,
+      `${targetUrlList[0]}crc/staff/iida_hiroatsu/`,
+      `${targetUrlList[0]}crc/staff/imahashi_mayumi/`,
+      `${targetUrlList[0]}crc/staff/ito_noriko/`,
+      `${targetUrlList[0]}crc/staff/iwatani_yasumasa/`,
+      `${targetUrlList[0]}crc/staff/katayama_masao/`,
+      `${targetUrlList[0]}crc/staff/kogure_yoshihito/`,
+      `${targetUrlList[0]}crc/staff/kondo_takahisa/`,
+      `${targetUrlList[0]}crc/staff/nagai_hirokazu/`,
+      `${targetUrlList[0]}crc/staff/oiwa_mikinao/`,
+      `${targetUrlList[0]}crc/staff/saito_akiko/`,
+      `${targetUrlList[0]}crc/staff/saito_toshiki/`,
+      `${targetUrlList[0]}crc/staff/saka_hideo/`,
+      `${targetUrlList[0]}crc/staff/sanada_masashi/`,
+      `${targetUrlList[0]}crc/staff/sekimizu_masahiro/`,
+      `${targetUrlList[0]}crc/staff/suenaga_masaya/`,
+      `${targetUrlList[0]}crc/staff/yasuda_takahiko/`,
+      `${targetUrlList[0]}crc/staff/yokomaku_yoshiyuki/`,
+      `${targetUrlList[0]}departments/education_and_public_relations/seminar/`,
+      `${targetUrlList[0]}departments/information_system_research/chapter_numbering/`,
+      `${targetUrlList[0]}en/departments/infectious_diseases/`,
+      `${targetUrlList[0]}en/staff/akiko-saito/`,
+      `${targetUrlList[0]}en/staff/hideo-saka/`,
+      `${targetUrlList[0]}en/staff/hirokazu-nagai/`,
+      `${targetUrlList[0]}en/staff/hiroyoshi-hattori/`,
+      `${targetUrlList[0]}en/staff/keizo-horibe/`,
+      `${targetUrlList[0]}en/staff/toshiki-saito/`,
+      `${targetUrlList[0]}en/staff/yasumasa-iwatani/`,
+      `${targetUrlList[0]}en/staff/yoshiyuki-yokomaku/`,
+      `${targetUrlList[0]}news/page/2/`,
+      `${targetUrlList[0]}news/page/3/`,
+      `${targetUrlList[0]}news/page/4/`,
+      `${targetUrlList[0]}public_information/animal/minutes/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2017_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2018_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2019_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2020_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2021_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2022_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/kiroku-2/2023_3/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h21/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h22/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h23/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h24/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h25/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h26/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h27/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h28/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h29/`,
+      `${targetUrlList[0]}clinical_trial_services/drug_trials/minutes/h30/`,
+      `${targetUrlList[0]}crc/staff//kondo_takahisa/`,
+      `${targetUrlList[0]}departments/information_system_research/chapter_numbering/chapter_numbering_privacy_policy/`,
+      `${targetUrlList[0]}en/2011/05/68/`,
+      `${targetUrlList[0]}en/2011/10/70/`,
+      `${targetUrlList[0]}accomplishments/alc_alcl/`,
+      `${targetUrlList[0]}clinical_trial_services/crb/minutes/`,
+    ];
+    urlList.forEach((url) => {
+      test.only(`${url}_画像読み込みテスト`, async () => {
+        await driver.get(url);
+        // ページの一番下に移動
+        try {
+          await driver.get(url);
+
+          // JavaScriptを実行して画像の読み込み状態を確認
+          const imageLoadingStatus = await driver.executeScript(`
+              const images = document.getElementsByTagName('img');
+              let imageLoadingError = false;
+              for (let i = 0; i < images.length; i++) {
+                  if (!images[i].complete || images[i].naturalWidth === 0) {
+                      imageLoadingError = true;
+                      break;
+                  }
+              }
+              return imageLoadingError;
+          `);
+
+          if (imageLoadingStatus) {
+            assert.fail(`画像読み込みエラーが発生しました`);
+            console.log(url.replace(testUrl, ""));
+          } else {
+            assert.ok("画像の読み込みに問題はありません");
+          }
+        } finally {
+        }
+      });
+    });
+  });
+
+});
+*/
