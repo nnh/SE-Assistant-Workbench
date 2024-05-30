@@ -44,7 +44,6 @@ function isTodayOrEarlier_(dateString) {
 
   // 今日の日付を取得
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // 時刻を0時0分0秒に設定
 
   // 入力された日付が今日以前（今日を含む）かどうかを確認
   return inputDate <= today;
