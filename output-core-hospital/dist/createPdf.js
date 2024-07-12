@@ -50,8 +50,11 @@ async function mergeFiles_(targetFolderId) {
     console.log(file.getName());
     let tempIndex;
     let header;
-    if (file.getMimeType() === 'application/pdf') {
-      const fileName = file.getName();
+    const fileName = file.getName();
+    if (
+      file.getMimeType() === 'application/pdf' &&
+      !excludedFileName.test(fileName)
+    ) {
       if (new RegExp(yoshiki).test(fileName)) {
         tempIndex = fileName.replace(yoshiki, '').replace(/\s.*pdf$/, '');
         header = yoshiki;
@@ -71,7 +74,7 @@ async function mergeFiles_(targetFolderId) {
     }
   }
   const blobs = sortMapByKey_(tempBlobs);
-  const newPdfName = `臨床研究中核病院申請資料 ${getFormattedDate_()}.pdf`;
+  const newPdfName = `${pdfHeader} ${getFormattedDate_()}.${pdfExtension}`;
   const myPDF = await mergeAllPDFs_(blobs, newPdfName);
   folder.createFile(myPDF);
 }
