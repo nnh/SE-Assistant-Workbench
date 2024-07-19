@@ -21,6 +21,7 @@ source(here("programs", "common-functions.R"),  encoding="UTF-8")
 source(here("programs", "s3-functions.R"),  encoding="UTF-8")
 source(here("programs", "box-functions.R"),  encoding="UTF-8")
 source(here("programs", "unzip-functions.R"),  encoding="UTF-8")
+source(here("programs", "whodd-idf-functions.R"),  encoding="UTF-8")
 # ------ main ------
 dummy <- GetConfigText()
 dummy <- GetREnviron()
