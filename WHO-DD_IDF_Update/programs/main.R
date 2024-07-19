@@ -5,7 +5,8 @@
 #' @date YYYY.MM.DD
 rm(list=ls())
 # ------ libraries ------
-Sys.setenv("PATH", "C:/Program Files/7-Zip/7zFM.exe")
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), "C:/Program Files/7-Zip", sep = ";"))
+
 library(tidyverse)
 library(here)
 library(boxr)
@@ -16,10 +17,11 @@ library("aws.s3")
 #box_auth(client_id = kClientId, client_secret = kClientSecret)
 ### AWS authenticate ###
 # ------ constants ------
-kMeddra <- "meddra"
+kIdf <- "idf"
 kWhodd <- "whodd"
 kWhoddZip <- "whoddZip"
 kZipDirName <- "圧縮ファイル"
+kZipExtention <- ".zip"
 # ------ functions ------
 GetREnviron <- function() {
   home_dir <- GetHomeDir()
@@ -110,34 +112,32 @@ GetFolderPath <- function(folder_name) {
   folder_path <- file.path(home_dir, folder_name)
   return(folder_path)
 }
-GetDownloadFiles <- function(downloads_path) {
-  zipFiles <- downloads_path |> list.files(pattern = "*.zip")
-  meddra <- zipFiles |> str_extract("(?i)^MEDDRA.*\\.zip$") |> na.omit()
-  whodd <- zipFiles |> str_extract("(?i)^WHODrug\\sJapan\\sCRT.*\\.zip$") |> na.omit()
-  whoddZip <- zipFiles |> str_extract("(?i)^WHODrug\\s.*\\.zip$") |> na.omit()
-  if (length(meddra) > 1) {
-    stop("Error: Multiple MEDDRA zip files found. Please ensure that only one MEDDRA zip file is present in the specified directory.")
+GetTargetFiles <- function(files, textPattern) {
+  res <-  files |> str_extract(textPattern) |> na.omit()
+  return(res)
+}
+GetTargetFilesList <- function(filename) {
+  if (length(filename) == 0) {
+    return(NULL)
   }
+  res <- list(path=file.path(downloads_path, filename), filename=str_remove(filename, kZipExtention))
+  return(res)
+}
+GetDownloadFiles <- function() {
+  zipFiles <- downloads_path |> list.files(pattern=str_c("*", kZipExtention))
+  whodd <- zipFiles |> GetTargetFiles(str_c("(?i)^WHODrug\\sJapan\\sCRT.*", kZipExtention, "$"))
+  whoddZip <- zipFiles |> GetTargetFiles(str_c("(?i)^WHODrug\\s.*", kZipExtention ,"$"))
+  idf <- zipFiles |> GetTargetFiles(str_c("(?i)^mtlt2[0-9]{5}.*", kZipExtention, "$"))
   if (length(whodd) > 1) {
     stop("Error: Multiple WHODrug zip files found. Please ensure that only one WHODrug zip file is present in the specified directory.")
   }
+  if (length(idf) > 1) {
+    stop("Error: Multiple idf zip files found. Please ensure that only one idf zip file is present in the specified directory.")
+  }
   res <- list()
-  if (length(meddra) == 0) {
-    res[[kMeddra]] <- NULL
-  } else {
-    res[[kMeddra]] <- list(path=file.path(downloads_path, meddra), filename=str_remove(meddra, ".zip"))
-  }
-  if (length(whodd) == 0) {
-    res[[kWhodd]] <- NULL
-  } else {
-    res[[kWhodd]] <- list(path=file.path(downloads_path, whodd), filename=str_remove(whodd, ".zip"))
-  }
-  if (length(whoddZip) == 0) {
-    res[[kWhoddZip]] <- NULL
-  } else {
-    temp <- whoddZip |> map( ~ list(path=file.path(downloads_path, .), filename=str_remove(., ".zip")))
-    res[[kWhoddZip]] <- temp
-  }
+  res[[kIdf]] <- idf |> GetTargetFilesList()
+  res[[kWhodd]] <- whodd |> GetTargetFilesList()
+  res[[kWhoddZip]] <- whoddZip |> map( ~ GetTargetFilesList(.))
   return(res)
 }
 ExecUnzip <- function(targetZipPath, wkDirName, unzipDir) {
@@ -148,14 +148,7 @@ ExecUnzip <- function(targetZipPath, wkDirName, unzipDir) {
 dummy <- GetConfigText()
 dummy <- GetREnviron()
 downloads_path <- GetFolderPath("Downloads")
-file_list <- GetDownloadFiles(downloads_path)
-if (kMeddra %in% names(file_list)) {
-  meddraUnzipPath <- ExecUnzip(file_list$meddra$path, file_list$meddra$filename, file.path(dirname(file_list$meddra$path), file_list$meddra$filename))
-  meddraBoxDirInfo <- GetTargetDirInfo("MedDRA", kMeddra)
-  if (length(meddraBoxDirInfo) > 0) {
-    box_ul(dir_id=meddraBoxDirInfo$zipId, file_list[[kMeddra]]$path, pb=T)
-  }
-}
+file_list <- GetDownloadFiles()
 if (kWhoddZip %in% names(file_list)) {
   whoddBoxDirInfo <- GetTargetDirInfo("WHO-DD", kMeddra)
   if (length(whoddBoxDirInfo) > 0) {
@@ -170,7 +163,7 @@ if (kWhodd %in% names(file_list)) {
     dir.create(whoddUnzipPath, recursive=F)
   }
   whoddZipFilePath <- tempWhoddPath |> list.files(pattern="*.zip", full.names=T)
-  dummy <- ExecUnzip(whoddZipFilePath, basename(whoddZipFilePath), file.path(whoddUnzipPath, str_remove(basename(whoddZipFilePath), ".zip")))
+  dummy <- ExecUnzip(whoddZipFilePath, basename(whoddZipFilePath), file.path(whoddUnzipPath, str_remove(basename(whoddZipFilePath), kZipExtention)))
 }
 # whodd
 # 1passwordにあるWHO-DDのサイトにログインしたあと、メールにあるダウンロードリンクをクリックすると、ダウンロードファイルのページ遷移できる。ダウンロードフォルダにファイル落とす。のところまでは手動
