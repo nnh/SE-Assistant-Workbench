@@ -1,8 +1,8 @@
-#' title
-#' description
+#' main
+#' 
 #' @file main.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.19
+#' @date 2024.7.22
 rm(list=ls())
 # ------ libraries ------
 library(tidyverse)

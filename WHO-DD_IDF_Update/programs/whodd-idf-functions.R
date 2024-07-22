@@ -1,10 +1,8 @@
-#' title
-#' description
-#' @file xxx.R
+#' WHODD and IDF Unzip Functions
+#' Description: This script includes functions to unzip IDF and WHODD files, and save them to Box.
+#' @file whodd-idf-functions.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
-# ------ libraries ------
-# ------ constants ------
+#' @date 2024.7.22
 # ------ functions ------
 #' Unzip IDF file
 #'
@@ -42,13 +40,23 @@ UnzipWhodd <- function() {
   ExecUnzip(whoddZipFilePath, basename(whoddZipFilePath), unzipDir)
   return(list(awsDirName=awsDirName, unzipDir=unzipDir))
 }
+#' Save IDF file
+#'
+#' This function saves the IDF file and its password file to Box.
+#' 
+#' @param passwordFilePath The path to the password file.
+#' @return None
 SaveIdf <- function(passwordFilePath) {
   boxDirInfo <- SaveZipCommon("IDF", kIdf)
   box_ul(dir_id=boxDirInfo$zipId, passwordFilePath, pb=T)
   return()
 }
+#' Save WHODD file
+#'
+#' This function saves the WHODD file to Box.
+#' 
+#' @return None
 SaveWhodd <- function() {
   dummy <- SaveZipCommon("WHO-DD", kWhoddZip)
   return()
 }
-# ------ main ------
