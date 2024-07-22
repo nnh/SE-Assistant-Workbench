@@ -1,41 +1,32 @@
-#' main
+#' upload s3
 #' 
-#' @file main.R
+#' @file upload-s3.R
 #' @author Mariko Ohtsuka
 #' @date 2024.7.22
-rm(list=ls())
 # ------ libraries ------
-library(tidyverse)
+rm(list=ls())
 library(here)
 # ------ constants ------
-kIdf <- "idf"
-kWhodd <- "whodd"
-kWhoddZip <- "whoddZip"
-kZipDirName <- "圧縮ファイル"
-kZipExtention <- ".zip"
-kIdfFileNameParts <- "(?i)^mtlt2[0-9]{5}"
-kIdfFileNameString <- str_c(kIdfFileNameParts, ".*", kZipExtention, "$")
-kWhoddJapanCrtParts <- "(?i)^WHODrug\\sJapan\\sCRT"
 # ------ functions ------
-source(here("programs", "common-functions.R"),  encoding="UTF-8")
-source(here("programs", "s3-functions.R"),  encoding="UTF-8")
-source(here("programs", "box-functions.R"),  encoding="UTF-8")
-source(here("programs", "unzip-functions.R"),  encoding="UTF-8")
-source(here("programs", "whodd-idf-functions.R"),  encoding="UTF-8")
+source(here("programs", "functions", "common.R"),  encoding="UTF-8")
+source(here("programs", "functions", "s3-functions.R"),  encoding="UTF-8")
+source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
+source(here("programs", "functions", "whodd-idf-functions.R"),  encoding="UTF-8")
+source(here("programs", "functions", "download-box.R"),  encoding="UTF-8")
 # ------ main ------
-dummy <- GetConfigText()
 dummy <- GetREnviron()
-downloads_path <- GetFolderPath("Downloads")
-file_list <- GetDownloadFiles()
+# download the ZIP file from BOX.
+temp <- DownloadFilesFromBox()
+whodd_zip <- temp$whodd
+idf_zip <- temp$idf
+idf_password <- temp$idfPassword
 # unzip WHO-DD
-temp <- UnzipWhodd()
+temp <- whodd_zip |> UnzipWhodd()
 awsDirName <- temp$awsDirName
 whoddUnzipDir <- temp$unzipDir
 whoddDir <- "/WHODD/" %>% str_c(awsDirName, .)
 # unzip IDF
-temp <- UnzipIdf()
-idfUnzipDir <- temp$unzipDir
-idfPasswordFilePath <- temp$passwordFilePath
+idfUnzipDir <- idf_zip |> UnzipIdf(awsDirName)
 idfDir <- "/IDF/" %>% str_c(awsDirName, .)
 # upload to s3.
 copyTargetList = list(
@@ -47,6 +38,3 @@ copyTargetList = list(
 )
 copyFiles <- GetCopyFileInfo(copyTargetList)
 UploadToS3(copyFiles)
-# upload the zip file to Box.
-SaveWhodd()
-SaveIdf(idfPasswordFilePath)

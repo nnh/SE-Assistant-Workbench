@@ -53,6 +53,9 @@ GetTargetDirInfo <- function(folderName, listName) {
     res$zipId <- zipDirInfo[1, "id", drop=T] |> flatten_chr()
     res$zipName <- zipDirInfo[1, "name", drop=T] |> flatten_chr()
   }
+  if (length(res) == 0) {
+    stop("The folder specified in Box does not exist.")
+  }
   return(res)
 }
 
@@ -68,9 +71,6 @@ SaveZipToBox <- function(folderName, listName) {
     return()
   }  
   boxDirInfo <- GetTargetDirInfo(folderName, listName)
-  if (length(boxDirInfo) == 0) {
-    stop("The folder specified in Box does not exist.")
-  }
   if (ContainsNestedList(file_list[[listName]])) {
     zipList <- file_list[[listName]]
   } else {
@@ -94,9 +94,14 @@ SaveZipCommon <- function(boxDirName ,listName) {
   res <- SaveZipToBox(boxDirName, listName)
   return(res)
 }
-
+BoxAuthSettings <- function() {
+  kBoxClientId <<- readline(prompt = "Enter BOX Client ID and press Enter: ")
+  kBoxClientSecret <<- readline(prompt = "Enter BOX Client Secret and press Enter: ")
+}
+BoxAuth <- function() {
+  box_auth(client_id=kBoxClientId, client_secret=kBoxClientSecret)
+}
 # ------ main ------
 ### Box authenticate ###
-kClientId <- readline(prompt = "Enter BOX Client ID and press Enter: ")
-kClientSecret <- readline(prompt = "Enter BOX Client Secret and press Enter: ")
-box_auth(client_id = kClientId, client_secret = kClientSecret)
+BoxAuthSettings()
+BoxAuth()

@@ -3,7 +3,7 @@
 #' Description: This script includes functions to interact with AWS S3, including setting up the environment and uploading files to specified S3 folders.
 #' @file s3-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.19
+#' @date 2024.7.22
 # ------ libraries ------
 library("aws.s3")
 # ------ constants ------
@@ -54,7 +54,6 @@ UploadToS3Folder <- function(folder_name, file_path, object_name) {
     object = full_object_name, 
     bucket = kAwsBucketName
   )
-  print(res)
   return(res)
 }
 

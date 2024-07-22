@@ -25,10 +25,9 @@ UnzipBy7z <- function(cmd) {
 #' This function unzips a file to a specified directory using 7-Zip.
 #' 
 #' @param targetZipPath The path to the zip file.
-#' @param filename The name of the zip file.
 #' @param unzipDir The directory to unzip the file to.
 #' @return None.
-ExecUnzip <- function(targetZipPath, filename, unzipDir) {
+ExecUnzip <- function(targetZipPath, unzipDir) {
   CreateDir(unzipDir)
   paste("7z x", shQuote(targetZipPath), paste0("-o", shQuote(unzipDir))) |> UnzipBy7z()
 }
@@ -39,15 +38,11 @@ ExecUnzip <- function(targetZipPath, filename, unzipDir) {
 #' The password is saved to a text file.
 #' 
 #' @param targetZipPath The path to the zip file.
-#' @param filename The name of the zip file.
 #' @param unzipDir The directory to unzip the file to.
-#' @param promptText The prompt text for the password.
+#' @param password The password to unzip the file.
 #' @return The path to the password text file.
-ExecUnzipByPassword <- function(targetZipPath, filename, unzipDir, promptText) {
-  password <- readline(prompt=promptText)
+ExecUnzipByPassword <- function(targetZipPath, unzipDir, password) {
   CreateDir(unzipDir)
   paste("7z x", shQuote(targetZipPath), paste0("-o", shQuote(unzipDir)), paste0("-p", shQuote(password))) |> UnzipBy7z()
-  passwordFilePath <- file.path(downloads_path, str_c(filename, "_pw.txt"))
-  writeLines(password, con = passwordFilePath)  
-  return(passwordFilePath)
+  return()
 }
