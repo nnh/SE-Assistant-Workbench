@@ -11,6 +11,7 @@ kIdf <- "idf"
 kWhodd <- "whodd"
 kWhoddZip <- "whoddZip"
 kZipDirName <- "圧縮ファイル"
+kIdfAllFooter <- "_all"
 kZipExtention <- ".zip"
 kIdfFileNameHeader <- "mtlt"
 kIdfFileNameParts <- str_c("(?i)^", kIdfFileNameHeader, "2[0-9]{5}")

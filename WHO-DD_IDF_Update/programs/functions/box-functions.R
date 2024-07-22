@@ -101,7 +101,3 @@ BoxAuthSettings <- function() {
 BoxAuth <- function() {
   box_auth(client_id=kBoxClientId, client_secret=kBoxClientSecret)
 }
-# ------ main ------
-### Box authenticate ###
-BoxAuthSettings()
-BoxAuth()

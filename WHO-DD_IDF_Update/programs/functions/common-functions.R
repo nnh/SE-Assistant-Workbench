@@ -83,7 +83,7 @@ GetTargetFilesList <- function(filename) {
   idfCheck <- str_detect(filename, kIdfFileNameString)
   if (idfCheck) {
     beforePath <- file.path(downloads_path, filename)
-    outputFileName <- str_extract(filename, kIdfFileNameParts) |> str_c(kZipExtention)
+    outputFileName <- str_extract(filename, kIdfFileNameParts) |> str_c(kIdfAllFooter ,kZipExtention)
     filePath <- file.path(downloads_path, outputFileName)
     file.rename(beforePath, filePath)
   } else {

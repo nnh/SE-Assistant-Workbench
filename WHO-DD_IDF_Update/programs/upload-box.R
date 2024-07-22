@@ -22,7 +22,6 @@ SaveIdf <- function() {
 }
 # ------ main ------
 file_list <- GetDownloadFiles()
-BoxAuth()
 if (kWhoddZip %in% names(file_list)) {
   SaveZipCommon(KWhoddBoxDirName, kWhoddZip)
 }

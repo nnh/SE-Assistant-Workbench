@@ -27,7 +27,7 @@ GetLatestWhoddFile <- function(whoddBoxDirInfo) {
 }
 
 GetLatestIdfFile <- function(idfBoxDirInfo) {
-  targetIdfFiles <- idfBoxDirInfo$zipId |> GetLatestTargetFiles(str_c(kIdfFileNameParts, kZipExtention))
+  targetIdfFiles <- idfBoxDirInfo$zipId |> GetLatestTargetFiles(str_c(kIdfFileNameParts, kIdfAllFooter, kZipExtention))
   targetIdfFiles$ym <- targetIdfFiles$name |> str_extract("2[0-9]{5}") |> as.numeric()
   res <- targetIdfFiles |> GetLatestFileInfo()
 }
