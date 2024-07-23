@@ -45,6 +45,21 @@ ExecDiff <- function(boxDir, boxFileName, awsFileName, category, htmlName) {
   OutputDiff(boxCsv, awsCsv, file.path(outputPath, htmlName))
 }
 
+ReadCsvAllString <- function(targetPath) {
+  # 列数を事前に取得
+  num_cols <- length(read.csv(targetPath, fileEncoding="cp932", header=F, nrows=1))
+  # 全ての列を文字列として指定
+  col_classes <- rep("character", num_cols)
+  res <- targetPath |> read.csv(fileEncoding="cp932", header=F, colClasses=col_classes)
+  return(res)
+}
+
+CheckExistNewCodeIdf <- function(targetPath, target2=shinkiTxt) {
+  target1 <- targetPath |> ReadCsvAllString()
+  res <- inner_join(target1, target2, by="V1")
+  return(nrow(res) == nrow(target2)) 
+}
+
 # ------ main ------
 current_year <- Sys.Date() |> format("%Y") |> as.numeric()
 current_month <- Sys.Date() |> format("%m") |> as.numeric()
@@ -99,9 +114,15 @@ zenkenkahenTxtPath <- file.path(idfParentFolderName, "医薬品名データフ�
   list.files(full.names=T) |> str_extract(".*全件＜可変長＞.txt") |> na.omit() %>% .[1]
 eimeikahenTxtPath <- file.path(idfParentFolderName, "英名＜可変長＞") |> 
   list.files(full.names=T) |> str_extract(".*英名＜可変長＞.txt") |> na.omit() %>% .[1]
-
+# *** test start ***
+## テスト１：想定通りのBOXのファイルがAWSにアップロードされているかDIFFを取って確認する
 ExecDiff(testBoxWhoddDir2, "IDMapping.csv", "IDMapping.csv", "WHODD", "idmapping.html")
 ExecDiff(testBoxWhoddDir2, "WHODDsGenericNames.csv", "WHODDsGenericNames.csv", "WHODD", "WHODDsGenericNames.html")
 ExecDiff(dirname(zenkenTxtPath), basename(zenkenTxtPath), "data.txt", "IDF", "data.html")
 ExecDiff(dirname(zenkenkahenTxtPath), basename(zenkenkahenTxtPath), "full_ja.txt", "IDF", "full_ja.html")
 ExecDiff(dirname(eimeikahenTxtPath), basename(eimeikahenTxtPath), "full_en.txt", "IDF", "full_en.html")
+## テスト２：IDFで新規追加された項目がWHODDのファイルにも存在することを確認する 
+shinkiTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル", "前回との差分") |> 
+  list.files(full.names=T) |> str_extract(".*新規[0-9]{6}.txt") |> na.omit() %>% .[1]
+shinkiTxt <- shinkiTxtPath |> ReadCsvAllString()
+checkExists <- list(zenkenTxtPath, zenkenkahenTxtPath) |> map( ~ CheckExistNewCodeIdf(.))
