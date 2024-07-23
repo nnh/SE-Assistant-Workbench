@@ -6,7 +6,7 @@
 #' 
 #' @file upload-box.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.22
+#' @date 2024.7.23
 # ------ libraries ------
 rm(list=ls())
 library(here)
@@ -22,7 +22,7 @@ SaveIdf <- function() {
 }
 # ------ main ------
 file_list <- GetDownloadFiles()
-if (kWhoddZip %in% names(file_list)) {
+if (length(file_list[[kWhoddZip]]) > 0) {
   SaveZipCommon(KWhoddBoxDirName, kWhoddZip)
 }
 if (kIdf %in% names(file_list)) {

@@ -2,7 +2,7 @@
 #' 
 #' @file upload-s3.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.22
+#' @date 2024.7.23
 # ------ libraries ------
 rm(list=ls())
 library(here)
@@ -16,18 +16,29 @@ source(here("programs", "functions", "download-box.R"),  encoding="UTF-8")
 # ------ main ------
 dummy <- GetREnviron()
 # download the ZIP file from BOX.
-temp <- DownloadFilesFromBox()
-whodd_zip <- temp$whodd
-idf_zip <- temp$idf
-idf_password <- temp$idfPassword
+whodd_zip <- whoddDownloadFilesFromBox()
 # unzip WHO-DD
 temp <- whodd_zip |> UnzipWhodd()
 awsDirName <- temp$awsDirName
 whoddUnzipDir <- temp$unzipDir
 whoddDir <- "/WHODD/" %>% str_c(awsDirName, .)
-# unzip IDF
-idfUnzipDir <- idf_zip |> UnzipIdf(awsDirName)
-idfDir <- "/IDF/" %>% str_c(awsDirName, .)
+# download and unzip idf
+idfVersion <- temp$version
+targetIdfInfo <- GetIdfDownloadFilesInfoFromBox()
+for (i in 1:nrow(targetIdfInfo)) {
+  idf_zip <- targetIdfInfo[i, "id", drop=T] |> flatten_chr() |> box_dl(downloads_path, overwrite=T)  
+  idf_password <- targetIdfInfo[i, "password", drop=T]
+  temp <- UnzipIdf(idf_zip, awsDirName, idf_password)
+  checkTargetYMD <- temp |> findFolder(str_c(idfVersion, "提供"))
+  if (length(checkTargetYMD) > 0) {
+    idfUnzipDir <- temp
+    idfDir <- "/IDF/" %>% str_c(awsDirName, .)
+    break
+  }
+}
+if (!exists("idfUnzipDir") | !exists("whoddUnzipDir")) {
+  stop("unzip error.")
+}
 # upload to s3.
 copyTargetList = list(
   list(fromName="全件.txt", toName="data.txt", toDir=idfDir, fromDir=idfUnzipDir),

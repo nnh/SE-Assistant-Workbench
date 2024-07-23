@@ -148,6 +148,38 @@ FindFiles <- function(directory, filename) {
   all_files <- list.files(path=directory, pattern=filename, recursive=T, full.names=T)
   return(all_files)
 }
+#' Find a folder within a specified directory and its subdirectories
+#'
+#' This function searches for a folder with the specified name within the given
+#' base directory and its subdirectories. It returns the path(s) of the folder(s)
+#' if found, otherwise returns NULL.
+#'
+#' @param base_path A character string specifying the path to the base directory where
+#' the search should begin.
+#' @param target_folder_name A character string specifying the name of the folder to search for.
+#' @return A character vector of folder paths that match the target folder name. If no
+#' matching folder is found, returns NULL.
+#' @examples
+#' # Example usage:
+#' # base_path <- "your/base/directory/path"
+#' # target_folder_name <- "test"
+#' # result <- find_folder(base_path, target_folder_name)
+#' # print(result)
+#' @export
+findFolder <- function(base_path, target_folder_name) {
+  # Get a list of all directories within the base path, including subdirectories
+  all_dirs <- list.dirs(base_path, recursive = TRUE, full.names = TRUE)
+  
+  # Filter directories to find the target folder
+  target_dirs <- grep(paste0("/", target_folder_name, "$"), all_dirs, value = TRUE)
+  
+  # Return the paths of the target folder(s) if found, otherwise return NULL
+  if (length(target_dirs) > 0) {
+    return(target_dirs)
+  } else {
+    return(NULL)
+  }
+}
 #' Get copy file information
 #'
 #' This function processes a list of target files and retrieves their paths and destination names.

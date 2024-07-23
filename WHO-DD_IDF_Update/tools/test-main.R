@@ -40,8 +40,8 @@ OutputDiff <- function(df1, df2, outputPath) {
 }
 
 ExecDiff <- function(boxDir, boxFileName, awsFileName, category, htmlName) {
-  boxCsv <- boxDir |> file.path(boxFileName) |> read_tsv(col_names=F)
-  awsCsv <- awsFileName |> GetAwsTsv(category)
+  boxCsv <<- boxDir |> file.path(boxFileName) |> read_tsv(col_names=F, )
+  awsCsv <<- awsFileName |> GetAwsTsv(category)
   OutputDiff(boxCsv, awsCsv, file.path(outputPath, htmlName))
 }
 
@@ -73,6 +73,8 @@ testBoxDir <- file.path(testDir, "box")
 CreateDir(testBoxDir)
 testAwsDir <- file.path(testDir, "aws")
 CreateDir(testAwsDir)
+outputPath <- file.path(testDir, "output")
+CreateDir(outputPath)
 ## who-dd box
 boxWhoddZipFile <- whoddFileId |> box_dl(testBoxDir, overwrite=T)
 testBoxWhoddDir <- file.path(testBoxDir, "testBoxWhodd")
@@ -93,10 +95,10 @@ idfParentFolderName <- testBoxIdfDir |> list.files(full.names=T)
 zenkenTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル") |> 
   list.files(full.names=T) |> str_extract(".*提供$") |> na.omit() |>
   list.files(full.names=T) |> str_extract(".*全件.txt") |> na.omit() %>% .[1]
+zenkenTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル") |> 
+  list.files(full.names=T) |> str_extract(".*提供$") |> na.omit() |>
+  list.files(full.names=T) |> str_extract(".*全件.txt") |> na.omit() %>% .[1]
 
-# diff
-outputPath <- file.path(testDir, "output")
-CreateDir(outputPath)
 
 
 ExecDiff(testBoxWhoddDir2, "IDMapping.csv", "IDMapping.csv", "WHODD", "idmapping.html")
