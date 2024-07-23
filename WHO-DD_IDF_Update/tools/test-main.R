@@ -2,17 +2,17 @@
 #' 
 #' @file test-main.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.22
+#' @date 2024.7.23
+rm(list=ls())
 # ------ libraries ------
 library(here)
-library(tidyverse)
+source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 library(aws.s3)
 library(daff)
 # ------ constants ------
-kIdfTargetZipName <- "mtlt299999_all.zip"
+kIdfTargetZipName <- "mtlt202310_all.zip"
 kIdfPasswordFilename <- kIdfTargetZipName |> str_replace(".zip", "_pw.txt")
 # ------ functions ------
-source(here("programs", "functions", "box-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 GetTestTarget <- function(parentDirId, targetName) {
   targetList <- parentDirId |> box_ls()
@@ -95,12 +95,13 @@ idfParentFolderName <- testBoxIdfDir |> list.files(full.names=T)
 zenkenTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル") |> 
   list.files(full.names=T) |> str_extract(".*提供$") |> na.omit() |>
   list.files(full.names=T) |> str_extract(".*全件.txt") |> na.omit() %>% .[1]
-zenkenTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル") |> 
-  list.files(full.names=T) |> str_extract(".*提供$") |> na.omit() |>
-  list.files(full.names=T) |> str_extract(".*全件.txt") |> na.omit() %>% .[1]
-
-
+zenkenkahenTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル＜可変長＞") |> 
+  list.files(full.names=T) |> str_extract(".*全件＜可変長＞.txt") |> na.omit() %>% .[1]
+eimeikahenTxtPath <- file.path(idfParentFolderName, "英名＜可変長＞") |> 
+  list.files(full.names=T) |> str_extract(".*英名＜可変長＞.txt") |> na.omit() %>% .[1]
 
 ExecDiff(testBoxWhoddDir2, "IDMapping.csv", "IDMapping.csv", "WHODD", "idmapping.html")
 ExecDiff(testBoxWhoddDir2, "WHODDsGenericNames.csv", "WHODDsGenericNames.csv", "WHODD", "WHODDsGenericNames.html")
-ExecDiff(dirname(zenkenTxtPath), basename(zenkenTxtPath), "data.txt", "IDF", "zenken.html")
+ExecDiff(dirname(zenkenTxtPath), basename(zenkenTxtPath), "data.txt", "IDF", "data.html")
+ExecDiff(dirname(zenkenkahenTxtPath), basename(zenkenkahenTxtPath), "full_ja.txt", "IDF", "full_ja.html")
+ExecDiff(dirname(eimeikahenTxtPath), basename(eimeikahenTxtPath), "full_en.txt", "IDF", "full_en.html")
