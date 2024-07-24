@@ -20,6 +20,7 @@ kWhoddJapanCrtParts <- "(?i)^WHODrug\\sJapan\\sCRT"
 KIdfBoxDirName <- "IDF"
 KWhoddBoxDirName <- "WHO-DD"
 kIdfPasswordFileFooter <- "_pw.txt"
+kAwsParentDirName <- "WHO-DD_IDF"
 # ------ functions ------
 source(here("programs", "functions", "common-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "box-functions.R"),  encoding="UTF-8")
