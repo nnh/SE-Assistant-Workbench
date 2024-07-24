@@ -2,17 +2,26 @@
 #' 
 #' @file test-main.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.23
+#' @date 2024.7.24
 rm(list=ls())
 # ------ libraries ------
 library(here)
 source(here("programs", "functions", "common.R"),  encoding="UTF-8")
-library(aws.s3)
 library(daff)
+library(readxl)
 # ------ constants ------
 kIdfTargetZipName <- "mtlt202310_all.zip"
 kIdfPasswordFilename <- kIdfTargetZipName |> str_replace(".zip", "_pw.txt")
+kTestIdMapping <- "IDMapping.csv"
+kTestWHODDsGenericNames <- "WHODDsGenericNames.csv"
+kTestOutputFolder <- "output"
+kTestZenken <- "data.txt"
+kTestZenkenKahen <- "full_ja.txt"
+kTestEimei <- "full_en.txt"
+kWhoddFolder <- "WHODD"
+kIdfFolder <- "IDF"
 # ------ functions ------
+source(here("programs", "functions", "s3-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 GetTestTarget <- function(parentDirId, targetName) {
   targetList <- parentDirId |> box_ls()
@@ -27,8 +36,8 @@ GetTestTarget <- function(parentDirId, targetName) {
 
 GetAwsTsv <- function(filename, dirName) {
   awsObjectPath <- file.path(testAwsDir, filename)
-  save_object(file.path(awsDirName, dirName, filename), kAwsBucketName, file=awsObjectPath)
-  res <- awsObjectPath |> read_tsv(col_names=F)
+  save_object(file.path(awsDirName, dirName, filename), bucket=kAwsBucketName, file=awsObjectPath, region=kAwsDefaultRegion)
+  res <- awsObjectPath |> read_tsv(col_names=F, show_col_types=F)
   return(res)
 }
 
@@ -40,7 +49,7 @@ OutputDiff <- function(df1, df2, outputPath) {
 }
 
 ExecDiff <- function(boxDir, boxFileName, awsFileName, category, htmlName) {
-  boxCsv <<- boxDir |> file.path(boxFileName) |> read_tsv(col_names=F, )
+  boxCsv <<- boxDir |> file.path(boxFileName) |> read_tsv(col_names=F, show_col_types=F)
   awsCsv <<- awsFileName |> GetAwsTsv(category)
   OutputDiff(boxCsv, awsCsv, file.path(outputPath, htmlName))
 }
@@ -54,13 +63,8 @@ ReadCsvAllString <- function(targetPath) {
   return(res)
 }
 
-CheckExistNewCodeIdf <- function(targetPath, target2=shinkiTxt) {
-  target1 <- targetPath |> ReadCsvAllString()
-  res <- inner_join(target1, target2, by="V1")
-  return(nrow(res) == nrow(target2)) 
-}
-
 # ------ main ------
+dummy <- GetREnviron()
 current_year <- Sys.Date() |> format("%Y") |> as.numeric()
 current_month <- Sys.Date() |> format("%m") |> as.numeric()
 whoddMonth <- ifelse(current_month >= 9 || current_month < 3,  "Sep", "Mar")
@@ -83,12 +87,13 @@ idfZipId <- GetTestTarget(idfDirId, kZipDirName)
 whoddFileId <- GetTestTarget(whoddZipId, whoddFileName)
 # create dir for test
 testDir <- file.path(downloads_path,  "whodd-idf-test") 
+unlink(testDir, recursive=T)
 CreateDir(testDir)
 testBoxDir <- file.path(testDir, "box")
 CreateDir(testBoxDir)
 testAwsDir <- file.path(testDir, "aws")
 CreateDir(testAwsDir)
-outputPath <- file.path(testDir, "output")
+outputPath <- file.path(testDir, kTestOutputFolder)
 CreateDir(outputPath)
 ## who-dd box
 boxWhoddZipFile <- whoddFileId |> box_dl(testBoxDir, overwrite=T)
@@ -116,13 +121,46 @@ eimeikahenTxtPath <- file.path(idfParentFolderName, "英名＜可変長＞") |>
   list.files(full.names=T) |> str_extract(".*英名＜可変長＞.txt") |> na.omit() %>% .[1]
 # *** test start ***
 ## テスト１：想定通りのBOXのファイルがAWSにアップロードされているかDIFFを取って確認する
-ExecDiff(testBoxWhoddDir2, "IDMapping.csv", "IDMapping.csv", "WHODD", "idmapping.html")
-ExecDiff(testBoxWhoddDir2, "WHODDsGenericNames.csv", "WHODDsGenericNames.csv", "WHODD", "WHODDsGenericNames.html")
-ExecDiff(dirname(zenkenTxtPath), basename(zenkenTxtPath), "data.txt", "IDF", "data.html")
-ExecDiff(dirname(zenkenkahenTxtPath), basename(zenkenkahenTxtPath), "full_ja.txt", "IDF", "full_ja.html")
-ExecDiff(dirname(eimeikahenTxtPath), basename(eimeikahenTxtPath), "full_en.txt", "IDF", "full_en.html")
-## テスト２：IDFで新規追加された項目がWHODDのファイルにも存在することを確認する 
+ExecDiff(testBoxWhoddDir2, kTestIdMapping, kTestIdMapping, kWhoddFolder, "idmapping.html")
+ExecDiff(testBoxWhoddDir2, kTestWHODDsGenericNames, kTestWHODDsGenericNames, kWhoddFolder, "WHODDsGenericNames.html")
+ExecDiff(dirname(zenkenTxtPath), basename(zenkenTxtPath), kTestZenken, kIdfFolder, "data.html")
+ExecDiff(dirname(zenkenkahenTxtPath), basename(zenkenkahenTxtPath), kTestZenkenKahen, kIdfFolder, "full_ja.html")
+ExecDiff(dirname(eimeikahenTxtPath), basename(eimeikahenTxtPath), kTestEimei, kIdfFolder, "full_en.html")
+## テスト２：新規追加された項目がIDFの全件ファイルに存在することを確認する 
 shinkiTxtPath <- file.path(idfParentFolderName, "医薬品名データファイル", "前回との差分") |> 
   list.files(full.names=T) |> str_extract(".*新規[0-9]{6}.txt") |> na.omit() %>% .[1]
 shinkiTxt <- shinkiTxtPath |> ReadCsvAllString()
-checkExists <- list(zenkenTxtPath, zenkenkahenTxtPath) |> map( ~ CheckExistNewCodeIdf(.))
+zenkenTxt <- file.path(testAwsDir, kTestZenken) |> ReadCsvAllString()
+checkZenken <- inner_join(zenkenTxt, shinkiTxt, by="V1") |> nrow() |> all.equal(nrow(shinkiTxt))
+if (!checkZenken) {
+  stop("error:test2")
+} else {
+  cat("test2:OK\n")
+}
+## テスト３：IDFの可変長テキストが全件と同じ行数であることを確認する
+zenkenkahenTxt <- file.path(testAwsDir, kTestZenkenKahen) |> ReadCsvAllString()
+eimeiKahenTxt <- file.path(testAwsDir, kTestEimei) |> ReadCsvAllString()
+if (nrow(zenkenTxt) != nrow(zenkenkahenTxt) | nrow(zenkenTxt) != nrow(eimeiKahenTxt)) {
+  stop("error:test3")
+} else {
+  cat("test3:OK\n")
+}
+## テスト４：IDFで新規追加された項目がWHODDのidMappingにも存在することを確認する 
+idMappingTxt <- file.path(testAwsDir, kTestIdMapping) |> read_tsv(col_names=F, show_col_types=F)
+checkIdMapping <- inner_join(idMappingTxt, shinkiTxt, by=c("X4"="V1")) |> nrow() |> all.equal(nrow(shinkiTxt))
+if (!checkIdMapping) {
+  stop("error:test4")
+} else {
+  cat("test4:OK\n")
+}
+## テスト５：WHODDのレコード数が想定通りであることを確認する
+whoddTableTotal <- file.path(testBoxWhoddDir2, "TableTotals.xlsx") |> read_excel(sheet=1)
+idMappingRow <- whoddTableTotal |> filter(Table == kTestIdMapping) %>% .[1, "No of rows", drop=T]
+whoddsGenericNamesRow <- whoddTableTotal |> filter(Table == kTestWHODDsGenericNames) %>% .[1, "No of rows", drop=T]
+whoddsGenericNames <- file.path(testAwsDir, kTestWHODDsGenericNames) |> read_tsv(col_names=F, show_col_types=F)
+if (nrow(idMappingTxt) != idMappingRow | nrow(whoddsGenericNames) != whoddsGenericNamesRow) {
+  stop("error:test5")
+} else {
+  cat("test5:OK\n")
+}
+cat(str_c(file.path(testDir, kTestOutputFolder), "配下のHTMLファイルの内容を確認してください"))
