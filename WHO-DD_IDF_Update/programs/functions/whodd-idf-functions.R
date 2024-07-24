@@ -2,9 +2,9 @@
 #' Description: This script includes functions to unzip IDF and WHODD files, and save them to Box.
 #' @file whodd-idf-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.23
+#' @date 2024.7.24
 # ------ functions ------
-UnzipIdf <- function(input_zip_path, awsDirName, idf_password) {
+UnzipIdf <- function(input_zip_path, idf_password) {
   if (is.null(input_zip_path)) {
     return(NA)
   }
@@ -20,13 +20,14 @@ UnzipWhodd <- function(input_zip_path) {
   if (is.null(input_zip_path)) {
     return(NA)
   }
-  awsDirName <- input_zip_path |> basename() |> str_remove(kWhoddJapanCrtParts) |> str_remove(kZipExtention) |> trimws()
+  unZipDirName <- input_zip_path |> basename() |> str_remove(kWhoddJapanCrtParts) |> str_remove(kZipExtention) |> trimws() 
   temp_unzipDir <- file.path(downloads_path, "tempUnzipWhodd")
   ExecUnzip(input_zip_path, temp_unzipDir)
   whoddZipFilePath <- temp_unzipDir |> list.files(pattern="*.zip", full.names=T)
-  unzipDir <- file.path(temp_unzipDir, awsDirName)
+  unzipDir <- file.path(temp_unzipDir, unZipDirName)
   ExecUnzip(whoddZipFilePath, unzipDir)
   version <- basename(whoddZipFilePath) |> str_extract("ver\\d{8}") |> str_remove("ver")
+  awsDirName <- unZipDirName %>% str_c(kAwsParentDirName, "/", .)
   return(list(awsDirName=awsDirName, unzipDir=unzipDir, version=version))
 }
 

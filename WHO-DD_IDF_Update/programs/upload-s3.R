@@ -2,7 +2,7 @@
 #' 
 #' @file upload-s3.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.23
+#' @date 2024.7.24
 # ------ libraries ------
 rm(list=ls())
 library(here)
@@ -27,7 +27,7 @@ targetIdfInfo <- GetIdfDownloadFilesInfoFromBox()
 for (i in 1:nrow(targetIdfInfo)) {
   idf_zip <- targetIdfInfo[i, "id", drop=T] |> flatten_chr() |> box_dl(downloads_path, overwrite=T)  
   idf_password <- targetIdfInfo[i, "password", drop=T]
-  temp <- UnzipIdf(idf_zip, awsDirName, idf_password)
+  temp <- UnzipIdf(idf_zip, idf_password)
   checkTargetYMD <- temp |> findFolder(str_c(idfVersion, "提供"))
   if (length(checkTargetYMD) > 0) {
     idfUnzipDir <- temp

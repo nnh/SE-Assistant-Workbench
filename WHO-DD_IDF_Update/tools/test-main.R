@@ -69,7 +69,7 @@ current_year <- Sys.Date() |> format("%Y") |> as.numeric()
 current_month <- Sys.Date() |> format("%m") |> as.numeric()
 whoddMonth <- ifelse(current_month >= 9 || current_month < 3,  "Sep", "Mar")
 whoddYear <- ifelse(current_month >= 3, current_year, current_year - 1)
-awsDirName <- str_c(whoddYear, " ", whoddMonth, " 1")
+awsDirName <- str_c(kAwsParentDirName ,"/", whoddYear, " ", whoddMonth, " 1")
 whoddFileName <- str_c("WHODrug Japan CRT ", whoddYear, " ", whoddMonth, " 1.zip")
 codingDirList <- kCodingDirId |> box_ls()
 for (i in 1:length(codingDirList)) {
