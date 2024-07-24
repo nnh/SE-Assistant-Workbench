@@ -2,7 +2,7 @@
 #' description
 #' @file common.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.22
+#' @date 2024.7.24
 # ------ libraries ------
 library(tidyverse)
 library(here)
@@ -25,4 +25,5 @@ source(here("programs", "functions", "common-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "box-functions.R"),  encoding="UTF-8")
 # ------ main ------
 dummy <- GetConfigText()
+dummy <- GetREnviron()
 downloads_path <- GetFolderPath("Downloads")

@@ -3,9 +3,48 @@
 #' Description: This script contains a set of utility functions commonly used across various R scripts.
 #' @file common-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.19
+#' @date 2024.7.24
 
 # ------ functions ------
+#' Get or create the .Renviron file and load environment variables
+#'
+#' This function checks for the existence of the .Renviron file in the user's home directory.
+#' If the file does not exist, it prompts the user to enter their AWS credentials and BOX client ID/secret,
+#' and writes these to the .Renviron file. The function then loads the environment variables.
+#' If the .Renviron file already exists, it simply loads the environment variables.
+#'
+#' @return None. The function modifies the .Renviron file if necessary and loads environment variables.
+#' @export
+#'
+#' @examples
+#' GetREnviron()
+GetREnviron <- function() {
+  home_dir <- GetHomeDir()
+  renv_file <- file.path(home_dir, ".Renviron")
+  
+  if (!file.exists(renv_file)) {
+    if (!exists("kAwsDefaultRegion")) {
+      stop("Error: Please add 'kAwsDefaultRegion' to the config and re-run.")
+    }
+    cat(".Renviron file not found. Creating .Renviron file...\n")
+    
+    aws_key <- readline(prompt = "Enter your AWS access key ID: ")
+    aws_secret <- readline(prompt = "Enter your AWS secret access key: ")
+    boxClientId <<- readline(prompt = "Enter BOX Client ID and press Enter: ")
+    boxClientSecret <<- readline(prompt = "Enter BOX Client Secret and press Enter: ")
+
+    
+    writeLines(sprintf("AWS_ACCESS_KEY_ID=%s", aws_key), con = renv_file)
+    cat(sprintf("AWS_SECRET_ACCESS_KEY=%s\n", aws_secret), file = renv_file, append = TRUE)
+    cat(sprintf("AWS_DEFAULT_REGION=%s\n", kAwsDefaultRegion), file = renv_file, append = TRUE)
+    cat(sprintf("BOX_CLIENT_ID=%s\n", boxClientId), file = renv_file, append = TRUE)
+    cat(sprintf("BOX_CLIENT_SECRET=%s\n", boxClientSecret), file = renv_file, append = TRUE)
+    
+  }
+  readRenviron(renv_file)
+  kBoxClientId <<- Sys.getenv("BOX_CLIENT_ID")
+  kBoxClientSecret <<- Sys.getenv("BOX_CLIENT_SECRET")
+}
 
 #' Get configuration text
 #'

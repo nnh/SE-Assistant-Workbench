@@ -8,8 +8,7 @@ rm(list=ls())
 library(here)
 # ------ constants ------
 # ------ functions ------
-source(here("programs", "functions", "box-functions.R"),  encoding="UTF-8")
+source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 # ------ main ------
 ### Box authenticate ###
-BoxAuthSettings()
 BoxAuth()
