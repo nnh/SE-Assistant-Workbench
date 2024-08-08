@@ -2,7 +2,7 @@
 #' This script includes functions to download WHODD and IDF files from Box.
 #' @file download-box.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.23
+#' @date 2024.8.7
 # ------ libraries ------
 # ------ constants ------
 # ------ functions ------
@@ -72,3 +72,20 @@ GetIdfDownloadFilesInfoFromBox <- function() {
   return(idfFileInfo)
 }
 
+GetMeddraDownloadFilesInfoFromBox <- function() {
+  meddraBoxDirInfo <- GetTargetDirInfo(kMeddraBoxDirName, kMeddra)
+  if (is.null(meddraBoxDirInfo$zipId)) {
+    stop("The specified directory is not found.")
+  }  
+  meddraFileInfo <- GetTargetMeddraFile(meddraBoxDirInfo)
+  return(meddraFileInfo)
+}
+
+GetTargetMeddraFile <- function(meddraBoxDirInfo) {
+  targetMeddraFiles <- meddraBoxDirInfo$zipId |> GetBoxTargetFiles(str_c(kMeddraZipParts, kZipExtention))
+  targetMeddraFiles$ver <- targetMeddraFiles$name |> str_extract(str_c("[0-9]+", kZipExtention)) |> str_remove(kZipExtention) |> as.numeric()
+  meddraFileInfo <- targetMeddraFiles |> filter(ver == max(ver)) 
+  meddraFileInfo$id |> flatten_chr() |> box_dl(downloads_path, overwrite=T)  
+  localPathMeddra <- meddraFileInfo$name %>% file.path(downloads_path, .)
+  return(localPathMeddra)
+}

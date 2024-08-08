@@ -3,7 +3,7 @@
 #' Description: This script contains a set of utility functions commonly used across various R scripts.
 #' @file common-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.24
+#' @date 2024.8.7
 
 # ------ functions ------
 #' Get or create the .Renviron file and load environment variables
@@ -140,9 +140,13 @@ GetTargetFilesList <- function(filename) {
 #' @importFrom stringr str_c str_detect
 GetDownloadFiles <- function() {
   zipFiles <- downloads_path |> list.files(pattern=str_c("*", kZipExtention))
+  meddra <- zipFiles |> GetTargetFiles(str_c(kMeddraZipParts, ".*", kZipExtention, "$"))
   whodd <- zipFiles |> GetTargetFiles(str_c(kWhoddJapanCrtParts, ".*", kZipExtention, "$"))
   whoddZip <- zipFiles |> GetTargetFiles(str_c("(?i)^WHODrug\\s.*", kZipExtention ,"$"))
   idf <- zipFiles |> GetTargetFiles(kIdfFileNameString)
+  if (length(meddra) > 1) {
+    stop("Error: Multiple medDRA zip files found. Please ensure that only one medDRA zip file is present in the specified directory.")
+  }
   if (length(whodd) > 1) {
     stop("Error: Multiple WHODrug zip files found. Please ensure that only one WHODrug zip file is present in the specified directory.")
   }
@@ -150,6 +154,7 @@ GetDownloadFiles <- function() {
     stop("Error: Multiple idf zip files found. Please ensure that only one idf zip file is present in the specified directory.")
   }
   res <- list()
+  res[[kMeddra]] <- meddra |> GetTargetFilesList()
   res[[kIdf]] <- idf |> GetTargetFilesList()
   res[[kWhodd]] <- whodd |> GetTargetFilesList()
   res[[kWhoddZip]] <- whoddZip |> map( ~ GetTargetFilesList(.))
@@ -243,4 +248,3 @@ GetCopyFileInfo <- function(targetList) {
   })  
   return(copyFiles)
 }
-
