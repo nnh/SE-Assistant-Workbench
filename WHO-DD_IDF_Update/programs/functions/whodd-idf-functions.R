@@ -2,7 +2,7 @@
 #' Description: This script includes functions to unzip IDF and WHODD files, and save them to Box.
 #' @file whodd-idf-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.24
+#' @date 2024.8.7
 # ------ functions ------
 UnzipIdf <- function(input_zip_path, idf_password) {
   if (is.null(input_zip_path)) {
@@ -30,4 +30,14 @@ UnzipWhodd <- function(input_zip_path) {
   awsDirName <- unZipDirName %>% str_c(kAwsParentDirName, "/", .)
   return(list(awsDirName=awsDirName, unzipDir=unzipDir, version=version))
 }
+UnzipMeddra <- function(input_zip_path) {
+  if (is.null(input_zip_path)) {
+    return(NA)
+  }
+  temp_version <- basename(input_zip_path) |> str_extract(str_c("\\d+", kZipExtention)) |> str_remove(kZipExtention)
+  version <- str_c(str_sub(temp_version, 1, 2), str_sub(temp_version, 3, -1), sep = ".")
 
+  unzipDir <- file.path(downloads_path, "tempUnzipMeddra")
+  ExecUnzip(input_zip_path, unzipDir)
+  return(list(unzipDir=unzipDir, version=version))
+}

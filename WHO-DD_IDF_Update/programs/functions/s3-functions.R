@@ -3,7 +3,7 @@
 #' Description: This script includes functions to interact with AWS S3, including setting up the environment and uploading files to specified S3 folders.
 #' @file s3-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.22
+#' @date 2024.8.8
 # ------ libraries ------
 library("aws.s3")
 # ------ constants ------
@@ -46,3 +46,25 @@ UploadToS3 <- function(copyFiles) {
     }
   }
 }
+
+UploadDirectoryToS3 <- function(local_dir, aws_dir) {
+  files_and_dirs <- dir_ls(local_dir, recurse=T)
+  
+  for (i in 1:length(files_and_dirs)) {
+    item <- files_and_dirs[i]
+    relative_path <- path_rel(item, start=local_dir)
+    s3_key <- path(aws_dir, relative_path)
+    
+    if (dir_exists(item)) {
+      put_object(what=raw(0), object=paste0(s3_key, "/"), bucket=kAwsBucketName, region=kAwsDefaultRegion)
+    } else {
+      file_size <- file.info(item)$size
+      if (file_size > 5 * 1024 * 1024) {  # 5MBを超える場合はマルチパートアップロードを推奨
+          put_object(file = item, object = s3_key, bucket = kAwsBucketName, region = kAwsDefaultRegion, multipart = TRUE)
+      } else {
+          put_object(file = item, object = s3_key, bucket = kAwsBucketName, region = kAwsDefaultRegion)
+      }
+    }
+  }
+}
+
