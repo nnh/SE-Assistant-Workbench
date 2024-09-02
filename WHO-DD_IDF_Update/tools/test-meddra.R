@@ -10,7 +10,7 @@ source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 library(daff)
 library(aws.s3)
 # ------ constants ------
-kTargetVer <- "27.0"
+kTargetVer <- "27.1"
 # ------ functions ------
 source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 DownloadAllS3Objects <- function(local_root) {
