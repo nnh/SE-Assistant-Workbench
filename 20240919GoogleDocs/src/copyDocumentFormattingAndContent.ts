@@ -10,12 +10,27 @@ function copyDocumentFormattingAndContent(): void {
   const sourceBody: any = sourceDoc.body;
   const sourceContent: any[] = sourceBody.content;
   const documentStyle: any = sourceDoc.documentStyle;
-  const sourceNamedStyles: any = sourceDoc.namedStyles;
-  const test = sourceNamedStyles.styles.map((style: any) => {
-    const namedStyleType = style.namedStyleType;
-    const paragraphStyle = style.paragraphStyle;
-    return { namedStyleType, paragraphStyle };
+  const tempSourceNamedStyles = sourceDoc.namedStyles;
+  let styles = Array(tempSourceNamedStyles.styles.length);
+  const sortOrderArray: [string, number][] = [
+    'TITLE',
+    'SUBTITLE',
+    'HEADING_1',
+    'HEADING_2',
+    'HEADING_3',
+    'HEADING_4',
+    'NORMAL_TEXT',
+    'HEADING_5',
+    'HEADING_6',
+  ].map((x, idx) => [x, idx]);
+  const sortOrder: Map<string, number> = new Map(sortOrderArray);
+  tempSourceNamedStyles.styles.forEach((style: any) => {
+    const index = sortOrder.get(style.namedStyleType);
+    if (index !== undefined) {
+      styles[index] = style;
+    }
   });
+  const sourceNamedStyles = { styles };
 
   const newDoc: any = Docs.Documents?.create({
     title: 'Copied Document',
@@ -86,7 +101,7 @@ function copyDocumentFormattingAndContent(): void {
           } as any, // updateDocumentStyle の型を any にキャスト
         },
         // 文書全体のフォントをメイリオ10ptに設定
-        {
+        /*        {
           updateTextStyle: {
             textStyle: {
               weightedFontFamily: {
@@ -104,15 +119,61 @@ function copyDocumentFormattingAndContent(): void {
             },
             fields: 'weightedFontFamily,fontSize', // 更新するフィールドを指定
           },
-        },
+        },*/
       ] as any, // requests 全体を any にキャスト
     },
     newDocId // 新しいドキュメントのID
   );
 
   const targetInsertRequests = insertRequests.filter(x => x.insertText);
+  const textStyleRequests = sourceNamedStyles.styles.map(
+    (style: any, idx: number) => {
+      const startIndex =
+        idx === 0
+          ? 1
+          : targetInsertRequests[idx - 1].insertText.location.index +
+            targetInsertRequests[idx - 1].insertText.text.length; // 前の要素の終了インデックスを取得
+      const endIndex =
+        startIndex + targetInsertRequests[idx].insertText.text.length; // 各段落が1行であると仮定
+      const bold =
+        style.textStyle.bold !== undefined ? style.textStyle.bold : false;
+      const fontSize =
+        style.textStyle.fontSize !== undefined
+          ? style.textStyle.fontSize.magnitude
+          : 10;
+      return {
+        updateTextStyle: {
+          textStyle: {
+            weightedFontFamily: {
+              fontFamily: 'Meiryo', // フォントをメイリオに設定
+              weight: 400, // 通常のフォントウェイト
+            },
+            fontSize: {
+              magnitude: fontSize,
+              unit: 'PT',
+            },
+            bold: bold,
+          },
+          range: {
+            startIndex: startIndex,
+            endIndex: endIndex, // 新しい文書の範囲を指定
+          },
+          fields: 'fontSize', // フィールドを指定
+        },
+      };
+    }
+  );
+  if (textStyleRequests.length > 0) {
+    Docs.Documents?.batchUpdate(
+      {
+        requests: textStyleRequests,
+      },
+      newDocId
+    );
+  }
+
   // 元の文書のスタイルを新しい文書に適用
-  const styleRequests = sourceNamedStyles.styles.map(
+  /*  const paragraphStyleRequests = sourceNamedStyles.styles.map(
     (style: any, idx: number) => {
       const startIndex =
         idx === 0
@@ -123,24 +184,21 @@ function copyDocumentFormattingAndContent(): void {
 
       return {
         updateParagraphStyle: {
-          paragraphStyle: {
-            namedStyleType: style.namedStyleType,
-            alignment: style.paragraphStyle.alignment,
-          },
+          paragraphStyle: style.paragraphStyle,
           range: {
             startIndex: startIndex,
             endIndex: endIndex, // 新しい文書の範囲を指定
           },
-          fields: 'namedStyleType,alignment', // フィールドを指定
+          fields: '*', // フィールドを指定
         },
       };
     }
   );
 
-  if (styleRequests.length > 0) {
+  if (paragraphStyleRequests.length > 0) {
     Docs.Documents?.batchUpdate(
       {
-        requests: styleRequests,
+        requests: paragraphStyleRequests,
       },
       newDocId
     );
