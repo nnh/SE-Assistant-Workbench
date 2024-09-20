@@ -10,7 +10,7 @@ source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 library(daff)
 library(readxl)
 # ------ constants ------
-kIdfTargetZipName <- "mtlt202310_all.zip"
+kIdfTargetZipName <- "mtlt202401_all.zip"
 kIdfPasswordFilename <- kIdfTargetZipName |> str_replace(".zip", "_pw.txt")
 kTestIdMapping <- "IDMapping.csv"
 kTestWHODDsGenericNames <- "WHODDsGenericNames.csv"
