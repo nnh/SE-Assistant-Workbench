@@ -100,26 +100,6 @@ function copyDocumentFormattingAndContent(): void {
               'pageSize,marginTop,marginBottom,marginLeft,marginRight,marginHeader,marginFooter',
           } as any, // updateDocumentStyle の型を any にキャスト
         },
-        // 文書全体のフォントをメイリオ10ptに設定
-        /*        {
-          updateTextStyle: {
-            textStyle: {
-              weightedFontFamily: {
-                fontFamily: 'Meiryo', // フォントをメイリオに設定
-                weight: 400, // 通常のフォントウェイト
-              },
-              fontSize: {
-                magnitude: 10, // サイズを10ptに設定
-                unit: 'PT',
-              },
-            },
-            range: {
-              startIndex: 1,
-              endIndex: currentIndex, // 文書の全テキスト範囲を指定
-            },
-            fields: 'weightedFontFamily,fontSize', // 更新するフィールドを指定
-          },
-        },*/
       ] as any, // requests 全体を any にキャスト
     },
     newDocId // 新しいドキュメントのID
@@ -158,22 +138,13 @@ function copyDocumentFormattingAndContent(): void {
             startIndex: startIndex,
             endIndex: endIndex, // 新しい文書の範囲を指定
           },
-          fields: 'fontSize', // フィールドを指定
+          fields: 'fontSize, bold, weightedFontFamily', // フィールドを指定
         },
       };
     }
   );
-  if (textStyleRequests.length > 0) {
-    Docs.Documents?.batchUpdate(
-      {
-        requests: textStyleRequests,
-      },
-      newDocId
-    );
-  }
 
-  // 元の文書のスタイルを新しい文書に適用
-  /*  const paragraphStyleRequests = sourceNamedStyles.styles.map(
+  const paragraphStyleRequests = sourceNamedStyles.styles.map(
     (style: any, idx: number) => {
       const startIndex =
         idx === 0
@@ -203,34 +174,14 @@ function copyDocumentFormattingAndContent(): void {
       newDocId
     );
   }
-  /*
-  const namedStyleType = sourceNamedStyles.styles[7].namedStyleType;
-  const titleParagraphStyle = sourceNamedStyles.styles[7].paragraphStyle;
-
-  const styleRequests = [
-    {
-      updateParagraphStyle: {
-        paragraphStyle: {
-          namedStyleType: 'TITLE',
-          alignment: 'CENTER',
-        },
-        range: {
-          startIndex: 1, // 適用する範囲を調整
-          endIndex: currentIndex, // 新しい文書の範囲を指定
-        },
-        fields: 'namedStyleType,alignment', // フィールドを指定
-      },
-    },
-  ];
-
-  if (styleRequests.length > 0) {
+  if (textStyleRequests.length > 0) {
     Docs.Documents?.batchUpdate(
       {
-        requests: styleRequests,
+        requests: textStyleRequests,
       },
       newDocId
     );
   }
-*/
+
   console.log('New document created with ID:', newDoc.documentId);
 }
