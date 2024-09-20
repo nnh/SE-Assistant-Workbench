@@ -33,7 +33,7 @@ function copyDocumentFormattingAndContent(): void {
   const sourceNamedStyles = { styles };
 
   const newDoc: any = Docs.Documents?.create({
-    title: 'Copied Document',
+    title: 'test20240919',
   });
   const newDocId: string = newDoc.documentId;
 
@@ -104,6 +104,109 @@ function copyDocumentFormattingAndContent(): void {
     },
     newDocId // 新しいドキュメントのID
   );
+  // 標準テキスト// updateTextStyleリクエストを生成
+  const updateTextStyleRequests = sourceNamedStyles.styles.map((style: any) => {
+    // ドキュメント全体を対象にするためのstartIndexとendIndex
+    const startIndex = 1;
+    const endIndex = 100;
+
+    return {
+      updateTextStyle: {
+        textStyle: {
+          weightedFontFamily: {
+            fontFamily: 'Meiryo', // フォントをメイリオに設定
+            weight: 400, // 通常のフォントウェイト
+          },
+          fontSize: {
+            magnitude: 10,
+            unit: 'PT',
+          },
+        },
+        range: {
+          startIndex: startIndex,
+          endIndex: endIndex, // ドキュメント全体を指定
+        },
+        fields: 'weightedFontFamily,fontSize', // フォントとサイズを更新
+      },
+    };
+  });
+
+  // updateParagraphStyleリクエストを生成
+  const updateParagraphStyleRequests = sourceNamedStyles.styles.map(
+    (style: any) => {
+      // ドキュメント全体を対象にするためのstartIndexとendIndex
+      const startIndex = 1;
+      const endIndex = 100;
+
+      // 段落スタイルのデフォルト値を設定
+      const paragraphStyle = style.paragraphStyle || {};
+
+      // spaceAboveが未定義の場合は0ptを設定
+      if (paragraphStyle.spaceAbove === undefined) {
+        paragraphStyle.spaceAbove = {
+          magnitude: 0,
+          unit: 'PT',
+        };
+      }
+
+      // spaceBelowが未定義の場合は0ptを設定
+      if (paragraphStyle.spaceBelow === undefined) {
+        paragraphStyle.spaceBelow = {
+          magnitude: 0,
+          unit: 'PT',
+        };
+      }
+
+      // 行間隔が未定義の場合は1.15を設定
+      if (paragraphStyle.lineSpacing === undefined) {
+        paragraphStyle.lineSpacing = 115;
+      }
+
+      // 行を孤立させない設定が未定義の場合はtrueを設定
+      if (paragraphStyle.avoidWidowAndOrphan === undefined) {
+        paragraphStyle.avoidWidowAndOrphan = true;
+      }
+
+      // 段落の行を分割しない設定が未定義の場合はfalseを設定
+      if (paragraphStyle.keepLinesTogether === undefined) {
+        paragraphStyle.keepLinesTogether = false;
+      }
+
+      // 次の段落と分離しない設定が未定義の場合はfalseを設定
+      if (paragraphStyle.keepWithNext === undefined) {
+        paragraphStyle.keepWithNext = false;
+      }
+
+      return {
+        updateParagraphStyle: {
+          paragraphStyle: paragraphStyle,
+          range: {
+            startIndex: startIndex,
+            endIndex: endIndex, // ドキュメント全体を指定
+          },
+          fields:
+            'lineSpacing,avoidWidowAndOrphan,keepLinesTogether,keepWithNext,spaceAbove,spaceBelow', // スタイルフィールドを指定
+        },
+      };
+    }
+  );
+
+  if (updateTextStyleRequests.length > 0) {
+    Docs.Documents?.batchUpdate(
+      {
+        requests: updateTextStyleRequests,
+      },
+      newDocId
+    );
+  }
+  if (updateParagraphStyleRequests.length > 0) {
+    Docs.Documents?.batchUpdate(
+      {
+        requests: updateParagraphStyleRequests,
+      },
+      newDocId
+    );
+  }
 
   const targetInsertRequests = insertRequests.filter(x => x.insertText);
   const textStyleRequests = sourceNamedStyles.styles.map(
@@ -133,12 +236,21 @@ function copyDocumentFormattingAndContent(): void {
               unit: 'PT',
             },
             bold: bold,
+            foregroundColor: {
+              color: {
+                rgbColor: {
+                  red: 0,
+                  green: 0,
+                  blue: 0,
+                },
+              },
+            },
           },
           range: {
             startIndex: startIndex,
             endIndex: endIndex, // 新しい文書の範囲を指定
           },
-          fields: 'fontSize, bold, weightedFontFamily', // フィールドを指定
+          fields: 'fontSize, bold, weightedFontFamily, foregroundColor', // フィールドを指定
         },
       };
     }
@@ -152,6 +264,20 @@ function copyDocumentFormattingAndContent(): void {
           : targetInsertRequests[idx - 1].insertText.location.index +
             targetInsertRequests[idx - 1].insertText.text.length; // 前の要素の終了インデックスを取得
       const endIndex = startIndex + 1; // 各段落が1行であると仮定
+      const paragraphStyle = style.paragraphStyle;
+      if (paragraphStyle.spaceAbove === undefined) {
+        paragraphStyle.spaceAbove = {
+          magnitude: 0,
+          unit: 'PT',
+        };
+      }
+      if (paragraphStyle.spaceBelow === undefined) {
+        paragraphStyle.spaceBelow = {
+          magnitude: 0,
+          unit: 'PT',
+        };
+      }
+      paragraphStyle.lineSpacing = 80;
 
       return {
         updateParagraphStyle: {
