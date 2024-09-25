@@ -1,4 +1,39 @@
 function main(): void {
+  const parentFolderId: string | null =
+    PropertiesService.getScriptProperties().getProperty('parentFolderId');
+  if (parentFolderId === null) {
+    throw new Error('No parentFolderId');
+  }
+  const dcFolderId: string | null =
+    PropertiesService.getScriptProperties().getProperty('dcFolderId');
+  if (dcFolderId === null) {
+    throw new Error('No dcFolderId');
+  }
+  const otherFolderId: string | null =
+    PropertiesService.getScriptProperties().getProperty('otherFolderId');
+  if (otherFolderId === null) {
+    throw new Error('No otherFolderId');
+  }
+  const targetFolders: GoogleAppsScript.Drive.Folder[] = [
+    parentFolderId,
+    dcFolderId,
+    otherFolderId,
+  ].map(x => DriveApp.getFolderById(x));
+  if (targetFolders.some(x => x === null)) {
+    throw new Error('No target folder');
+  }
+  const [parentFolder, dcFolder, otherFolder] = targetFolders;
+  const dcAndOtherFolders: GoogleAppsScript.Drive.Folder[] = [
+    dcFolder,
+    otherFolder,
+  ]
+    .map(getFolders_)
+    .flat();
+  const inputFolders: GoogleAppsScript.Drive.Folder[] = [
+    parentFolder,
+    ...dcAndOtherFolders,
+  ];
+  const targetFilesInfo: string[][][] = inputFolders.map(x => getFiles_(x));
   const spreadsheetId: string | null =
     PropertiesService.getScriptProperties().getProperty('testSsId');
   if (spreadsheetId === null) {
@@ -7,6 +42,31 @@ function main(): void {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     SpreadsheetApp.openById(spreadsheetId);
   modSpreadSheet_(spreadsheet);
+}
+function getFiles_(folder: GoogleAppsScript.Drive.Folder): string[][] {
+  const folderId: string = folder.getId();
+  const folderName: string = folder.getName();
+  const files: GoogleAppsScript.Drive.FileIterator = folder.getFiles();
+  const filesArray: GoogleAppsScript.Drive.File[] = [];
+  while (files.hasNext()) {
+    filesArray.push(files.next());
+  }
+  const res: string[][] = filesArray.map(x => {
+    const fileId: string = x.getId();
+    const fileName: string = x.getName();
+    return [folderId, folderName, fileId, fileName];
+  });
+  return res;
+}
+function getFolders_(
+  folder: GoogleAppsScript.Drive.Folder
+): GoogleAppsScript.Drive.Folder[] {
+  const folders: GoogleAppsScript.Drive.FolderIterator = folder.getFolders();
+  const foldersArray: GoogleAppsScript.Drive.Folder[] = [];
+  while (folders.hasNext()) {
+    foldersArray.push(folders.next());
+  }
+  return foldersArray;
 }
 function modSpreadSheet_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet
