@@ -1,3 +1,60 @@
+function mod20240927(): void {
+  // baseのコピーとかを個別修正
+  const inputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+      'Baseのコピーたちを修正'
+    );
+  if (inputSheet === null) {
+    throw new Error('No sheet');
+  }
+  const targets: string[][] = inputSheet.getRange('A1:B3').getValues();
+  targets.forEach(([sheetId, sheetName]) => {
+    const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
+      SpreadsheetApp.openById(sheetId);
+    if (spreadsheet === null) {
+      throw new Error('No spreadsheet');
+    }
+    modSpreadSheet_(spreadsheet, sheetName);
+  });
+}
+function test20240927(): void {
+  const inputSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+      '修正対象スプレッドシート'
+    );
+  if (inputSheet === null) {
+    throw new Error('No sheet');
+  }
+  const outputSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+      'Baseシートっぽいやつ'
+    );
+  if (outputSheet === null) {
+    throw new Error('No sheet');
+  }
+  outputSheet.clear();
+  const sheetIdList: string[] = inputSheet
+    .getRange(1, 3, inputSheet.getLastRow(), 1)
+    .getValues()
+    .flat();
+  const outputValues: string[][] = sheetIdList.map(sheetId => {
+    const spreadsheet = SpreadsheetApp.openById(sheetId);
+    if (spreadsheet === null) {
+      throw new Error('No spreadsheet');
+    }
+    const sheetNames: string[] = spreadsheet
+      .getSheets()
+      .map(sheet => sheet.getName());
+    const basesheet = sheetNames
+      .filter(sheetName => /base/i.test(sheetName))
+      .join(',');
+    const res = [sheetId, basesheet];
+    return res;
+  });
+  outputSheet
+    .getRange(1, 1, outputValues.length, outputValues[0].length)
+    .setValues(outputValues);
+}
 function main(): void {
   const sheetIdColNumber: number = 3;
   const inputSheet: GoogleAppsScript.Spreadsheet.Sheet =
@@ -42,10 +99,11 @@ function getFolders_(
   return foldersArray;
 }
 function modSpreadSheet_(
-  spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet
+  spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  sheetName: string = 'Base'
 ): void {
   const targetSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
-    spreadsheet.getSheetByName('Base');
+    spreadsheet.getSheetByName(sheetName);
   if (targetSheet === null) {
     console.log(
       `No target sheet in the spreadsheet: ${spreadsheet.getName()} (URL: ${spreadsheet.getUrl()})`
