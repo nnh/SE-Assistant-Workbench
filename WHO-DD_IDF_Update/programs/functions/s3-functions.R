@@ -3,7 +3,7 @@
 #' Description: This script includes functions to interact with AWS S3, including setting up the environment and uploading files to specified S3 folders.
 #' @file s3-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2024.8.8
+#' @date 2024.9.30
 # ------ libraries ------
 library("aws.s3")
 # ------ constants ------
@@ -21,11 +21,24 @@ UploadToS3Folder <- function(folder_name, file_path, object_name) {
     folder_name <- paste0(folder_name, "/")
   }
   full_object_name <- paste0(folder_name, object_name)
-  res <- put_object(
-    file = file_path, 
-    object = full_object_name, 
-    bucket = kAwsBucketName
-  )
+  file_size <- file.info(file_path)$size
+
+  if (file_size > 5 * 1024 * 1024) {  # 5MBを超える場合はマルチパートアップロードを推奨
+    res <- put_object(
+      file = file_path,
+      object = full_object_name,
+      bucket = kAwsBucketName,
+      region = kAwsDefaultRegion,
+      multipart = T
+    )
+  } else {
+    res <- put_object(
+      file = file_path,
+      object = full_object_name,
+      bucket = kAwsBucketName,
+      region = kAwsDefaultRegion
+    )
+  }
   return(res)
 }
 
@@ -43,27 +56,6 @@ UploadToS3 <- function(copyFiles) {
     res <- UploadToS3Folder(awsDir, path, filename)
     if (!res) {
       stop("aws push error.")
-    }
-  }
-}
-
-UploadDirectoryToS3 <- function(local_dir, aws_dir) {
-  files_and_dirs <- dir_ls(local_dir, recurse=T)
-  
-  for (i in 1:length(files_and_dirs)) {
-    item <- files_and_dirs[i]
-    relative_path <- path_rel(item, start=local_dir)
-    s3_key <- path(aws_dir, relative_path)
-    
-    if (dir_exists(item)) {
-      put_object(what=raw(0), object=paste0(s3_key, "/"), bucket=kAwsBucketName, region=kAwsDefaultRegion)
-    } else {
-      file_size <- file.info(item)$size
-      if (file_size > 5 * 1024 * 1024) {  # 5MBを超える場合はマルチパートアップロードを推奨
-          put_object(file = item, object = s3_key, bucket = kAwsBucketName, region = kAwsDefaultRegion, multipart = TRUE)
-      } else {
-          put_object(file = item, object = s3_key, bucket = kAwsBucketName, region = kAwsDefaultRegion)
-      }
     }
   }
 }
