@@ -2,7 +2,7 @@
 #' 
 #' @file upload-meddra-s3.R
 #' @author Mariko Ohtsuka
-#' @date 2024.8.7
+#' @date 2024.9.30
 # ------ libraries ------
 rm(list=ls())
 library(here)
@@ -24,5 +24,15 @@ if (!exists("unzipDir")) {
   stop("unzip error.")
 }
 meddraDir <- unzipDir|> list.dirs(full.names=T, recursive=F)
+asciiDir <- meddraDir |> file.path("ASCII")
+targetDir <- asciiDir |> list.dirs(full.names=T, recursive=F) |> str_extract("^.*_UTF8$") |> na.omit()
+targetFiles <- targetDir |> list.files(full.names=T)
 aws_dir <- str_c(kMeddraAwsParentDirName, "/", version)
-UploadDirectoryToS3(meddraDir, aws_dir)
+copyFiles <- targetFiles |> map( ~ {
+  res <- list()
+  res$path <- .
+  res$filename <- basename(.)
+  res$awsDir <- aws_dir
+  return(res)
+})
+UploadToS3(copyFiles)
