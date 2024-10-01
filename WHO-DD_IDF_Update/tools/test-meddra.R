@@ -9,14 +9,16 @@ library(here)
 source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 library(daff)
 library(aws.s3)
+library(jsonlite)
 # ------ constants ------
-kTargetVer <- "27.1"
+versions <- here("ext", "version.json") |> read_json()
+s3TargetDirName <- versions$version$MedDRA
 # ------ functions ------
 source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 DownloadAllS3Objects <- function(local_root) {
   objects <- get_bucket(bucket=kAwsBucketName, region=kAwsDefaultRegion)
   raw_object_keys <- objects |> map_chr(~ .x$Key)
-  object_keys <- raw_object_keys |> str_extract(str_c("^", kMeddraAwsParentDirName, "/", kTargetVer, ".*$")) %>% na.omit()
+  object_keys <- raw_object_keys |> str_extract(str_c("^", kMeddraAwsParentDirName, "/", s3TargetDirName, ".*$")) %>% na.omit()
   object_keys |> walk(~ {
     local_file <- file.path(local_root, .x)
     cat("Attempting to download to:", local_file, "\n")  # デバッグメッセージ
@@ -72,7 +74,10 @@ CreateDir(testDir)
 # box
 boxDownloadDir <- "box" |> CreateMeddraTestDir()
 boxZipFromDir <- file.path(homeDir, "\\Box\\References\\Coding\\MedDRA\\圧縮ファイル") 
-boxZipFileName <- kMeddra |>toupper() %>% str_c("^.*\\", ., "J", str_remove(kTargetVer, "\\."), kZipExtention, "$")
+temp <- boxZipFromDir |> list.files(pattern="zip") |> str_extract("MEDDRAJ[0-9]{3}\\.zip") |>
+  str_extract("[0-9]{3}") |> as.numeric() |> max() |> as.character()
+boxTargetVer <- str_c(str_sub(temp, 1, 2), ".", str_sub(temp, 3, 3))
+boxZipFileName <- kMeddra |>toupper() %>% str_c("^.*\\", ., "J", str_remove(boxTargetVer, "\\."), kZipExtention, "$")
 boxZipPath <- list.files(boxZipFromDir, full.names=T) |> str_extract(boxZipFileName) |> na.omit()
 if (length(boxZipPath) != 1) {
   stop("box file download error.")
@@ -84,13 +89,13 @@ ExecUnzip(boxZipPath, boxDownloadDir)
 # aws
 downloadFromAwsDir <- "aws" |> CreateMeddraTestDir()
 CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName))
-CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName, kTargetVer))
-object_key <- str_c(kMeddraAwsParentDirName, "/", kTargetVer)
+CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName, s3TargetDirName))
+object_key <- str_c(kMeddraAwsParentDirName, "/", s3TargetDirName)
 DownloadAllS3Objects(downloadFromAwsDir)
 
 # compare
 ## filename
-awsTargetPath <- file.path(downloadFromAwsDir, kMeddraAwsParentDirName, kTargetVer)
+awsTargetPath <- file.path(downloadFromAwsDir, kMeddraAwsParentDirName, s3TargetDirName)
 awsFilenames <- list.files(awsTargetPath, recursive=T)
 boxTargetPath <- file.path(boxDownloadDir, "MEDDRAJ", "ASCII") |> list.files(full.name=T) |> str_extract("^.*_UTF8") |> na.omit()
 boxFilenames <- list.files(boxTargetPath, recursive=T)

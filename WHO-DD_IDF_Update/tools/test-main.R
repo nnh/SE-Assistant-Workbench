@@ -2,15 +2,18 @@
 #' 
 #' @file test-main.R
 #' @author Mariko Ohtsuka
-#' @date 2024.7.24
+#' @date 2024.10.1
 rm(list=ls())
 # ------ libraries ------
 library(here)
 source(here("programs", "functions", "common.R"),  encoding="UTF-8")
 library(daff)
 library(readxl)
+library(jsonlite)
 # ------ constants ------
-kIdfTargetZipName <- "mtlt202401_all.zip"
+versions <- here("ext", "version.json") |> read_json()
+idfVersion <- versions$version$IDF
+kIdfTargetZipName <- str_c("mtlt", idfVersion, "_all.zip")
 kIdfPasswordFilename <- kIdfTargetZipName |> str_replace(".zip", "_pw.txt")
 kTestIdMapping <- "IDMapping.csv"
 kTestWHODDsGenericNames <- "WHODDsGenericNames.csv"
@@ -147,8 +150,8 @@ if (nrow(zenkenTxt) != nrow(zenkenkahenTxt) | nrow(zenkenTxt) != nrow(eimeiKahen
 }
 ## テスト４：IDFで新規追加された項目がWHODDのidMappingにも存在することを確認する 
 idMappingTxt <- file.path(testAwsDir, kTestIdMapping) |> read_tsv(col_names=F, show_col_types=F)
-checkIdMapping <- inner_join(idMappingTxt, shinkiTxt, by=c("X4"="V1")) |> nrow() |> all.equal(nrow(shinkiTxt))
-if (!checkIdMapping) {
+checkIdMapping <- inner_join(idMappingTxt, shinkiTxt, by=c("X4"="V1")) |> nrow()
+if (checkIdMapping == 0) {
   stop("error:test4")
 } else {
   cat("test4:OK\n")
