@@ -2,7 +2,7 @@
 #' 
 #' @file test-meddra.R
 #' @author Mariko Ohtsuka
-#' @date 2024.8.8
+#' @date 2024.10.1
 rm(list=ls())
 # ------ libraries ------
 library(here)
@@ -82,7 +82,7 @@ boxUnzipDir <- file.path(boxDownloadDir, "test")
 CreateDir(boxUnzipDir)
 ExecUnzip(boxZipPath, boxDownloadDir)
 # aws
-downloadFromAwsDir <- awsDownloadDir <- "aws" |> CreateMeddraTestDir()
+downloadFromAwsDir <- "aws" |> CreateMeddraTestDir()
 CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName))
 CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName, kTargetVer))
 object_key <- str_c(kMeddraAwsParentDirName, "/", kTargetVer)
@@ -92,7 +92,7 @@ DownloadAllS3Objects(downloadFromAwsDir)
 ## filename
 awsTargetPath <- file.path(downloadFromAwsDir, kMeddraAwsParentDirName, kTargetVer)
 awsFilenames <- list.files(awsTargetPath, recursive=T)
-boxTargetPath <- file.path(boxDownloadDir, "MEDDRAJ")
+boxTargetPath <- file.path(boxDownloadDir, "MEDDRAJ", "ASCII") |> list.files(full.name=T) |> str_extract("^.*_UTF8") |> na.omit()
 boxFilenames <- list.files(boxTargetPath, recursive=T)
 if (identical(awsFilenames, boxFilenames)) {
   print("filecount ok.")
