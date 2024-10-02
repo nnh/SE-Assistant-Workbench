@@ -3,7 +3,7 @@ Hokkaido Canc Ctr
 Hirosaki General Med Ctr
 Morioka Med Ctr
 Sendai Med Ctr
-Akita Hosp
+^Akita Hosp$
 Yamagata Hosp
 Fukushima Hosp
 Mito Med Ctr
@@ -11,8 +11,9 @@ Tochigi Med Ctr
 Takasaki General Med Ctr
 Takasaki Gen Med Ctr
 Nishi-Saitama Central Hosp
-Chiba Med Ctr
-Tokyo Med Ctr
+^Chiba Med Ctr$
+^Tokyo Med Ctr$
+^Natl Tokyo Med Ctr$
 Yokohama Med Ctr
 Nishi-Niigata Central Hosp
 Kofu Hosp
@@ -29,7 +30,7 @@ Tsuruga Med Ctr
 Higashi-Omi General Med Ctr
 Kyoto Med Ctr
 Osaka Med Ctr
-Kobe Med Ctr
+^Kobe Med Ctr$
 Nara Med Ctr
 Minami-Wakayama Med Ctr
 Tottori Med Ctr
@@ -43,7 +44,7 @@ Shikoku Canc Ctr
 Kochi Hosp
 Kitakyushu Med Ctr
 Saga Hosp
-Nagasaki Hosp
+^Nagasaki Hosp$
 Kumamoto Med Ctr
 Oita Med Ctr
 Miyazaki East Hosp
@@ -63,23 +64,23 @@ Yonezawa Hosp
 Iwaki Hosp
 Kasumigaura Med Ctr
 Ibaraki East Hosp
-Utsunomiya Hosp
+^Utsunomiya Hosp$
 Numata Hosp
 Shibukawa Med Ctr
-Saitama Hosp
+^Saitama Hosp$
 Higashi-Saitama Hosp
 Chiba East Hosp
 Shimousa Psychiatric Med Ctr
 Shimoshizu Hosp
 Disaster Med Ctr
-Tokyo Hosp
+^Tokyo Hosp$
 Murayama Med Ctr
 Kurihama Med Ctr
 Hakone Hosp
 Sagamihara Hosp
 Sagamihara Natl Hosp
 Kanagawa Hosp
-Niigata Hosp
+^Niigata Hosp$
 Saigata Med Ctr
 Matsumoto Med Ctr
 Shinshu Ueda Med Ctr
@@ -129,7 +130,7 @@ Ehime Med Ctr
 Kyushu Canc Ctr
 Kyushu Med Ctr
 Fukuoka Hosp
-Omuta Hosp
+^Omuta Hosp$
 Fukuoka East Med Ctr
 Fukuoka Higashi Med Ctr
 Hizen Psychiatric Med Ctr
@@ -143,7 +144,7 @@ Kumamoto Saishun Med Ctr
 Beppu Med Ctr
 Nishi-Beppu Hosp
 Miyakonojo Med Ctr
-Miyazaki Hosp
+^Miyazaki Hosp$
 Ibusuki Med Ctr
 Minami-Kyushu Hosp
 Ryukyu Hosp
@@ -152,3 +153,4 @@ NishiNiigata Chuo Hosp
 Toneyama Med Ctr
 Osaka Minami Med Ctr
 Kokura Med Ctr
+^Natl Saitama Hosp$
