@@ -6,6 +6,7 @@
 # ------ libraries ------
 library(tidyverse)
 library(jsonlite)
+library(rvest)
 # ------ constants ------
 nhoHospName <- here("nhoHospname.txt") |> readLines()
 nhoUid <- here("nho_uid.txt") |> readLines() |> as.data.frame() |> setNames("uid")
@@ -234,21 +235,16 @@ GetHospNamesForCheck1 <- function(checkTarget1, checkTarget1Uid) {
 #' Get Raw Data from JSON File
 #'
 #' This function reads a JSON file from a specified input path, extracts the records, 
-#' and returns a flattened list of records. It depends on the `GetHomeDir()` function 
-#' to retrieve the user's home directory.
+#' and returns a flattened list of records. 
 #'
 #' @param kInputPath A string representing the path to the input JSON file, relative to the user's home directory.
 #' @return A list containing the flattened records from the JSON file.
 #' @importFrom purrr map list_flatten
 #' @importFrom jsonlite read_json
-#' @details This function relies on `GetHomeDir()` to obtain the home directory path.
-#' Ensure that `GetHomeDir()` is defined and working correctly in your environment.
 #' @examples
 #' # Assuming the input JSON file exists at "data/raw.json"
 #' raw_data <- GetRawData("data/raw.json")
 GetRawData <- function(kInputPath) {
-  homeDir <- GetHomeDir()
-  rawDataPath <- file.path(homeDir, kInputPath)
   rawJson <- rawDataPath |> read_json()
   rec <- rawJson |> map( ~ .$Data$Records$records$REC) |> list_flatten()
   
