@@ -81,15 +81,33 @@ checkTarget1 <- nonTargetUidAndAddresses |> GetCheckTarget1()
 checkTarget1Uid <- GetTargetUids(checkTarget1)
 # NHO病院であるかどうかを完全な施設名から確認する
 checkTargetHospNames <- GetHospNamesForCheck1(checkTarget1, checkTarget1Uid)
-# 水戸協同病院を除外する
-checkTsukubaUniv <- checkTargetHospNames |> filter(str_detect(address, regex("Mito Med Ctr", ignore_case = T)))
-checkTsukubaUniv <- checkTsukubaUniv |> filter(str_detect(address, regex("Univ", ignore_case = T)) | str_detect(address, regex("Mito Kyodo", ignore_case = T)))
-checkTargetHospNames <- checkTsukubaUniv %>% anti_join(checkTargetHospNames, ., by=c("uid", "address"))
-# 帝京大学 ちば総合医療センターを除外する
-checkTargetHospNames <- checkTargetHospNames |> filter(!str_detect(address, regex("Teikyo Univ.*Chiba Med Ctr", ignore_case = T)))
 # 0件でなければ内容を確認する
+htmlOutputRecords <- data.frame(uid = character(), address = character(), targetDate = character())
+nonHtmlOutputRecords <- data.frame(uid = character(), address = character())
 if (length(checkTargetHospNames) != 0) {
+  for (i in 1:nrow(checkTargetHospNames)) {
+    targetDate <- allPapers |> filter(uid == checkTargetHospNames[i, "uid"]) %>% .$targetDate
+    if (length(targetDate) == 0) {
+      print(str_c("allPapersに出力なし：uid=", checkTargetHospNames[i, "uid"], " 施設名：", checkTargetHospNames[i, "address"]))
+    } else {
+      if (!is.na(targetDate)) {
+        targetHtmlUids <- htmlWosIdList[[targetDate]]
+        if (checkTargetHospNames[i, "uid"] %in% targetHtmlUids) {
+          temp <- checkTargetHospNames[i, ]
+          temp$targetDate <- targetDate
+          htmlOutputRecords <- htmlOutputRecords |> bind_rows(temp)
+        } else {
+          nonHtmlOutputRecords <- nonHtmlOutputRecords |> bind_rows(checkTargetHospNames[i, ])
+        }
+      } else {
+        print(str_c("targetDateなし：uid=", checkTargetHospNames[i, "uid"], " 施設名：", checkTargetHospNames[i, "address"]))
+      }
+    }
+  }
   warning("error:checkTarget1")
+}
+if (nrow(htmlOutputRecords) > 0) {
+  htmlOutputRecords <- htmlOutputRecords |> arrange(uid)
 }
 # NHO病院でないと思われる病院の中で未知の名称のものをcheckTarget2に格納
 # 0件でなければ内容を確認する
@@ -97,4 +115,5 @@ checkTarget2 <- GetCheckTarget2(nonTargetUidAndAddresses, checkTarget1Uid)
 if (length(checkTarget2) != 0) {
   warning("error:checkTarget2")
 }
+# target内のuidがHTMLファイルに全て出力されているか確認する
 

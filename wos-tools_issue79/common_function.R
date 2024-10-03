@@ -217,19 +217,33 @@ GetCheckTarget2 <- function(input_list, excludeUids) {
 }
 GetHospNamesForCheck1 <- function(checkTarget1, checkTarget1Uid) {
   checkTarget1Df <- checkTarget1 |> map_df( ~ .)
-  checkTargetHospNames <- checkTarget1Uid |> map( ~ {
-    input_data <- nonTarget[[.]]
-    input_address <- input_data$addresses
-    target_data <- checkTarget1Df |> filter(uid == .) %>% .$address
-    fullAddress <- target_data |> map( ~ {
-      tempHospName <- .
-      res <- input_address |> map_if(~ !str_detect(., tempHospName) | . == tempHospName, ~ NULL)
+  checkTargetHospNames <- checkTarget1Uid |>
+    map(~ {
+      input_data <- nonTarget[[.]]
+      input_address <- input_data$addresses
+      target_data <- checkTarget1Df |>
+        filter(uid == .) %>%
+        .$address
+      fullAddress <- target_data |>
+        map(~ {
+          tempHospName <- .
+          res <- input_address |> map_if(~ !str_detect(., tempHospName) | . == tempHospName, ~NULL)
+          return(res)
+        }) |>
+        list_flatten() |>
+        discard(~ is.null(.)) |>
+        list_c()
+      res <- data.frame(address = fullAddress)
+      res$uid <- .
       return(res)
-    }) |> list_flatten() |> discard( ~ is.null(.)) |> list_c()
-    res <- data.frame(address=fullAddress)
-    res$uid <- .
-    return(res)
-  }) |> bind_rows() |> arrange(address, uid)
+    }) |>
+    bind_rows() |>
+    arrange(address, uid)
+  # 水戸協同病院を除外する
+  checkTargetHospNames <- ExcludeTsukubaUniv(checkTargetHospNames)
+  # 帝京大学 ちば総合医療センターを除外する
+  checkTargetHospNames <- checkTargetHospNames |> filter(!str_detect(address, regex("Teikyo Univ.*Chiba Med Ctr", ignore_case = T)))
+
   return(checkTargetHospNames)
 }
 #' Get Raw Data from JSON File
@@ -245,7 +259,7 @@ GetHospNamesForCheck1 <- function(checkTarget1, checkTarget1Uid) {
 #' # Assuming the input JSON file exists at "data/raw.json"
 #' raw_data <- GetRawData("data/raw.json")
 GetRawData <- function(kInputPath) {
-  rawJson <- rawDataPath |> read_json()
+  rawJson <- kInputPath |> read_json()
   rec <- rawJson |> map( ~ .$Data$Records$records$REC) |> list_flatten()
   
 }
@@ -279,4 +293,13 @@ GetAllAddresses <- function(addresses) {
     return(res)
   })
   return(allAddresses)
+}
+ExcludeTsukubaUniv <- function(checkTargetHospNames) {
+  tsukubaUnivList <- c("WOS:001092684400002", "WOS:001082683100003") %>% data.frame(uid=.)
+  checkTsukubaUniv <- checkTargetHospNames |> filter(str_detect(address, regex("Mito Med Ctr", ignore_case = T)))
+  checkTsukubaUniv <- checkTsukubaUniv |> filter(str_detect(address, regex("Univ", ignore_case = T)) | str_detect(address, regex("Mito Kyodo", ignore_case = T)))
+  tempTsukubaUniv <- checkTargetHospNames |> inner_join(tsukubaUnivList, by="uid")
+  checkTsukubaUniv <- checkTsukubaUniv |> bind_rows(tempTsukubaUniv)
+  checkTargetHospNames <- checkTsukubaUniv %>% anti_join(checkTargetHospNames, ., by=c("uid", "address"))
+  return(checkTargetHospNames)
 }
