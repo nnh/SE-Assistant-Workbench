@@ -10,6 +10,7 @@ library(here)
 library(jsonlite)
 # ------ constants ------
 nhoHospName <- here("nhoHospname.txt") |> readLines()
+nhoUid <- here("nho_uid.txt") |> readLines() |> as.data.frame() |> setNames("uid")
 # ------ functions ------
 GetHomeDir <- function() {
   os <- Sys.info()["sysname"]
@@ -281,6 +282,10 @@ target <- allAddresses |> map( ~ {
   if (checkNho) {
     return(res)
   }
+  checkNho <- nhoUid |> filter(uid == res$uid)
+  if (nrow(checkNho) > 0) {
+    return(res)
+  }
   return(NULL)
 }) |> discard( ~ is.null(.))
 targetUids <- target |> map( ~ .$uid)
@@ -314,10 +319,14 @@ checkTsukubaUniv <- checkTsukubaUniv |> filter(str_detect(address, regex("Univ",
 checkTargetHospNames <- checkTsukubaUniv %>% anti_join(checkTargetHospNames, ., by=c("uid", "address"))
 # 帝京大学 ちば総合医療センターを除外する
 checkTargetHospNames <- checkTargetHospNames |> filter(!str_detect(address, regex("Teikyo Univ.*Chiba Med Ctr", ignore_case = T)))
+# 0件でなければ内容を確認する
+if (length(checkTargetHospNames) != 0) {
+  stop("error:checkTarget1")
+}
 # NHO病院でないと思われる病院の中で未知の名称のものをcheckTarget2に格納
 # 0件でなければ内容を確認する
 checkTarget2 <- GetCheckTarget2(nonTargetUidAndAddresses, checkTarget1Uid)
-if (length(checkTarget) != 0) {
+if (length(checkTarget2) != 0) {
   stop("error:checkTarget2")
 }
 
