@@ -154,3 +154,4 @@ Toneyama Med Ctr
 Osaka Minami Med Ctr
 Kokura Med Ctr
 ^Natl Saitama Hosp$
+^Natl Epilepsy Ctr$

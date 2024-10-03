@@ -153,7 +153,16 @@ RemoveNonTargetAddresses <- function(address) {
     regex("^Gen Med Ctr$", ignore_case = T),
     regex("Minamino Cardiovasc Hosp", ignore_case = T),
     regex("Saitama Canc Ctr", ignore_case = T),
-    regex("Saitama Canc Ctr", ignore_case = T),
+    regex("Hamamatsu Photon", ignore_case = T),
+    regex("Preeminent Med Photon Educ & Res Ctr", ignore_case = T),
+    regex("Hamamatsu PET Imaging Ctr", ignore_case = T),
+    regex("Hamamatsu Med Imaging Ctr", ignore_case = T),
+    regex("^Cent Res Lab$", ignore_case = T),
+    regex("Toyoda Eisei Hosp", ignore_case = T),
+    regex("Lab Drug Metab & Pharmacokinet", ignore_case = T),
+    regex("Hlth & Med Serv Ctr", ignore_case = T),
+    regex("Psychol Proc Res Team", ignore_case = T),
+    regex("Guardian Robot Project", ignore_case = T),
     regex("Fac ", ignore_case = T),
     regex("Inst ", ignore_case = T),
     regex("Institute ", ignore_case = T),
@@ -166,6 +175,62 @@ RemoveNonTargetAddresses <- function(address) {
     }
   }
   return(address)
+}
+GetTargetUids <- function(input_list) {
+  res <- input_list |> map( ~ .[1]) |> unique()
+  names(res) <- res
+  return(res)
+}
+GetCheckTarget1 <- function(input_list) {
+  kTargetFoot <- c("Hosp", "Ctr", "Disorder", "Adult", "Adults", "Kagawa")
+  checkTarget1 <- input_list |> map( ~ {
+    res <- .
+    hosptalNameFoot <- res[2] |> str_split(" ") |> list_c() %>% .[length(.)]
+    if (!(hosptalNameFoot %in% kTargetFoot)) {
+      return(NULL)
+    }
+    for (i in 1:length(nhoHospName)) {
+      if (str_detect(res[2], regex(nhoHospName[i], ignore_case = T))) {
+        return(res)
+      }
+    }
+    return(NULL)
+  }) |> discard( ~ is.null(.))
+  return(checkTarget1)
+}
+
+GetCheckTarget2 <- function(input_list, excludeUids) {
+  temp <- input_list |> map( ~ {
+    res <- .
+    if (is.null(excludeUids[[res[1]]])) {
+      return(res)
+    } else {
+      return(NULL)
+    }
+  }) |> discard( ~ is.null(.))
+  checkTarget2 <- temp |> map( ~ {
+    res <- .
+    res[2] <- res[2] |> RemoveNonTargetAddresses()
+    return(res)
+  }) |> discard( ~ .[2] == "")
+  return(checkTarget2)
+}
+GetHospNamesForCheck1 <- function(checkTarget1, checkTarget1Uid) {
+  checkTarget1Df <- checkTarget1 |> map_df( ~ .)
+  checkTargetHospNames <- checkTarget1Uid |> map( ~ {
+    input_data <- nonTarget[[.]]
+    input_address <- input_data$addresses
+    target_data <- checkTarget1Df |> filter(uid == .) %>% .$address
+    fullAddress <- target_data |> map( ~ {
+      tempHospName <- .
+      res <- input_address |> map_if(~ !str_detect(., tempHospName) | . == tempHospName, ~ NULL)
+      return(res)
+    }) |> list_flatten() |> discard( ~ is.null(.)) |> list_c()
+    res <- data.frame(address=fullAddress)
+    res$uid <- .
+    return(res)
+  }) |> bind_rows() |> arrange(address, uid)
+  return(checkTargetHospNames)
 }
 # ------ main ------
 homeDir <- GetHomeDir()
@@ -228,41 +293,31 @@ nonTarget <- allAddresses |> map( ~ {
     return(NULL)
   }
 }) |> discard( ~ is.null(.))
-
-
+names(nonTarget) <- nonTarget |> map_chr( ~ .$uid)
+# NHO病院が一つも入っていなかったレコードのリスト
 nonTargetUidAndAddresses <- nonTarget |> map( ~ {
   uid <- .$uid
   addresses <- .$addresses |> list_flatten() |> map( ~ str_split(., ",")) |> unlist() |> trimws()|> unique() |> as.list()
   res <- addresses |> map( ~ c(uid=uid, address=.))
   return(res)
 }) |> list_flatten()
-# NHO病院である可能性がある施設名が入っていたらcheckTarget1に格納
-checkTarget1 <- nonTargetUidAndAddresses |> map( ~ {
-  res <- .
-  for (i in 1:length(nhoHospName)) {
-    if (str_detect(res[2], regex(nhoHospName[i], ignore_case = T))) {
-      return(res)
-    }
-  }
-  return(NULL)
-}) |> discard( ~ is.null(.))
-checkTarget1Uid <- checkTarget1 |> map( ~ .[1]) |> unique()
-names(checkTarget1Uid) <- checkTarget1Uid
-nonTargetUidAndAddresses2 <- nonTargetUidAndAddresses |> map( ~ {
-  res <- .
-  if (is.null(checkTarget1Uid[[res[1]]])) {
-    return(res)
-  } else {
-    return(NULL)
-  }
-}) |> discard( ~ is.null(.))
-# NHO病院でないと思われる病院の中で未知の名称のものをcheckTarget2に格納
-checkTarget2 <- nonTargetUidAndAddresses2 |> map( ~ {
-  res <- .
-  res[2] <- res[2] |> RemoveNonTargetAddresses()
-  return(res)
-}) |> discard( ~ .[2] == "")
 
-GetCheckTarget2 <- function() {
-  
+# NHO病院である可能性がある施設名が入っていたらcheckTarget1に格納
+checkTarget1 <- nonTargetUidAndAddresses |> GetCheckTarget1()
+# NHO病院である可能性がある施設名が入っているUIDのリスト
+checkTarget1Uid <- GetTargetUids(checkTarget1)
+# NHO病院であるかどうかを完全な施設名から確認する
+checkTargetHospNames <- GetHospNamesForCheck1(checkTarget1, checkTarget1Uid)
+# 水戸協同病院を除外する
+checkTsukubaUniv <- checkTargetHospNames |> filter(str_detect(address, regex("Mito Med Ctr", ignore_case = T)))
+checkTsukubaUniv <- checkTsukubaUniv |> filter(str_detect(address, regex("Univ", ignore_case = T)) | str_detect(address, regex("Mito Kyodo", ignore_case = T)))
+checkTargetHospNames <- checkTsukubaUniv %>% anti_join(checkTargetHospNames, ., by=c("uid", "address"))
+# 帝京大学 ちば総合医療センターを除外する
+checkTargetHospNames <- checkTargetHospNames |> filter(!str_detect(address, regex("Teikyo Univ.*Chiba Med Ctr", ignore_case = T)))
+# NHO病院でないと思われる病院の中で未知の名称のものをcheckTarget2に格納
+# 0件でなければ内容を確認する
+checkTarget2 <- GetCheckTarget2(nonTargetUidAndAddresses, checkTarget1Uid)
+if (length(checkTarget) != 0) {
+  stop("error:checkTarget2")
 }
+
