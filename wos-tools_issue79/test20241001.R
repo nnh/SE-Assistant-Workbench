@@ -9,23 +9,30 @@ library(here)
 # ------ constants ------
 kParentPath <- "Box\\Projects\\NHO 臨床研究支援部\\英文論文\\wos-tools\\result\\result_20240925100939\\"
 krawJsonPath <- str_c(kParentPath, "raw\\raw.json")
+kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
-GetPublicationsWosIds <- function(url) {
+GetPublicationsWosId <- function(url) {
   html_file <- url |> read_html()
   # 'WOS:'で始まるIDを持つdiv要素を全て取得
   div_elements <- html_file |> html_nodes(xpath = "//*[starts-with(@id, 'WOS:')]")
   div_ids <- div_elements |> html_attr("id")
   return(div_ids)
 }
-url <- "C:\\Users\\MarikoOhtsuka\\Downloads\\publication_2024_06.html"
-test <- url |> GetPublicationsWosIds()
+GetPublicationsWosIds <- function(inputPath) {
+  htmlFiles <- inputPath |> list.files(full.names=T) |> str_extract("^.*\\\\publication_[0-9]{4}_[0-9]{2}\\.html$") |> na.omit()
+  htmlYm <- htmlFiles |> basename() |> str_remove("publication_") |> str_remove("\\.html") |> str_remove("_")
+  res <- htmlFiles |> map( ~ GetPublicationsWosId(.))
+  names(res) <- htmlYm
+  return(res)  
+}
 # ------ main ------
 homeDir <- GetHomeDir()
-htmlFiles <- file.path(homeDir, kHtmlPath) |> list.files(full.names=T) |> str_extract("^.*\\\\publication_[0-9]{4}_[0-9]{2}\\.html$") |> na.omit()
-htmlYm <- htmlFiles |> basename()
-rec <- file.path(homeDir, kInputPath) |> GetRawData()
+htmlWosIdList <- file.path(homeDir, kHtmlPath) |> GetPublicationsWosIds()
+allPapers <- file.path(homeDir, kAllPapersJsonPath) |> read_json() |> map_df( ~ c(uid=.$uid, targetDate= gsub("-", "", substr(.$targetDate, 1, 7))))
+# rawdataから出力対象と思われるデータとそれ以外のデータを取得する
+rec <- file.path(homeDir, krawJsonPath) |> GetRawData()
 addresses <- rec |> map( ~ list(uid=.$UID, addresses=.$static_data$fullrecord_metadata$addresses))
 allAddresses <- GetAllAddresses(addresses)
 # 一つでもNHO病院があればtargetに格納, それ以外はnontargetに格納
