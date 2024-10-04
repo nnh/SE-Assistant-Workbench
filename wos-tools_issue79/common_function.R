@@ -4,13 +4,25 @@
 #' @author Mariko Ohtsuka
 #' @date 2024.10.3
 # ------ libraries ------
-library(tidyverse)
 library(jsonlite)
 library(rvest)
+library(googlesheets4)
 # ------ constants ------
+gs4_auth()
+configJson <- here("config.json") |> read_json()
+outputSpreadSheetId <- configJson$outputSpreadSheetId
+outputSheetNames <- configJson$sheetNames |> list_flatten()
 nhoHospName <- here("nhoHospname.txt") |> readLines()
 nhoUid <- here("nho_uid.txt") |> readLines() |> as.data.frame() |> setNames("uid")
 # ------ functions ------
+CreateSheets <- function(sheetName) {
+  sheet_list <- sheet_names(outputSpreadSheetId)
+  # シートが存在するか確認
+  if (!(sheetName %in% sheet_list)) {
+    # シートが存在しない場合、新しいシートを作成
+    sheet_add(outputSpreadSheetId, sheet = sheetName)
+  }
+}
 GetHomeDir <- function() {
   os <- Sys.info()["sysname"]
   if (os == "Windows") {
@@ -303,3 +315,40 @@ ExcludeTsukubaUniv <- function(checkTargetHospNames) {
   checkTargetHospNames <- checkTsukubaUniv %>% anti_join(checkTargetHospNames, ., by=c("uid", "address"))
   return(checkTargetHospNames)
 }
+CheckNhoFacilityName <- function(address) {
+  checkNho <- address |> str_detect(regex("Natl Hosp Org", ignore_case = T)) |> any()
+  if (checkNho) {
+    return(address)
+  }
+  checkNho <- address |> str_detect(regex("NHO ", ignore_case = T)) |> any()
+  if (checkNho) {
+    return(address)
+  }
+  checkNho <- address |> str_detect(regex("NHO,", ignore_case = T)) |> any()
+  if (checkNho) {
+    return(address)
+  }
+  return(NULL)
+}
+ClearAndWriteSheet <- function(sheet_name, data) {
+  range_clear(outputSpreadSheetId, sheet = sheet_name)
+  sheet_write(data, outputSpreadSheetId, sheet = sheet_name)
+}
+GetPublicationsWosId <- function(url) {
+  html_file <- url |> read_html()
+  # 'WOS:'で始まるIDを持つdiv要素を全て取得
+  div_elements <- html_file |> html_nodes(xpath = "//*[starts-with(@id, 'WOS:')]")
+  div_ids <- div_elements |> html_attr("id")
+  return(div_ids)
+}
+GetPublicationsWosIds <- function(inputPath) {
+  htmlFiles <- inputPath |> list.files(full.names=T) |> str_extract("^.*\\\\publication_[0-9]{4}_[0-9]{2}\\.html$") |> na.omit()
+  htmlYm <- htmlFiles |> basename() |> str_remove("publication_") |> str_remove("\\.html") |> str_remove("_")
+  res <- htmlFiles |> map( ~ GetPublicationsWosId(.))
+  names(res) <- htmlYm
+  return(res)  
+}
+
+# ------ main ------
+dummy <- outputSheetNames |> map( ~ CreateSheets(.))
+

@@ -6,6 +6,7 @@
 rm(list=ls())
 # ------ libraries ------
 library(here)
+library(tidyverse)
 # ------ constants ------
 kParentPath <- "Box\\Projects\\NHO 臨床研究支援部\\英文論文\\wos-tools\\result\\result_20240925100939\\"
 krawJsonPath <- str_c(kParentPath, "raw\\raw.json")
@@ -13,20 +14,6 @@ kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
-GetPublicationsWosId <- function(url) {
-  html_file <- url |> read_html()
-  # 'WOS:'で始まるIDを持つdiv要素を全て取得
-  div_elements <- html_file |> html_nodes(xpath = "//*[starts-with(@id, 'WOS:')]")
-  div_ids <- div_elements |> html_attr("id")
-  return(div_ids)
-}
-GetPublicationsWosIds <- function(inputPath) {
-  htmlFiles <- inputPath |> list.files(full.names=T) |> str_extract("^.*\\\\publication_[0-9]{4}_[0-9]{2}\\.html$") |> na.omit()
-  htmlYm <- htmlFiles |> basename() |> str_remove("publication_") |> str_remove("\\.html") |> str_remove("_")
-  res <- htmlFiles |> map( ~ GetPublicationsWosId(.))
-  names(res) <- htmlYm
-  return(res)  
-}
 # ------ main ------
 homeDir <- GetHomeDir()
 htmlWosIdList <- file.path(homeDir, kHtmlPath) |> GetPublicationsWosIds()
@@ -38,16 +25,8 @@ allAddresses <- GetAllAddresses(addresses)
 # 一つでもNHO病院があればtargetに格納, それ以外はnontargetに格納
 target <- allAddresses |> map( ~ {
   res <- .
-  checkNho <- res$addresses |> str_detect(regex("Natl Hosp Org", ignore_case = T)) |> any()
-  if (checkNho) {
-    return(res)
-  }
-  checkNho <- res$addresses |> str_detect(regex("NHO ", ignore_case = T)) |> any()
-  if (checkNho) {
-    return(res)
-  }
-  checkNho <- res$addresses |> str_detect(regex("NHO,", ignore_case = T)) |> any()
-  if (checkNho) {
+  checkAddress <- CheckNhoFacilityName(res$addresses)
+  if (!is.null(checkAddress)) {
     return(res)
   }
   checkNho <- nhoUid |> filter(uid == res$uid)
@@ -57,6 +36,7 @@ target <- allAddresses |> map( ~ {
   return(NULL)
 }) |> discard( ~ is.null(.))
 targetUids <- target |> map( ~ .$uid)
+names(target) <- targetUids
 names(targetUids) <- targetUids
 nonTarget <- allAddresses |> map( ~ {
   res <- .
@@ -116,4 +96,27 @@ if (length(checkTarget2) != 0) {
   warning("error:checkTarget2")
 }
 # target内のuidがHTMLファイルに全て出力されているか確認する
+df_target <- targetUids |> unlist() |> unlist() |> as.data.frame() |> setNames("uid")
+# allPapersに出力されていないもの
+nonOutputAllPapersTarget <- df_target |> anti_join(allPapers, by="uid")
+uidAndDateCreated <- rec |> map_df( ~ c(uid=.$UID, dateCreated=.$dates$date_created))
+nonOutputAllPapersTargetDataCreated <- nonOutputAllPapersTarget |> left_join(uidAndDateCreated, by="uid")
+nonOutputAllPapersTargetDataCreatedAddress <- data.frame(uid = character(), targetDate = character(), address = character())
+for (i in 1:nrow(nonOutputAllPapersTargetDataCreated)) {
+  temp_address <- target[[nonOutputAllPapersTargetDataCreated[i, "uid"]]]$addresses |>
+    map( ~ CheckNhoFacilityName(.)) |> discard( ~ is.null(.)) |> list_c()
+  if (is.null(temp_address)) {
+    temp_address <- "no-target"
+  }
+  res <- nonOutputAllPapersTargetDataCreated[i, ] |> merge(temp_address)
+  colnames(res) <- colnames(nonOutputAllPapersTargetDataCreatedAddress)
+  nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> bind_rows(res)
+}
+nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> distinct()
+# 施設名に問題があり、allPapersに出力されていない
+facilityNameError <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address != "no-target")
+# 施設名に問題がなく、allPapersに出力されていない
+otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
+dummy <- names(outputSheetNames) |> map( ~ ClearAndWriteSheet(outputSheetNames[[.]], get(.)))
 
+                                         
