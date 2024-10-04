@@ -8,7 +8,6 @@ library(jsonlite)
 library(rvest)
 library(googlesheets4)
 # ------ constants ------
-gs4_auth()
 configJson <- here("config.json") |> read_json()
 outputSpreadSheetId <- configJson$outputSpreadSheetId
 outputSheetNames <- configJson$sheetNames |> list_flatten()
@@ -348,7 +347,34 @@ GetPublicationsWosIds <- function(inputPath) {
   names(res) <- htmlYm
   return(res)  
 }
+FilterTargetGroups <- function(input_list) {
+  target <- input_list |> map( ~ {
+    res <- .
+    checkAddress <- CheckNhoFacilityName(res$addresses)
+    if (!is.null(checkAddress)) {
+      return(res)
+    }
+    checkNho <- nhoUid |> filter(uid == res$uid)
+    if (nrow(checkNho) > 0) {
+      return(res)
+    }
+    return(NULL)
+  }) |> discard( ~ is.null(.))
+  targetUids <- target |> map( ~ .$uid)
+  names(target) <- targetUids
+  names(targetUids) <- targetUids
+  nonTarget <- input_list |> map( ~ {
+    res <- .
+    if (is.null(targetUids[[res$uid]])) {
+      return(res)
+    } else {
+      return(NULL)
+    }
+  }) |> discard( ~ is.null(.))
+  names(nonTarget) <- nonTarget |> map_chr( ~ .$uid)
+  return(list(target=target, nonTarget=nonTarget, targetUids=targetUids))
+}
 
 # ------ main ------
 dummy <- outputSheetNames |> map( ~ CreateSheets(.))
-
+rm(dummy)

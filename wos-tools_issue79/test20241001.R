@@ -14,6 +14,7 @@ kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
+gs4_auth()
 # ------ main ------
 homeDir <- GetHomeDir()
 htmlWosIdList <- file.path(homeDir, kHtmlPath) |> GetPublicationsWosIds()
@@ -23,38 +24,17 @@ rec <- file.path(homeDir, krawJsonPath) |> GetRawData()
 addresses <- rec |> map( ~ list(uid=.$UID, addresses=.$static_data$fullrecord_metadata$addresses))
 allAddresses <- GetAllAddresses(addresses)
 # 一つでもNHO病院があればtargetに格納, それ以外はnontargetに格納
-target <- allAddresses |> map( ~ {
-  res <- .
-  checkAddress <- CheckNhoFacilityName(res$addresses)
-  if (!is.null(checkAddress)) {
-    return(res)
-  }
-  checkNho <- nhoUid |> filter(uid == res$uid)
-  if (nrow(checkNho) > 0) {
-    return(res)
-  }
-  return(NULL)
-}) |> discard( ~ is.null(.))
-targetUids <- target |> map( ~ .$uid)
-names(target) <- targetUids
-names(targetUids) <- targetUids
-nonTarget <- allAddresses |> map( ~ {
-  res <- .
-  if (is.null(targetUids[[res$uid]])) {
-    return(res)
-  } else {
-    return(NULL)
-  }
-}) |> discard( ~ is.null(.))
-names(nonTarget) <- nonTarget |> map_chr( ~ .$uid)
-# NHO病院が一つも入っていなかったレコードのリスト
+temp <- FilterTargetGroups(allAddresses)
+dummy <- names(temp) |> map(~ assign(., temp[[.]], envir = globalenv()))
+rm(temp)
+rm(dummy)
+# NHO病院が一つも入っていなかったレコードのリストを取得する
 nonTargetUidAndAddresses <- nonTarget |> map( ~ {
   uid <- .$uid
   addresses <- .$addresses |> list_flatten() |> map( ~ str_split(., ",")) |> unlist() |> trimws()|> unique() |> as.list()
   res <- addresses |> map( ~ c(uid=uid, address=.))
   return(res)
 }) |> list_flatten()
-
 # NHO病院である可能性がある施設名が入っていたらcheckTarget1に格納
 checkTarget1 <- nonTargetUidAndAddresses |> GetCheckTarget1()
 # NHO病院である可能性がある施設名が入っているUIDのリスト
@@ -117,6 +97,7 @@ nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreate
 facilityNameError <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address != "no-target")
 # 施設名に問題がなく、allPapersに出力されていない
 otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
+# Googleスプレッドシートに結果を出力する
 dummy <- names(outputSheetNames) |> map( ~ ClearAndWriteSheet(outputSheetNames[[.]], get(.)))
 
                                          
