@@ -193,8 +193,17 @@ GetTargetUids <- function(input_list) {
   return(res)
 }
 GetCheckTarget1 <- function(input_list) {
+  # NHO病院が一つも入っていなかったレコードのリストを取得する
+  nonTargetUidAndAddresses <- input_list |> map( ~ {
+    uid <- .$uid
+    addresses <- .$addresses |> list_flatten() |> map( ~ str_split(., ",")) |> unlist() |> trimws()|> unique() |> as.list()
+    res <- addresses |> map( ~ c(uid=uid, address=.))
+    return(res)
+  }) |> list_flatten()
+
   kTargetFoot <- c("Hosp", "Ctr", "Disorder", "Adult", "Adults", "Kagawa")
-  checkTarget1 <- input_list |> map( ~ {
+  # NHO病院である可能性がある施設名が入っていたらcheckTarget1に格納
+  checkTarget1 <- nonTargetUidAndAddresses |> map( ~ {
     res <- .
     hosptalNameFoot <- res[2] |> str_split(" ") |> list_c() %>% .[length(.)]
     if (!(hosptalNameFoot %in% kTargetFoot)) {
@@ -207,7 +216,11 @@ GetCheckTarget1 <- function(input_list) {
     }
     return(NULL)
   }) |> discard( ~ is.null(.))
-  return(checkTarget1)
+  # NHO病院である可能性がある施設名が入っているUIDのリスト
+  checkTarget1Uid <- GetTargetUids(checkTarget1)
+  # NHO病院であるかどうかを完全な施設名から確認する
+  checkTargetHospNames <- GetHospNamesForCheck1(checkTarget1, checkTarget1Uid)
+  return(list(checkTarget1=checkTarget1, checkTarget1Uid=checkTarget1Uid, checkTargetHospNames=checkTargetHospNames, nonTargetUidAndAddresses=nonTargetUidAndAddresses))
 }
 
 GetCheckTarget2 <- function(input_list, excludeUids) {
@@ -374,7 +387,65 @@ FilterTargetGroups <- function(input_list) {
   names(nonTarget) <- nonTarget |> map_chr( ~ .$uid)
   return(list(target=target, nonTarget=nonTarget, targetUids=targetUids))
 }
-
+ExportToGlobal <- function(input_list) {
+  dummy <- names(input_list) |> map(~ assign(., input_list[[.]], envir = globalenv()))
+}
+ExecCheckTarget1 <- function(checkTargetHospNames) {
+  htmlOutputRecords <- data.frame(uid = character(), address = character(), targetDate = character())
+  nonHtmlOutputRecords <- data.frame(uid = character(), address = character())
+  if (length(checkTargetHospNames) == 0) {
+    return(list(htmlOutputRecords=htmlOutputRecords, nonHtmlOutputRecords=nonHtmlOutputRecords))
+  }
+  for (i in 1:nrow(checkTargetHospNames)) {
+    targetDate <- allPapers |> filter(uid == checkTargetHospNames[i, "uid"]) %>% .$targetDate
+    if (length(targetDate) == 0) {
+      print(str_c("allPapersに出力なし：uid=", checkTargetHospNames[i, "uid"], " 施設名：", checkTargetHospNames[i, "address"]))
+    } else {
+      if (!is.na(targetDate)) {
+        targetHtmlUids <- htmlWosIdList[[targetDate]]
+        if (checkTargetHospNames[i, "uid"] %in% targetHtmlUids) {
+          temp <- checkTargetHospNames[i, ]
+          temp$targetDate <- targetDate
+          htmlOutputRecords <- htmlOutputRecords |> bind_rows(temp)
+        } else {
+          nonHtmlOutputRecords <- nonHtmlOutputRecords |> bind_rows(checkTargetHospNames[i, ])
+        }
+      } else {
+        print(str_c("targetDateなし：uid=", checkTargetHospNames[i, "uid"], " 施設名：", checkTargetHospNames[i, "address"]))
+      }
+    }
+  }
+  warning("error:checkTarget1")
+  if (nrow(htmlOutputRecords) > 0) {
+    htmlOutputRecords <- htmlOutputRecords |> arrange(uid)
+  }
+  return(list(htmlOutputRecords=htmlOutputRecords, nonHtmlOutputRecords=nonHtmlOutputRecords))
+}
+ExecCheckTarget3 <- function() {
+  # target内のuidがHTMLファイルに全て出力されているか確認する
+  df_target <- targetUids |> unlist() |> unlist() |> as.data.frame() |> setNames("uid")
+  # allPapersに出力されていないものを取得
+  nonOutputAllPapersTarget <- df_target |> anti_join(allPapers, by="uid")
+  uidAndDateCreated <- rec |> map_df( ~ c(uid=.$UID, dateCreated=.$dates$date_created))
+  nonOutputAllPapersTargetDataCreated <- nonOutputAllPapersTarget |> left_join(uidAndDateCreated, by="uid")
+  nonOutputAllPapersTargetDataCreatedAddress <- data.frame(uid = character(), targetDate = character(), address = character())
+  for (i in 1:nrow(nonOutputAllPapersTargetDataCreated)) {
+    temp_address <- target[[nonOutputAllPapersTargetDataCreated[i, "uid"]]]$addresses |>
+      map( ~ CheckNhoFacilityName(.)) |> discard( ~ is.null(.)) |> list_c()
+    if (is.null(temp_address)) {
+      temp_address <- "no-target"
+    }
+    res <- nonOutputAllPapersTargetDataCreated[i, ] |> merge(temp_address)
+    colnames(res) <- colnames(nonOutputAllPapersTargetDataCreatedAddress)
+    nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> bind_rows(res)
+  }
+  nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> distinct()
+  # 施設名に問題があり、allPapersに出力されていない
+  facilityNameError <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address != "no-target")
+  # 施設名に問題がなく、allPapersに出力されていない
+  otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
+  return(list(facilityNameError=facilityNameError, otherError1=otherError1))
+}
 # ------ main ------
 dummy <- outputSheetNames |> map( ~ CreateSheets(.))
 rm(dummy)
