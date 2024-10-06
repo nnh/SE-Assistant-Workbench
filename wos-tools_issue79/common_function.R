@@ -284,8 +284,11 @@ GetHospNamesForCheck1 <- function(checkTarget1, checkTarget1Uid) {
 #' raw_data <- GetRawData("data/raw.json")
 GetRawData <- function(kInputPath) {
   rawJson <- kInputPath |> read_json()
-  rec <- rawJson |> map( ~ .$Data$Records$records$REC) |> list_flatten()
-  
+  rec <- rawJson |>
+    map(~ .$Data$Records$records$REC) |>
+    list_flatten()
+  names(rec) <- rec |> map_chr( ~ .$UID)
+  return(rec)
 }
 GetAllAddresses <- function(addresses) {
   addressesOnlyJapan <- addresses |> map( ~ {
@@ -304,19 +307,28 @@ GetAllAddresses <- function(addresses) {
     res$addresses <- temp
     return(res)
   })
-  allAddresses <- addressesOnlyJapan |> map( ~ {
+  allAddresses <- addressesOnlyJapan |> map(~ {
     res <- .
-    fullAddresses <- res$addresses |> map( ~ .$full_address)
-    organizations <- res$addresses |> map( ~ {
-      orgs <- .$organizations
-      contents <- orgs$organization |> map( ~ .$content)
-      return(contents)
-    }) |> list_flatten()
+    fullAddresses <- res$addresses |> map(~ .$full_address)
+    organizations <- res$addresses |>
+      map(~ {
+        orgs <- .$organizations
+        contents <- orgs$organization |> map(~ .$content)
+        return(contents)
+      }) |>
+      list_flatten()
     allAddresses <- list(fullAddresses, organizations) |> list_flatten()
     res$addresses <- allAddresses
     return(res)
   })
+  allAddressesUids <- allAddresses |> map(~ .$uid)
+  names(allAddresses) <- allAddressesUids
   return(allAddresses)
+}
+GetAddresses <- function(input_list) {
+  addresses <- input_list |> map( ~ list(uid=.$UID, addresses=.$static_data$fullrecord_metadata$addresses))
+  allAddresses <- addresses |> GetAllAddresses()
+  return(list(addresses=addresses, allAddresses=allAddresses))
 }
 ExcludeTsukubaUniv <- function(checkTargetHospNames) {
   tsukubaUnivList <- c("WOS:001092684400002", "WOS:001082683100003") %>% data.frame(uid=.)
