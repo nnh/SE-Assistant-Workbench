@@ -50,7 +50,7 @@ if (
 }
 facilityIdAndName <- queryScript[facilityNameJaStrStart:facilityNameJaStrEnd] |> 
   str_replace("\\[nhoFacilityNumber\\]", nhoFacilityNumber) |> tibble() |>
-  separate(1, into=c("id", "name"), sep = ":") |> mutate_all( ~ str_trim(.))
+  separate(1, into=c("facilityNumber", "name"), sep = ":") |> mutate_all( ~ str_trim(.))
 facilityIdAndName$name <- facilityIdAndName$name |> str_remove_all('"') |> str_remove_all(',')
 
 facilityOOAndAD <- queryScript[facilityQueriesStrStart:facilityQueriesStrEnd] |> trimws() |> str_c(collapse="") |>
@@ -71,4 +71,12 @@ for (i in length(facilityOOAndADList):2) {
   }
 }
 facilityOOAndADList <- facilityOOAndADList |> na.omit()
-test2 <- facilityOOAndADList |> map( ~ fromJSON(.))
+facilityNumberAndOOAndAD <- facilityOOAndADList |> map( ~ {
+  json <- fromJSON(.)
+  ad <- json$AD %>% map_chr( ~ str_c(., collapse = "|")) %>% data.frame(category="AD", facilityName=.)
+  oo <- json$OO %>% data.frame(category="OO", facilityName=.)
+  res <- ad |> bind_rows(oo)
+  res$facilityNumber <- json$facilityNumber
+  return(res)
+}) |> bind_rows()
+facilityData <- facilityNumberAndOOAndAD |> left_join(facilityIdAndName, by)
