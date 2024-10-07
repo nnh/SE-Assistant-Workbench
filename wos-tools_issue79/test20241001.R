@@ -58,8 +58,6 @@ filterdFacilityNameErrorfacilitesAndUids <- facilityNameErrorfacilitesAndUids |>
   filter(!str_detect(facility_part, "[0-9]")) |>
   filter(!str_detect(facility_part, "Dept ")) 
 CCC <- filterdFacilityNameErrorfacilitesAndUids |> count(facility_part) |> arrange(desc(n))
-  count(BBB) %>%        # BBBごとの個数をカウント
-  arrange(desc(n))      # 個数(n)を降順にソート
 
 # Googleスプレッドシートに結果を出力する
 gs4_auth()
