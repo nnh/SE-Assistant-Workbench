@@ -15,8 +15,9 @@ kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
-# ------ main ------
 homeDir <- GetHomeDir()
+source(here("getQuery.R"), encoding="UTF-8")
+# ------ main ------
 htmlWosIdList <- file.path(homeDir, kHtmlPath) |> GetPublicationsWosIds()
 allPapers <- file.path(homeDir, kAllPapersJsonPath) |> read_json() |> map_df( ~ c(uid=.$uid, targetDate= gsub("-", "", substr(.$targetDate, 1, 7))))
 # rawdataから出力対象と思われるデータとそれ以外のデータを取得する
@@ -57,10 +58,37 @@ facilityNameErrorfacilitesAndUids <- map2(facilityNameError$uid, facilityNameErr
 filterdFacilityNameErrorfacilitesAndUids <- facilityNameErrorfacilitesAndUids |> filter(str_detect(facility_part, "\\s")) |>
   filter(!str_detect(facility_part, "[0-9]")) |>
   filter(!str_detect(facility_part, "Dept ")) 
-CCC <- filterdFacilityNameErrorfacilitesAndUids |> count(facility_part) |> arrange(desc(n))
-
+#filterdFacilityNameErrorfacilitesAndUids$nho_flag <- F
+# wos-toolsのクエリ施設名と部分一致するものがあれば詳細を確認
+for (i in 1:nrow(filterdFacilityNameErrorfacilitesAndUids)) {
+  tempFacilityName <- filterdFacilityNameErrorfacilitesAndUids[i, "facility_part"] |> tolower() 
+  temp2 <- facilityData |> filter(str_detect(facilityNameLower, tempFacilityName))
+  if (nrow(temp2) > 0) {
+    if (tempFacilityName != "natl hosp org" & 
+        tempFacilityName != "med ctr" &
+        tempFacilityName != "natl hosp" &
+        tempFacilityName != "clin res ctr" &
+        tempFacilityName != "clin res" &
+        tempFacilityName != "addict ctr"&
+        tempFacilityName != "gen med ctr"&
+        tempFacilityName != "chest med ctr"&
+        tempFacilityName != "chuo chest med ctr"&
+        tempFacilityName != "chuo natl hosp"&
+        tempFacilityName != "nishi med ctr"&
+        tempFacilityName != "minami med ctr"&
+        tempFacilityName != "higashi natl hosp"&
+        tempFacilityName != "natl hosp org kinki chuo"&
+        !str_detect(tempFacilityName, "\\smed$") & 
+        !str_detect(tempFacilityName, "natl hosp org\\s[a-z]+$")) {
+#      print(tempFacilityName)
+#      filterdFacilityNameErrorfacilitesAndUids[i, "nho_flag"] <- T
+    }
+  }
+}
 # Googleスプレッドシートに結果を出力する
 gs4_auth()
+dummy <- outputSheetNames |> map( ~ CreateSheets(.))
+rm(dummy)
 dummy <- names(outputSheetNames) |> map( ~ ClearAndWriteSheet(outputSheetNames[[.]], get(.)))
 
                                          

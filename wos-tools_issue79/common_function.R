@@ -459,5 +459,3 @@ ExecCheckTarget3 <- function() {
   return(list(facilityNameError=facilityNameError, otherError1=otherError1))
 }
 # ------ main ------
-dummy <- outputSheetNames |> map( ~ CreateSheets(.))
-rm(dummy)
