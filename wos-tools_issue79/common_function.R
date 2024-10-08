@@ -453,9 +453,53 @@ ExecCheckTarget3 <- function() {
   }
   nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> distinct()
   # 施設名に問題があり、allPapersに出力されていない
-  facilityNameError <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address != "no-target")
+  temp <- GetFacilityNameError(nonOutputAllPapersTargetDataCreatedAddress)
+  # 既知の問題は除外
+  check3ExcludeUid <- read_sheet(outputSpreadSheetId, sheet = "wosのAPIで取得したデータに問題がある")
+  facilityNameError <- temp |> anti_join(check3ExcludeUid, by="uid")
   # 施設名に問題がなく、allPapersに出力されていない
   otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
   return(list(facilityNameError=facilityNameError, otherError1=otherError1))
+}
+GetFacilityNameError <- function(input_df) {
+  facilityNameError <- input_df |> filter(address != "no-target")
+  facilityNameErrorfacilites <- facilityNameError$address |> str_split(", ")
+  facilityNameErrorfacilitesAndUids <- map2(facilityNameError$uid, facilityNameErrorfacilites, ~ {
+    res <- data.frame(facility_part=.y)
+    res$uid <- .x
+    return(res)
+  }) |> bind_rows()
+  filterdFacilityNameErrorfacilitesAndUids <- facilityNameErrorfacilitesAndUids |> filter(str_detect(facility_part, "\\s")) |>
+    filter(!str_detect(facility_part, "[0-9]")) |>
+    filter(!str_detect(facility_part, "Dept ")) 
+  filterdFacilityNameErrorfacilitesAndUids$nho_flag <- F
+  # wos-toolsのクエリ施設名と部分一致するものがあれば詳細を確認
+  for (i in 1:nrow(filterdFacilityNameErrorfacilitesAndUids)) {
+    tempFacilityName <- filterdFacilityNameErrorfacilitesAndUids[i, "facility_part"] |> tolower() 
+    temp2 <- facilityData |> filter(str_detect(facilityNameLower, tempFacilityName))
+    if (nrow(temp2) > 0) {
+      if (tempFacilityName != "natl hosp org" & 
+          tempFacilityName != "med ctr" &
+          tempFacilityName != "natl hosp" &
+          tempFacilityName != "clin res ctr" &
+          tempFacilityName != "clin res" &
+          tempFacilityName != "addict ctr"&
+          tempFacilityName != "gen med ctr"&
+          tempFacilityName != "chest med ctr"&
+          tempFacilityName != "chuo chest med ctr"&
+          tempFacilityName != "chuo natl hosp"&
+          tempFacilityName != "nishi med ctr"&
+          tempFacilityName != "minami med ctr"&
+          tempFacilityName != "higashi natl hosp"&
+          tempFacilityName != "natl hosp org kinki chuo"&
+          !str_detect(tempFacilityName, "\\smed$") & 
+          !str_detect(tempFacilityName, "natl hosp org\\s[a-z]+$")) {
+        #      print(tempFacilityName)
+        filterdFacilityNameErrorfacilitesAndUids[i, "nho_flag"] <- T
+      }
+    }
+  }
+  res <- filterdFacilityNameErrorfacilitesAndUids |> filter(nho_flag)
+  return(res)
 }
 # ------ main ------
