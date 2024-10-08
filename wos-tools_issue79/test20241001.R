@@ -58,7 +58,7 @@ facilityNameErrorfacilitesAndUids <- map2(facilityNameError$uid, facilityNameErr
 filterdFacilityNameErrorfacilitesAndUids <- facilityNameErrorfacilitesAndUids |> filter(str_detect(facility_part, "\\s")) |>
   filter(!str_detect(facility_part, "[0-9]")) |>
   filter(!str_detect(facility_part, "Dept ")) 
-#filterdFacilityNameErrorfacilitesAndUids$nho_flag <- F
+filterdFacilityNameErrorfacilitesAndUids$nho_flag <- F
 # wos-toolsのクエリ施設名と部分一致するものがあれば詳細を確認
 for (i in 1:nrow(filterdFacilityNameErrorfacilitesAndUids)) {
   tempFacilityName <- filterdFacilityNameErrorfacilitesAndUids[i, "facility_part"] |> tolower() 
@@ -81,10 +81,11 @@ for (i in 1:nrow(filterdFacilityNameErrorfacilitesAndUids)) {
         !str_detect(tempFacilityName, "\\smed$") & 
         !str_detect(tempFacilityName, "natl hosp org\\s[a-z]+$")) {
 #      print(tempFacilityName)
-#      filterdFacilityNameErrorfacilitesAndUids[i, "nho_flag"] <- T
+      filterdFacilityNameErrorfacilitesAndUids[i, "nho_flag"] <- T
     }
   }
 }
+test <- filterdFacilityNameErrorfacilitesAndUids |> filter(nho_flag)
 # Googleスプレッドシートに結果を出力する
 gs4_auth()
 dummy <- outputSheetNames |> map( ~ CreateSheets(.))
