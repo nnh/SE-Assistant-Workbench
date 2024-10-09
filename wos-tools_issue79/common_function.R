@@ -464,6 +464,14 @@ ExecCheckTarget3 <- function() {
 GetAddressInfo <- function(input_df) {
   res <- list()
   for (i in 1:nrow(input_df)) {
+    identifier <- rec[[input_df[i, "uid"]]]$dynamic_data$cluster_related$identifiers$identifier
+    pubmedUrl <- identifier |> map( ~ {
+      if (.$type == "pmid") {
+        temp <- .$value |> str_remove("MEDLINE:") %>% str_c("https://pubmed.ncbi.nlm.nih.gov/", ., "/")
+        return(temp)
+      }
+      return(NULL)
+    }) |> discard( ~ is.null(.)) |> list_c()
     temp_addr_name <- addresses[[input_df[i, "uid"]]]$addresses$address_name
     facilityPart <- input_df[i, "facility_part"]
     addrNameAdOo <- temp_addr_name |> map( ~ {
@@ -501,11 +509,13 @@ GetAddressInfo <- function(input_df) {
       if (is.na(oo) & is.na(ad)) {
         return(NULL)
       }
-      return(list(uid=input_df[i, "uid"], names=addr_name, oo=oo, ad=ad))
+      wos_url <- "https://www.webofscience.com/wos/woscc/full-record/" |> str_c(input_df[i, "uid"])
+      return(list(uid=input_df[i, "uid"], names=addr_name, oo=oo, ad=ad, wos_url=wos_url, pubmed_url=pubmedUrl))
     })
     res <- append(res, addrNameAdOo)
   }
   res <- res |> discard( ~ is.null(.))
+  test <- res |> map_df( ~ .) |> distinct()
 }
 GetFacilityNameError <- function(input_df) {
   facilityNameError <- input_df |> filter(address != "no-target")
