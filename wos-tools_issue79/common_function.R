@@ -461,6 +461,52 @@ ExecCheckTarget3 <- function() {
   otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
   return(list(facilityNameError=facilityNameError, otherError1=otherError1))
 }
+GetAddressInfo <- function(input_df) {
+  res <- list()
+  for (i in 1:nrow(input_df)) {
+    temp_addr_name <- addresses[[input_df[i, "uid"]]]$addresses$address_name
+    facilityPart <- input_df[i, "facility_part"]
+    addrNameAdOo <- temp_addr_name |> map( ~ {
+      addr <- .
+      addr_names <- addr$names
+      if (is.null(addr_names)) {
+        addr_name <- NA
+      } else {
+        if (addr_names$count > 1) {
+          addrNameList <- addr_names$name |> map( ~ list(addr_no=.$addr_no, name=.$wos_standard))
+        } else {
+          addrNameList <- list(addr_no=addr_names$name$addr_no, name=addr_names$name$wos_standard)
+        }
+        addr_name <- str_c(addrNameList$name, " [", addrNameList$addr_no, "]") 
+      }
+      addr_spec <- addr$address_spec
+      temp_oo <- addr_spec$organizations$organization |> map( ~ {
+        content <- .$content
+        if (str_detect(content, facilityPart)) {
+          return(content)
+        } else {
+          return(NULL)
+        }
+      }) |> discard( ~ is.null(.))
+      if (length(temp_oo) == 0) {
+        oo <- NA
+      } else {
+        oo <- temp_oo |> str_c(collapse=" | ")
+      }
+      if (str_detect(addr_spec$full_address, facilityPart)) {
+        ad <- addr_spec$full_address
+      } else {
+        ad <- NA
+      }
+      if (is.na(oo) & is.na(ad)) {
+        return(NULL)
+      }
+      return(list(uid=input_df[i, "uid"], names=addr_name, oo=oo, ad=ad))
+    })
+    res <- append(res, addrNameAdOo)
+  }
+  res <- res |> discard( ~ is.null(.))
+}
 GetFacilityNameError <- function(input_df) {
   facilityNameError <- input_df |> filter(address != "no-target")
   facilityNameErrorfacilites <- facilityNameError$address |> str_split(", ")
