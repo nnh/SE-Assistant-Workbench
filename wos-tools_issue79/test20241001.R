@@ -7,7 +7,6 @@ rm(list=ls())
 # ------ libraries ------
 library(here)
 library(tidyverse)
-gs4_auth()
 # ------ constants ------
 kSpecifiedDate <- "20240901" |> as.POSIXct(specified_date, format = "%Y%m%d", tz = "UTC")
 kParentPath <- "Box\\Projects\\NHO 臨床研究支援部\\英文論文\\wos-tools\\result\\result_20240925100939\\"
@@ -16,6 +15,7 @@ kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
+gs4_auth()
 homeDir <- GetHomeDir()
 source(here("getQuery.R"), encoding="UTF-8")
 # ------ main ------
