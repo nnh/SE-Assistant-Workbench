@@ -2,7 +2,7 @@
 #' 
 #' @file common_function.R
 #' @author Mariko Ohtsuka
-#' @date 2024.10.3
+#' @date 2024.10.10
 # ------ libraries ------
 library(jsonlite)
 library(rvest)
@@ -553,109 +553,5 @@ ExecCheckTarget3 <- function() {
   wosDataError <- uidAndAddresses |> filter(is.na(authors))
   facilityNameError <- uidAndAddresses |> filter(!is.na(authors))
   return(list(facilityNameError=facilityNameError, wosDataError=wosDataError))
-}
-GetAddressInfo <- function(input_df) {
-  res <- list()
-  for (i in 1:nrow(input_df)) {
-    identifier <- rec[[input_df[i, "uid"]]]$dynamic_data$cluster_related$identifiers$identifier
-    pubmedUrl <- identifier |> map( ~ {
-      if (.$type == "pmid") {
-        temp <- .$value |> str_remove("MEDLINE:") %>% str_c("https://pubmed.ncbi.nlm.nih.gov/", ., "/")
-        return(temp)
-      }
-      return(NULL)
-    }) |> discard( ~ is.null(.)) |> list_c()
-    temp_addr_name <- addresses[[input_df[i, "uid"]]]$addresses$address_name
-    facilityPart <- input_df[i, "facility_part"]
-    addrNameAdOo <- temp_addr_name |> map( ~ {
-      addr <- .
-      addr_names <- addr$names
-      if (is.null(addr_names)) {
-        addr_name <- NA
-      } else {
-        if (addr_names$count > 1) {
-          addrNameList <- addr_names$name |> map( ~ list(addr_no=.$addr_no, name=.$wos_standard))
-        } else {
-          addrNameList <- list(addr_no=addr_names$name$addr_no, name=addr_names$name$wos_standard)
-        }
-        addr_name <- str_c(addrNameList$name, " [", addrNameList$addr_no, "]") 
-      }
-      addr_spec <- addr$address_spec
-      if (is.null(addr_spec)) {
-        oo <- NA
-        ad <- NA
-      } else {
-        temp_oo <- addr_spec$organizations$organization |> map( ~ {
-          content <- .$content
-          if (str_detect(content, facilityPart)) {
-            return(content)
-          } else {
-            return(NULL)
-          }
-        }) |> discard( ~ is.null(.))
-        if (length(temp_oo) == 0) {
-          oo <- NA
-        } else {
-          oo <- temp_oo |> str_c(collapse=" | ")
-        }
-        if (str_detect(addr_spec$full_address, facilityPart)) {
-          ad <- addr_spec$full_address
-        } else {
-          ad <- NA
-        }
-        if (is.na(oo) & is.na(ad)) {
-          return(NULL)
-        }
-      }
-      wos_url <- "https://www.webofscience.com/wos/woscc/full-record/" |> str_c(input_df[i, "uid"])
-      return(list(uid=input_df[i, "uid"], targetDate=input_df[i, "targetDate"], names=addr_name, oo=oo, ad=ad, wos_url=wos_url, pubmed_url=pubmedUrl, nho_flag=input_df[i, "nho_flag"]))
-    })
-    res <- append(res, addrNameAdOo)
-  }
-  res <- res |> discard( ~ is.null(.)) |> map_df( ~ .) |> distinct()
-  return(res)
-}
-GetFacilityNameError <- function(input_df) {
-  facilityNameError <- input_df |> filter(address != "no-target")
-  facilityNameErrorfacilites <- facilityNameError$address |> str_split(", ")
-  facilityNameErrorfacilitesAndUids <- map2(facilityNameError$uid, facilityNameErrorfacilites, ~ {
-    res <- data.frame(facility_part=.y)
-    res$uid <- .x
-    return(res)
-  }) |> bind_rows()
-  filterdFacilityNameErrorfacilitesAndUids <- facilityNameErrorfacilitesAndUids |> filter(str_detect(facility_part, "\\s")) |>
-    filter(!str_detect(facility_part, "[0-9]")) |>
-    filter(!str_detect(facility_part, "Dept ")) 
-  filterdFacilityNameErrorfacilitesAndUids$nho_flag <- F
-  # wos-toolsのクエリ施設名と部分一致するものがあれば詳細を確認
-  for (i in 1:nrow(filterdFacilityNameErrorfacilitesAndUids)) {
-    tempFacilityName <- filterdFacilityNameErrorfacilitesAndUids[i, "facility_part"] |> tolower() 
-    temp2 <- facilityData |> filter(str_detect(facilityNameLower, tempFacilityName))
-    if (nrow(temp2) > 0) {
-#      if (tempFacilityName != "natl hosp org" & 
-#          tempFacilityName != "med ctr" &
-#          tempFacilityName != "natl hosp" &
-#          tempFacilityName != "clin res ctr" &
-#          tempFacilityName != "clin res" &
-#          tempFacilityName != "addict ctr"&
-#          tempFacilityName != "gen med ctr"&
-#          tempFacilityName != "chest med ctr"&
-#          tempFacilityName != "chuo chest med ctr"&
-#          tempFacilityName != "chuo natl hosp"&
-#          tempFacilityName != "nishi med ctr"&
-#          tempFacilityName != "minami med ctr"&
-#          tempFacilityName != "higashi natl hosp"&
-#          tempFacilityName != "natl hosp org kinki chuo"&
-#          !str_detect(tempFacilityName, "\\smed$") & 
-#          !str_detect(tempFacilityName, "natl hosp org\\s[a-z]+$")) {
-        #      print(tempFacilityName)
-        filterdFacilityNameErrorfacilitesAndUids[i, "nho_flag"] <- T
-#      }
-    }
-  }
-  uidAndTargetDate <- input_df |> select(c("uid", "targetDate")) |> distinct()
-  temp <- filterdFacilityNameErrorfacilitesAndUids |> distinct() |> left_join(uidAndTargetDate, by="uid")
-  res <- temp |> GetAddressInfo()
-  return(res)
 }
 # ------ main ------

@@ -46,10 +46,8 @@ if (length(checkTarget2) != 0) {
 ###############
 ### check 3 ###
 ###############
-# 施設名に問題があり、allPapersに出力されていないレコードをfacilityNameError, 
-# 施設名に問題がなく、allPapersに出力されていないレコードをotherError1に格納
+# allPapersに出力されていないレコード
 dummy <- ExecCheckTarget3() |> ExportToGlobal()
-# facilityNameErrorの詳細を分析
 
 # Googleスプレッドシートに結果を出力する
 dummy <- outputSheetNames |> map( ~ CreateSheets(.))
