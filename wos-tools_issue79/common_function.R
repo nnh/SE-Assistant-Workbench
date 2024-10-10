@@ -497,51 +497,20 @@ ExecCheckTarget3 <- function() {
     }) |> discard( ~ is.null(.)) |> bind_rows()
     res$uid <- targetUid
     return(res)
-  }) |> bind_rows()
-  uidAndAllAddresses <- nonOutputAllPapersTarget |> map( ~ allAddresses[[.]])
-  uidAndNhoAddresses <- uidAndAllAddresses |> map( ~ {
-    uidAndAddr <- .
-    uid <- uidAndAddr$uid
-    addr <- uidAndAddr$addresses |> map( ~ {
-      tempAddr <- .
-      temp <- CheckNhoFacilityName(tempAddr)
-      if (!is.null(temp)) {
-        return(tempAddr)
-      }
-      facilityParts <- tempAddr |> tolower() |> str_split(", ") |> list_c() |> 
-        map_if( ~ str_detect(., "^\\S+$"), ~ NULL) |> discard( ~ is.null(.))
-      temp <- facilityParts |> map( ~ {
-        facilityPart <- .
-        queryExist <- facilityData |> filter(str_detect(facilityNameLower, facilityPart))
-        return (nrow(queryExist) > 0) 
-      }) |> list_c()
-      if (any(temp)) {
-        return(tempAddr)
-      }
-      return(NULL)
-    }) |> discard( ~ is.null(.))
-    uidAndAddr$addresses <- addr
-    return(uidAndAddr)
-  }) 
-#  uidAndDateCreated <- rec |> map_df( ~ c(uid=.$UID, dateCreated=.$dates$date_created))
-#  nonOutputAllPapersTargetDataCreated <- nonOutputAllPapersTarget |> left_join(uidAndDateCreated, by="uid")
-#  nonOutputAllPapersTargetDataCreatedAddress <- data.frame(uid = character(), targetDate = character(), address = character())
-#  for (i in 1:nrow(nonOutputAllPapersTargetDataCreated)) {
-#    temp_address <- target[[nonOutputAllPapersTargetDataCreated[i, "uid"]]]$addresses |>
-#      map( ~ CheckNhoFacilityName(.)) |> discard( ~ is.null(.)) |> list_c()
-#    if (is.null(temp_address)) {
-#      temp_address <- "no-target"
-#    }
-#    res <- nonOutputAllPapersTargetDataCreated[i, ] |> merge(temp_address)
-#    colnames(res) <- colnames(nonOutputAllPapersTargetDataCreatedAddress)
-#    nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> bind_rows(res)
-#  }
-#  nonOutputAllPapersTargetDataCreatedAddress <- nonOutputAllPapersTargetDataCreatedAddress |> distinct()
-#  # 施設名に問題があり、allPapersに出力されていない
-#  facilityNameError <- GetFacilityNameError(nonOutputAllPapersTargetDataCreatedAddress)
-#  # 施設名に問題がなく、allPapersに出力されていない
-#  otherError1 <- nonOutputAllPapersTargetDataCreatedAddress |> filter(address == "no-target")
-#  return(list(facilityNameError=facilityNameError, otherError1=otherError1))
+  }) |> bind_rows() |> select(c("uid", "ad", "oo"))
+  # 明らかに対象外の施設を除外する
+  uidAndAddresses <- uidAndAddresses |> 
+    filter(!str_detect(ad, "Natl Ctr Child Hlth & Dev, Clin Res Ctr, Dept Data Sci, Tokyo, Japan")) |> 
+    filter(!str_detect(ad, "Teikyo Univ, Chiba Med Ctr, Dept Surg, Chiba, Japan")) |> 
+    filter(!str_detect(ad, "Kansai Med Univ, Div Gastroenterol & Hepatol, Med Ctr, Moriguchi, Osaka, Japan")) |> 
+    filter(!str_detect(ad, "Okayama Red Cross Hosp, Kawasaki Med Sch, Dept Gen Internal Med 3, Gen Med Ctr, Okayama, Japan")) |> 
+    filter(!str_detect(ad, "Ehime Univ, Shikoku Canc Ctr, Dept Cardiol, Dept Radiol,Grad Sch Med, Matsuyama, Ehime, Japan")) |> 
+    filter(!str_detect(ad, "Toho Univ, Ohashi Med Ctr, Dept Cardiovasc Med, Tokyo, Japan")) |> 
+    filter(!str_detect(ad, "Kindai Univ Hosp, Clin Res Ctr, Osaka, Japan")) |> 
+    filter(!str_detect(ad, "Yokohama City Univ, Gastroenterol Ctr, Dept Surg, Med Ctr, Yokohama, Kanagawa, Japan")) |> 
+    filter(!str_detect(ad, "Aichi Med Univ, Canc Ctr, Nagakute, Aichi, Japan")) |> 
+    filter(!str_detect(ad, "Osaka Hosp, Japan Community Healthcare Org, Dept Internal Med, Osaka, Japan"))
+  facilityNameError <- uidAndAddresses
 }
 GetAddressInfo <- function(input_df) {
   res <- list()
