@@ -438,6 +438,66 @@ ExecCheckTarget3 <- function() {
   df_target <- targetUids |> unlist() |> unlist() |> as.data.frame() |> setNames("uid")
   # allPapersに出力されていないuidを取得
   nonOutputAllPapersTarget <- df_target |> anti_join(allPapers, by="uid") %>% .$uid
+  uidAndAddresses <- nonOutputAllPapersTarget |> map( ~ {
+    targetUid <- .
+    address_names <- addresses[[targetUid]]$addresses$address_name
+    if (!is.null(address_names$address_spec)) {
+      address_names <- address_names |> list()
+    }
+    res <- address_names |> map( ~ {
+      address_name <- .
+      address_spec <- address_name$address_spec
+      if (is.null(address_spec)) {
+        return(NULL)
+      }
+      temp_oo <- address_spec$organizations$organization |> map( ~ {
+        organization <- .
+        content <- organization$content
+        temp <- CheckNhoFacilityName(content)
+        if (!is.null(temp)) {
+          return(.$content)
+        }
+        temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(content)) & category == "OO")
+        if (nrow(temp) > 0){
+          return(.$content)
+        }
+        return(NULL)
+      }) |> discard( ~ is.null(.))
+      if (length(temp_oo) > 0) {
+        oo <- temp_oo
+      } else {
+        oo <- NULL
+      }
+      temp <- CheckNhoFacilityName(address_spec$full_address)
+      if (!is.null(temp)) {
+        ad <- address_spec$full_address
+      } else {
+        ad_list <- address_spec$full_address |> str_split_1(", ") |> map_if( ~ str_detect(., "^\\S+$"), ~ NULL) |> discard( ~ is.null(.))
+        temp_ad <- ad_list |> map( ~ {
+          adPart <- .
+          temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(adPart)) & category == "AD")
+          return (nrow(temp) > 0)
+        }) |> list_c()
+        if (any(temp_ad)) {
+          ad <- address_spec$full_address
+        } else {
+          ad <- NULL
+        }
+      }
+      if (is.null(oo) & is.null(ad)) {
+        return(NULL)
+      }
+      if (is.null(oo)) {
+        df_oo <- data.frame(oo=NA)
+      } else {
+        df_oo <- as.data.frame(oo) |> setNames("oo")
+      }
+      res <- df_oo |> bind_cols(data.frame(ad=ad))
+      return(res)
+    }) |> discard( ~ is.null(.)) |> bind_rows()
+    res$uid <- targetUid
+    return(res)
+  }) |> bind_rows()
   uidAndAllAddresses <- nonOutputAllPapersTarget |> map( ~ allAddresses[[.]])
   uidAndNhoAddresses <- uidAndAllAddresses |> map( ~ {
     uidAndAddr <- .
