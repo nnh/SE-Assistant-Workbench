@@ -433,6 +433,68 @@ ExecCheckTarget1 <- function(checkTargetHospNames) {
   }
   return(list(htmlOutputRecords=htmlOutputRecords, nonHtmlOutputRecords=nonHtmlOutputRecords))
 }
+GetOoForCheckTarget3 <- function(address_spec) {
+  temp_oo <- address_spec$organizations$organization |> map( ~ {
+    organization <- .
+    content <- organization$content
+    temp <- CheckNhoFacilityName(content)
+    if (!is.null(temp)) {
+      return(.$content)
+    }
+    temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(content)) & category == "OO")
+    if (nrow(temp) > 0){
+      return(.$content)
+    }
+    return(NULL)
+  }) |> discard( ~ is.null(.))
+  if (length(temp_oo) > 0) {
+    oo <- temp_oo
+  } else {
+    oo <- NULL
+  }
+  return(oo)  
+}
+GetAdForCheckTarget3 <- function(address_spec) {
+  temp <- CheckNhoFacilityName(address_spec$full_address)
+  if (!is.null(temp)) {
+    ad <- address_spec$full_address
+  } else {
+    ad_list <- address_spec$full_address |> str_split_1(", ") |> map_if( ~ str_detect(., "^\\S+$"), ~ NULL) |> discard( ~ is.null(.))
+    temp_ad <- ad_list |> map( ~ {
+      adPart <- .
+      temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(adPart)) & category == "AD")
+      return (nrow(temp) > 0)
+    }) |> list_c()
+    if (any(temp_ad)) {
+      ad <- address_spec$full_address
+    } else {
+      ad <- NULL
+    }
+  }
+  return(ad)
+}
+CreateDfAdAndOo <- function(oo, ad) {
+  if (is.null(oo) & is.null(ad)) {
+    return(NULL)
+  }
+  if (is.null(oo)) {
+    df_oo <- data.frame(oo=NA)
+  } else {
+    df_oo <- as.data.frame(oo) |> setNames("oo")
+  }
+  res <- df_oo |> bind_cols(data.frame(ad=ad))
+  return(res)  
+}
+GetAuthors <- function(tempNames) {
+  if (is.null(tempNames)) {
+    return(NULL)
+  }
+  if (tempNames$count == 1) {
+    tempNames$name <- tempNames$name |> list()
+  }
+  nameAndAddrNo <- tempNames$name |> map_chr( ~ str_c(.$wos_standard, "[", .$addr_no, "]")) |> str_c(collapse = " | ")
+  return(nameAndAddrNo)
+}
 ExecCheckTarget3 <- function() {
   # target内のuidがHTMLファイルに全て出力されているか確認する
   df_target <- targetUids |> unlist() |> unlist() |> as.data.frame() |> setNames("uid")
@@ -440,64 +502,42 @@ ExecCheckTarget3 <- function() {
   nonOutputAllPapersTarget <- df_target |> anti_join(allPapers, by="uid") %>% .$uid
   uidAndAddresses <- nonOutputAllPapersTarget |> map( ~ {
     targetUid <- .
-    address_names <- addresses[[targetUid]]$addresses$address_name
-    if (!is.null(address_names$address_spec)) {
-      address_names <- address_names |> list()
+    address_names <- addresses[[targetUid]]$addresses
+    if (address_names$count == 1) {
+      address_names$address_name <- address_names$address_name |> list()
     }
-    res <- address_names |> map( ~ {
+    res <- address_names$address_name |> map( ~ {
       address_name <- .
+      address_names <- address_name$names
       address_spec <- address_name$address_spec
-      if (is.null(address_spec)) {
-        return(NULL)
+      oo <- GetOoForCheckTarget3(address_spec)
+      ad <- GetAdForCheckTarget3(address_spec)
+      df_oo_ad <- CreateDfAdAndOo(oo, ad)
+      if (!is.null(df_oo_ad)) {
+        authors <- address_names |> GetAuthors()
+        df_oo_ad$authors <- authors
       }
-      temp_oo <- address_spec$organizations$organization |> map( ~ {
-        organization <- .
-        content <- organization$content
-        temp <- CheckNhoFacilityName(content)
-        if (!is.null(temp)) {
-          return(.$content)
-        }
-        temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(content)) & category == "OO")
-        if (nrow(temp) > 0){
-          return(.$content)
-        }
-        return(NULL)
-      }) |> discard( ~ is.null(.))
-      if (length(temp_oo) > 0) {
-        oo <- temp_oo
-      } else {
-        oo <- NULL
-      }
-      temp <- CheckNhoFacilityName(address_spec$full_address)
-      if (!is.null(temp)) {
-        ad <- address_spec$full_address
-      } else {
-        ad_list <- address_spec$full_address |> str_split_1(", ") |> map_if( ~ str_detect(., "^\\S+$"), ~ NULL) |> discard( ~ is.null(.))
-        temp_ad <- ad_list |> map( ~ {
-          adPart <- .
-          temp <- facilityData |> filter(str_detect(facilityNameLower, tolower(adPart)) & category == "AD")
-          return (nrow(temp) > 0)
-        }) |> list_c()
-        if (any(temp_ad)) {
-          ad <- address_spec$full_address
-        } else {
-          ad <- NULL
-        }
-      }
-      if (is.null(oo) & is.null(ad)) {
-        return(NULL)
-      }
-      if (is.null(oo)) {
-        df_oo <- data.frame(oo=NA)
-      } else {
-        df_oo <- as.data.frame(oo) |> setNames("oo")
-      }
-      res <- df_oo |> bind_cols(data.frame(ad=ad))
-      return(res)
+      return(df_oo_ad)
     }) |> discard( ~ is.null(.)) |> bind_rows()
-    res$uid <- targetUid
+    res$wos_id <- targetUid
+    res$date_created <- rec[[targetUid]]$dates$date_created
+    pmid <- rec[[targetUid]]$dynamic_data$cluster_related$identifiers$identifier |> map( ~ {
+      if (.$type!="pmid") {
+        return(NULL)
+      } else {
+        return(str_remove(.$value, "MEDLINE:"))
+      }
+    }) |> discard( ~ is.null(.)) |> list_c()
+    res$pubmed_id <- pmid
+    res$wos_url <- str_c("https://www.webofscience.com/wos/woscc/full-record/", targetUid)
+    if (!is.null(pmid)) {
+      res$pubmed_url <- str_c("https://pubmed.ncbi.nlm.nih.gov/", pmid, "/")
+    } else {
+      res$pubmed_url <- NA
+    }
     return(res)
-  }) |> bind_rows() |> select(c("uid", "ad", "oo"))
+  }) |> bind_rows() |> select(c("wos_id", "ad", "oo", "authors", "date_created", "wos_url", "pubmed_url")) |> 
+    arrange(desc(date_created), wos_id)
   # 明らかに対象外の施設を除外する
   uidAndAddresses <- uidAndAddresses |> 
     filter(!str_detect(ad, "Natl Ctr Child Hlth & Dev, Clin Res Ctr, Dept Data Sci, Tokyo, Japan")) |> 
@@ -510,7 +550,9 @@ ExecCheckTarget3 <- function() {
     filter(!str_detect(ad, "Yokohama City Univ, Gastroenterol Ctr, Dept Surg, Med Ctr, Yokohama, Kanagawa, Japan")) |> 
     filter(!str_detect(ad, "Aichi Med Univ, Canc Ctr, Nagakute, Aichi, Japan")) |> 
     filter(!str_detect(ad, "Osaka Hosp, Japan Community Healthcare Org, Dept Internal Med, Osaka, Japan"))
-  facilityNameError <- uidAndAddresses
+  wosDataError <- uidAndAddresses |> filter(is.na(authors))
+  facilityNameError <- uidAndAddresses |> filter(!is.na(authors))
+  return(list(facilityNameError=facilityNameError, wosDataError=wosDataError))
 }
 GetAddressInfo <- function(input_df) {
   res <- list()
