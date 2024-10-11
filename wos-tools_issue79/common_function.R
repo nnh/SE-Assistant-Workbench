@@ -495,6 +495,21 @@ GetAuthors <- function(tempNames) {
   nameAndAddrNo <- tempNames$name |> map_chr( ~ str_c(.$wos_standard, "[", .$addr_no, "]")) |> str_c(collapse = " | ")
   return(nameAndAddrNo)
 }
+CheckQueryNho <- function(uidAndAddresses) {
+  uidAndAddresses$nho_flag <- FALSE
+  for (i in 1:nrow(uidAndAddresses)) {
+    if (any(str_detect(tolower(uidAndAddresses[i, "ad"]), facilityData$facilityNameLower))) {
+      uidAndAddresses[i, "nho_flag"] <- TRUE
+    } else {
+      if (!is.na(uidAndAddresses[i, "oo"])) {
+        if (any(str_detect(tolower(uidAndAddresses[i, "oo"]), facilityData$facilityNameLower))) {
+          uidAndAddresses[i, "nho_flag"] <- TRUE
+        }
+      }
+    }
+  }
+  return(uidAndAddresses)
+}
 ExecCheckTarget3 <- function() {
   # target内のuidがHTMLファイルに全て出力されているか確認する
   df_target <- targetUids |> unlist() |> unlist() |> as.data.frame() |> setNames("uid")
@@ -550,8 +565,9 @@ ExecCheckTarget3 <- function() {
     filter(!str_detect(ad, "Yokohama City Univ, Gastroenterol Ctr, Dept Surg, Med Ctr, Yokohama, Kanagawa, Japan")) |> 
     filter(!str_detect(ad, "Aichi Med Univ, Canc Ctr, Nagakute, Aichi, Japan")) |> 
     filter(!str_detect(ad, "Osaka Hosp, Japan Community Healthcare Org, Dept Internal Med, Osaka, Japan"))
-  wosDataError <- uidAndAddresses |> filter(is.na(authors))
-  facilityNameError <- uidAndAddresses |> filter(!is.na(authors))
+  checkNho <- uidAndAddresses |> CheckQueryNho()
+  wosDataError <- checkNho |> filter(is.na(authors) & nho_flag) |> select(-c("nho_flag"))
+  facilityNameError <- checkNho |> anti_join(wosDataError, by="wos_id") |> select(-c("nho_flag"))
   return(list(facilityNameError=facilityNameError, wosDataError=wosDataError))
 }
 # ------ main ------
