@@ -2,26 +2,14 @@
 #' 
 #' @file common_function.R
 #' @author Mariko Ohtsuka
-#' @date 2024.10.10
+#' @date 2024.10.11
 # ------ libraries ------
 library(jsonlite)
 library(rvest)
-library(googlesheets4)
 # ------ constants ------
-configJson <- here("config.json") |> read_json()
-outputSpreadSheetId <- configJson$outputSpreadSheetId
-outputSheetNames <- configJson$sheetNames |> list_flatten()
 nhoHospName <- here("nhoHospname.txt") |> readLines()
 nhoUid <- here("nho_uid.txt") |> readLines() |> as.data.frame() |> setNames("uid")
 # ------ functions ------
-CreateSheets <- function(sheetName) {
-  sheet_list <- sheet_names(outputSpreadSheetId)
-  # シートが存在するか確認
-  if (!(sheetName %in% sheet_list)) {
-    # シートが存在しない場合、新しいシートを作成
-    sheet_add(outputSpreadSheetId, sheet = sheetName)
-  }
-}
 GetHomeDir <- function() {
   os <- Sys.info()["sysname"]
   if (os == "Windows") {
@@ -353,10 +341,6 @@ CheckNhoFacilityName <- function(address) {
     return(address)
   }
   return(NULL)
-}
-ClearAndWriteSheet <- function(sheet_name, data) {
-  range_clear(outputSpreadSheetId, sheet = sheet_name)
-  sheet_write(data, outputSpreadSheetId, sheet = sheet_name)
 }
 GetPublicationsWosId <- function(url) {
   html_file <- url |> read_html()

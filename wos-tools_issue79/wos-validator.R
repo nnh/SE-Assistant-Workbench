@@ -1,8 +1,8 @@
-#' title
-#' description
-#' @file xxx.R
+#' Scripts for data validation in wos-tools
+#' 
+#' @file wos-validator.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
+#' @date 2024.10.11
 rm(list=ls())
 # ------ libraries ------
 library(here)
@@ -15,7 +15,6 @@ kAllPapersJsonPath <- str_c(kParentPath, "raw\\all_papers.json")
 kHtmlPath <- str_c(kParentPath, "html\\")
 # ------ functions ------
 source(here("common_function.R"), encoding="UTF-8")
-gs4_auth()
 homeDir <- GetHomeDir()
 source(here("getQuery.R"), encoding="UTF-8")
 # ------ main ------
@@ -49,9 +48,5 @@ if (length(checkTarget2) != 0) {
 # allPapersに出力されていないレコード
 dummy <- ExecCheckTarget3() |> ExportToGlobal()
 
-# Googleスプレッドシートに結果を出力する
-dummy <- outputSheetNames |> map( ~ CreateSheets(.))
-rm(dummy)
-dummy <- names(outputSheetNames) |> map( ~ ClearAndWriteSheet(outputSheetNames[[.]], get(.)))
 
                                          
