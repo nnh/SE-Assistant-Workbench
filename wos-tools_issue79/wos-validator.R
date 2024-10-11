@@ -47,6 +47,4 @@ if (length(checkTarget2) != 0) {
 ###############
 # allPapersに出力されていないレコード
 dummy <- ExecCheckTarget3() |> ExportToGlobal()
-
-
-                                         
+rm(dummy)

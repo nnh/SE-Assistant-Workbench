@@ -10,6 +10,17 @@ This script performs data validation for the WOS tools project. It extracts and 
   ```bash
   "C:\Users\...\Documents\GitHub\wos-tools\example\src\query.ts"
   ```
+- Set a closing date.  
+  `wos-validator.R`
+  ```
+  kSpecifiedDate <- "20240901" |> as.POSIXct(specified_date, format = "%Y%m%d", tz = "UTC")
+  ```
+- Set input directory path.  
+  `wos-validator.R`
+
+  ```
+  kParentPath <- "Box\Projects\NHO 臨床研究支援部\英文論文\wos-tools\result\result_20240925100939\"
+  ```
 
 ## Files
 
@@ -35,8 +46,6 @@ This script performs data validation for the WOS tools project. It extracts and 
 }
 ```
 
-- **nho_uid.txt**:
-
 ### Libraries
 
 - `here`: Used for managing file paths.
@@ -46,51 +55,13 @@ This script performs data validation for the WOS tools project. It extracts and 
 - `rvest`: Provides tools for scraping and extracting data from HTML files.
 - `V8`: Embeds a JavaScript engine in R, allowing execution of JavaScript code directly within the R environment.
 
-## Script Structure
+## Output to Google Sheets
 
-1. **Constants**:
+When `OutputGoogleSpreadSheet.R` is executed by clicking `Source`, the result is output to the specified Google Sheets, and each sheet is cleared using the functions `CreateSheets()` and `ClearAndWriteSheet()`, updated with the latest data.
 
-   - Defines the paths to the relevant files and directories, including JSON files and HTML reports.
-   - A specified date constant is set for filtering purposes.
+## How to use
 
-2. **Functions**:
-
-   - Common utility functions are loaded from external files.
-   - The script authenticates Google Sheets access using `gs4_auth()`.
-
-3. **Main Process**:
-
-   - **Step 1**: Extracts WOS IDs from HTML reports and reads publication data from `all_papers.json`.
-   - **Step 2**: Retrieves and processes raw data, extracting relevant addresses and groups them into target (NHO-related) and non-target groups.
-   - **Check 1**: Identifies potential NHO hospital records from non-target data.
-   - **Check 2**: Flags unknown hospital names from non-target data for further review.
-   - **Check 3**: Verifies that all records in `all_papers.json` are accounted for.
-   - **Final Output**: Results are exported to Google Sheets for easy review and analysis.
-
-4. **Google Sheets Integration**:
-   - The script creates new sheets or clears and writes results to existing sheets in Google Sheets for validation reporting.
-
-## Validation Process
-
-- **Check 1**: Detects potential NHO hospital entries in non-target data.
-- **Check 2**: Identifies unknown institutions within the non-target dataset.
-- **Check 3**: Verifies that all expected records are included in the final dataset.
-
-## Warnings
-
-- If unknown institutions are found during Check 2, a warning message is generated: `warning("error:checkTarget2")`.
-
-## Google Sheets Output
-
-Results are output to specified Google Sheets, where each sheet is cleared and updated with the latest data using the functions `CreateSheets()` and `ClearAndWriteSheet()`.
-
-## How to Use
-
-1. Place the relevant JSON and HTML files in the specified directories.
-2. Run the script in R. Ensure that you have authenticated access to Google Sheets.
-3. Review the results in Google Sheets, paying close attention to flagged records in Check 1 and Check 2.
-
-## Author
-
-- **Author**: Mariko Ohtsuka
-- **Date**: 2024.10.11
+1. refer to the prerequisites and configure the settings.
+2. Run `wos-validator.R`.
+3. Modify the program as necessary.
+4. Run `outputGoogleSpreadSheet.R`.
