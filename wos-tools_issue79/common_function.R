@@ -519,7 +519,7 @@ ExecCheckTarget3 <- function() {
       return(df_oo_ad)
     }) |> discard( ~ is.null(.)) |> bind_rows()
     res$wos_id <- targetUid
-    res$date_created <- rec[[targetUid]]$dates$date_created
+    res$date_created <- rec[[targetUid]]$dates$date_created |> as.POSIXct(format = "%Y-%m-%dT%H:%M:%OS", tz = "UTC")
     pmid <- rec[[targetUid]]$dynamic_data$cluster_related$identifiers$identifier |> map( ~ {
       if (.$type!="pmid") {
         return(NULL)
@@ -549,6 +549,9 @@ ExecCheckTarget3 <- function() {
     filter(!str_detect(ad, "Yokohama City Univ, Gastroenterol Ctr, Dept Surg, Med Ctr, Yokohama, Kanagawa, Japan")) |> 
     filter(!str_detect(ad, "Aichi Med Univ, Canc Ctr, Nagakute, Aichi, Japan")) |> 
     filter(!str_detect(ad, "Osaka Hosp, Japan Community Healthcare Org, Dept Internal Med, Osaka, Japan"))
+  # 締め切り後のデータを除外する
+  uidAndAddresses <- uidAndAddresses |> filter(date_created <= kSpecifiedDate)
+  # query.tsの施設名と部分一致していればTrue
   checkNho <- uidAndAddresses |> CheckQueryNho()
   wosDataError <- checkNho |> filter(is.na(authors) & nho_flag) |> select(-c("nho_flag"))
   facilityNameError <- checkNho |> anti_join(wosDataError, by="wos_id") |> select(-c("nho_flag"))
