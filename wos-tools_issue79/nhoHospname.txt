@@ -1,0 +1,157 @@
+Natl Hosp
+Hokkaido Canc Ctr
+Hirosaki General Med Ctr
+Morioka Med Ctr
+Sendai Med Ctr
+^Akita Hosp$
+Yamagata Hosp
+Fukushima Hosp
+Mito Med Ctr
+Tochigi Med Ctr
+Takasaki General Med Ctr
+Takasaki Gen Med Ctr
+Nishi-Saitama Central Hosp
+^Chiba Med Ctr$
+^Tokyo Med Ctr$
+^Natl Tokyo Med Ctr$
+Yokohama Med Ctr
+Nishi-Niigata Central Hosp
+Kofu Hosp
+Higashi-Nagano Hosp
+Toyama Hosp
+Kanazawa Med Ctr
+Nagara Med Ctr
+Nagoya Med Ctr
+Shizuoka Med Ctr
+Shizuoka Epilepsy and Neurological Ctr
+Shizuoka Inst Epilepsy & Neurol Disorder
+Mie Hosp
+Tsuruga Med Ctr
+Higashi-Omi General Med Ctr
+Kyoto Med Ctr
+Osaka Med Ctr
+^Kobe Med Ctr$
+Nara Med Ctr
+Minami-Wakayama Med Ctr
+Tottori Med Ctr
+Matsue Med Ctr
+Okayama Med Ctr
+Kure Med Ctr
+Kanmon Med Ctr
+Tokushima East Med Ctr
+Takamatsu Med Ctr
+Shikoku Canc Ctr
+Kochi Hosp
+Kitakyushu Med Ctr
+Saga Hosp
+^Nagasaki Hosp$
+Kumamoto Med Ctr
+Oita Med Ctr
+Miyazaki East Hosp
+Kagoshima Med Ctr
+Okinawa Hosp
+Hakodate Med Ctr
+Asahikawa Med Ctr
+Obihiro Hosp
+Hachinohe Hosp
+Aomori Hosp
+Hanamaki Hosp
+Iwate Hosp
+Kamaishi Hosp
+Sendai Nishitaga Hosp
+Miyagi Hosp
+Yonezawa Hosp
+Iwaki Hosp
+Kasumigaura Med Ctr
+Ibaraki East Hosp
+^Utsunomiya Hosp$
+Numata Hosp
+Shibukawa Med Ctr
+^Saitama Hosp$
+Higashi-Saitama Hosp
+Chiba East Hosp
+Shimousa Psychiatric Med Ctr
+Shimoshizu Hosp
+Disaster Med Ctr
+^Tokyo Hosp$
+Murayama Med Ctr
+Kurihama Med Ctr
+Hakone Hosp
+Sagamihara Hosp
+Sagamihara Natl Hosp
+Kanagawa Hosp
+^Niigata Hosp$
+Saigata Med Ctr
+Matsumoto Med Ctr
+Shinshu Ueda Med Ctr
+Komoro Kogen Hosp
+Hokuriku Hosp
+Iou Hosp
+Nanao Hosp
+Ishikawa Hosp
+Tenryu Hosp
+Higashi-Nagoya Hosp
+Higashi-Ohwari Hosp
+Toyohashi Med Ctr
+Suzuka Hosp
+Mie Chuo Med Ctr
+Sakakibara Hosp
+Awara Hosp
+Shigaraki Hosp
+Utatano Hosp
+Maizuru Med Ctr
+Nankin Kyoto Hosp
+Kinki Chuo Chest Med Ctr
+Osaka Toneyama Med Ctr
+Osaka South Med Ctr
+Himeji Med Ctr
+Hyogo Aono Hosp
+Hyogo Chuo Hosp
+Yamato Psychiatric Med Ctr
+Wakayama Hosp
+Yonago Med Ctr
+Hamada Med Ctr
+Minami-Okayama Med Ctr
+Fukuyama Med Ctr
+Hiroshima West Med Ctr
+Hiroshima Nishi Med Ctr
+Hiroshimanishi Med Ctr
+Higashi Hiroshima Med Ctr
+Higashi-Hiroshima Med Ctr
+Higashihiroshima Med Ctr
+Kamo Psychiatric Med Ctr
+Yamaguchi Ube Med Ctr
+Iwakuni Med Ctr
+Yanai Med Ctr
+Tokushima West Med Ctr
+Shikoku Children's and Adults' Med Ctr
+Shikoku Med Ctr Children & Adult
+Ehime Med Ctr
+Kyushu Canc Ctr
+Kyushu Med Ctr
+Fukuoka Hosp
+^Omuta Hosp$
+Fukuoka East Med Ctr
+Fukuoka Higashi Med Ctr
+Hizen Psychiatric Med Ctr
+Higashi-Saga Hosp
+Ureshino Med Ctr
+Nagasaki Med Ctr
+Nagasaki Kawatana Med Ctr
+Kumamoto South Hosp
+Kikuchi Hosp
+Kumamoto Saishun Med Ctr
+Beppu Med Ctr
+Nishi-Beppu Hosp
+Miyakonojo Med Ctr
+^Miyazaki Hosp$
+Ibusuki Med Ctr
+Minami-Kyushu Hosp
+Ryukyu Hosp
+Higashi Ohmi Gen Med Ctr
+NishiNiigata Chuo Hosp
+Toneyama Med Ctr
+Osaka Minami Med Ctr
+Kokura Med Ctr
+^Natl Saitama Hosp$
+^Natl Epilepsy Ctr$
