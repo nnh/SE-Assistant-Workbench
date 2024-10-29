@@ -185,6 +185,56 @@ function getSheetList_(
     .setValues(sheets);
   return sheets;
 }
+function testtest() {
+  const ssId: string | null =
+    PropertiesService.getScriptProperties().getProperty('targetSsId');
+  if (ssId === null) {
+    throw new Error('No targetSsId');
+  }
+  const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
+    SpreadsheetApp.openById(ssId);
+  console.log(ss.getName());
+  const targetSheet = ss.getSheetByName('Datacenter');
+  if (targetSheet === null) {
+    throw new Error('No sheet named Base');
+  }
+  const aaa: string[][] = getValidations_(targetSheet);
+  console.log(aaa);
+}
+function transposeArray_(
+  array: (GoogleAppsScript.Spreadsheet.DataValidation | null)[][]
+) {
+  return array[0].map((_, colIndex) => array.map(row => row[colIndex]));
+}
+
+function getValidations_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet
+): string[][] {
+  const dataRange: GoogleAppsScript.Spreadsheet.Range = sheet.getDataRange();
+  const validations: GoogleAppsScript.Spreadsheet.DataValidation[][] =
+    transposeArray_(dataRange.getDataValidations())
+      .map(x => x.filter(y => y !== null))
+      .filter(x => x.length > 0);
+  const targetValidations: string[] = validations
+    .map(validationList =>
+      validationList[0].getCriteriaType() ===
+      SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE
+        ? (validationList[0]
+            .getCriteriaValues()[0]
+            .getSheet()
+            .getName() as string)
+        : null
+    )
+    .filter(x => x !== null);
+  const validationRefSheetNameUnique: string[] = Array.from(
+    new Set(targetValidations)
+  );
+  const res: string[][] = validationRefSheetNameUnique.map(x => [
+    sheet.getName(),
+    x,
+  ]);
+  return res;
+}
 function getMoveSheetList(sheetList = null) {
   let inputSheetList: string[][];
   if (sheetList === null) {
