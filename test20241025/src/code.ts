@@ -42,10 +42,12 @@ function getRefSheetList_(
   if (setTest.length === 0) {
     return [[sheet.getName(), constNoRef]];
   }
-  const res: string[][] = setTest.map(x => [
+  const res1: string[][] = setTest.map(x => [
     sheet.getName(),
     x.replace("'!", '').replace('!', ''),
   ]);
+  const res2: string[][] = getValidations_(sheet);
+  const res: string[][] = Array.from(new Set([...res1, ...res2]));
   return res;
 }
 function test20241025() {
@@ -115,6 +117,9 @@ function getRefList2(inputData: string[][] | null = null): void {
     .setValues(nonRefSheets);
 }
 function setCategory_(sheetname: string): string {
+  if (sheetname === 'DC印刷' || sheetname === 'OSCR用') {
+    return '入力項目なし';
+  }
   if (
     sheetname === 'Base' ||
     sheetname === 'Datacenter' ||
@@ -129,18 +134,18 @@ function setCategory_(sheetname: string): string {
   ) {
     return sheetname;
   }
-  if (new RegExp('^DCtrialslist').test(sheetname) || sheetname === 'Members') {
+  if (new RegExp('^DCtrialslist').test(sheetname)) {
     return 'DCtrialslist';
   }
   if (sheetname === 'ARO支援一覧test') {
     return 'ARO支援一覧test';
   }
   if (
-    sheetname === 'Journal Information' ||
     sheetname === 'fromHtml' ||
     /^Form[2-4]印刷$/.test(sheetname) ||
     sheetname === 'pubmedData' ||
-    sheetname === 'explanation'
+    sheetname === 'explanation' ||
+    sheetname === 'sites'
   ) {
     return 'Publication';
   }
@@ -185,22 +190,7 @@ function getSheetList_(
     .setValues(sheets);
   return sheets;
 }
-function testtest() {
-  const ssId: string | null =
-    PropertiesService.getScriptProperties().getProperty('targetSsId');
-  if (ssId === null) {
-    throw new Error('No targetSsId');
-  }
-  const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    SpreadsheetApp.openById(ssId);
-  console.log(ss.getName());
-  const targetSheet = ss.getSheetByName('Datacenter');
-  if (targetSheet === null) {
-    throw new Error('No sheet named Base');
-  }
-  const aaa: string[][] = getValidations_(targetSheet);
-  console.log(aaa);
-}
+
 function transposeArray_(
   array: (GoogleAppsScript.Spreadsheet.DataValidation | null)[][]
 ) {
