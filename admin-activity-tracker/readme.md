@@ -15,7 +15,7 @@ To set up the environment and install necessary dependencies, follow these steps
 
 2. Install required libraries in R:
 
-   Open R or RStudio and run the following command to install the required libraries:
+   Open RStudio and run the following command to install the required libraries:
 
    ```r
    install.packages(c("tidyverse", "googlesheets4", "jsonlite", "here"))
@@ -25,9 +25,10 @@ To set up the environment and install necessary dependencies, follow these steps
 
 ### Configuration Before Running the Scripts
 
-Before running the scripts, set up the config.txt file in the ext folder with the following content:
+Before running the scripts, create a `config.json` file in the same folder as the script you want to execute.  
+The file should contain the following content:
 
-```config.txt
+```config.json
 {
   "spreadsheet_id": "your_spreadsheet_id_here"
 }
@@ -41,7 +42,7 @@ Replace "your_spreadsheet_id_here" with the ID of the target Google Spreadsheet.
 2. Set Up New Project: Open the admin-activity-tracker directory as a New Project.
 3. Open `admin_activity_tracker.R`.
 4. Run the Script:  
-   Click the Source button to execute the script.
+   Click the Source button to execute the script. If prompted for Google authentication, follow the on-screen instructions to grant access to the Google Sheets API.  
    Follow the on-screen prompts or logs for results.
 
 ### Features
