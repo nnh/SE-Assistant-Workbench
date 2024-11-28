@@ -1,36 +1,74 @@
-#' title
-#' description
-#' @file xxx.R
+#' Administrative Privilege Changes Consolidation Program
+#' This is a program that consolidates information that has been changed with administrative privileges.
+#' @file admin_activity_tracker.R
 #' @author Mariko Ohtsuka
-#' @date YYYY.MM.DD
+#' @date 2024.11.28
 rm(list=ls())
 # ------ libraries ------
 library(tidyverse)
 library(here)
-# ------ constants ------
-kParentPath <- "\\\\ARONAS\\Archives\\Log\\パッチのログ"
+library(googlesheets4)
+library(jsonlite)
 # ------ functions ------
-GetHomeDir <- function() {
+GetYmList <- function(targetDate) {
+  year <- targetDate %>% year()
+  month <- targetDate %>% month()
+  result <- list(
+    year=year,
+    month=sprintf("%02d", month)
+  )
+  return(result)
+}
+GetCurrentMonth <- function() {
+  ym <- Sys.Date() %>% GetYmList()
+  return(ym)
+}
+GetPreviousMonth <- function() {
+  current_date <- Sys.Date()
+  previous_month <- current_date %m-% months(1)
+  ym <- previous_month %>% GetYmList()
+  return(ym)
+}
+GetNextMonth <- function(year, month) {
+  current_date <- ymd(paste(year, month, "01", sep = "-"))
+  next_month_date <- current_date %m+% months(1)
+  ym <- next_month_date %>% GetYmList()
+  return(ym)
+}
+GetVolumeStr <- function() {
   os <- Sys.info()["sysname"]
   if (os == "Windows") {
-    home_dir <- Sys.getenv("USERPROFILE")
+    volume_str <- "//aronas"
   } else if (os == "Darwin") {
-    home_dir <- Sys.getenv("HOME")
+    volume_str <- "/Volumes"
   } else {
     stop("Unsupported OS")
   }
-  return (home_dir)
+  return (volume_str)
 }
 GetZoomLog <- function(target) {
   targetFiles <- file.path(kParentPath, "Zoom", target) %>% list.files(pattern="*.csv", full.names=T)
+  if (is_list(kTargetYm)) {
+    targetYm <- str_c("operationlog_", kTargetYm$year, "_", kTargetYm$month)
+    targetFiles <- targetFiles %>% GetTargetFile(targetYm)
+  }
+  
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F))
   df_list <- logList %>% map_if( ~ is.data.frame(.x) && nrow(.x) == 0, ~ NULL) %>% compact()
   df <- df_list %>% bind_rows()
+  if (nrow(df) == 0) {
+    return(df)
+  }
   res <- df %>% filter(カテゴリー != "記録" & カテゴリー != "レコーディング")
 }
 GetNasLog <- function() {
   targetFiles <- file.path(kParentPath, "ARONAS") %>% list.files(pattern="*.csv", full.names=T) %>% 
     str_extract("^.*SystemEventLog_.*") %>% na.omit()
+  if (is_list(kTargetYm)) {
+    nasTargetYm <- GetNextMonth(kTargetYm$year, kTargetYm$month)
+    targetYm <- str_c(nasTargetYm$year, nasTargetYm$month)
+    targetFiles <- targetFiles %>% GetTargetFile(targetYm)
+  }
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F) %>% 
                                     filter((User != "System" & User != "---") & 
                                             Category != "App Status Change" & 
@@ -38,16 +76,36 @@ GetNasLog <- function() {
                                             `Severity Level` == "Information")
                                 )
   df <- logList %>% bind_rows()
+  if (!"Application" %in% colnames(df)) {
+    df$Application <- NA
+  }
+  if (!"Service" %in% colnames(df)) {
+    df$Service <- NA
+  }
+  df$ApplicationAndService <- ifelse(!is.na(df$Application), df$Application, df$Service)
   res <- df %>% filter(Content != "[Malware Remover] Started scanning.") %>% 
-                filter(!(Application == "Hybrid Backup Sync" & Category == "Job Status")) %>% 
+                filter(!(ApplicationAndService == "Hybrid Backup Sync" & Category == "Job Status")) %>% 
                 filter(Content != "[Antivirus] Updated virus definitions.") %>% 
-                filter(!(Application == "App Center" & str_detect(Content, "enabled.$"))) %>%
+                filter(!(ApplicationAndService == "App Center" & str_detect(Content, "enabled.$"))) %>%
                 filter(Content != '[Network & Virtual Switch] Set "Adapter 1" as system default gateway. "Adapter 1" connected to the internet after checking NCSI.') %>% 
                 filter(Content != '[Network & Virtual Switch] Failed to connect to the internet. System default gateway \"Adapter 1\" and all adapters failed to connect to the internet after checking NCSI.')
-  res <- res %>% distinct() %>% arrange(Date, Time)
+  res <- res %>% distinct() %>% arrange(Date, Time) %>% select("Date", "Time", "User", "Content")
+  if (is_list(kTargetYm)) {
+    res <- res %>%
+      filter(
+        format(Date, "%Y") == as.character(kTargetYm$year), 
+        format(Date, "%m") == kTargetYm$month             
+      )
+  }
+  res$Time <- as.character(res$Time)
+  return(res)
 }
 GetPrimeDriveLog <- function() {
   targetFiles <- file.path(kParentPath, "PrimeDrive") %>% list.files(pattern="*.csv", full.names=T)
+  if (is_list(kTargetYm)) {
+    targetYm <- str_c(kTargetYm$year, kTargetYm$month)
+    targetFiles <- targetFiles %>% GetTargetFile(targetYm)
+  }
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F))
   df <- logList %>% bind_rows()
   kExclude <- c("ログイン", "ログアウト", "WEBメール送信(PrimeDrive送信)", "アップロードリンク発行", 
@@ -66,16 +124,24 @@ GetPrimeDriveLog <- function() {
     filter(!操作 %in% kExclude) %>% arrange(実行日)
   userEditRes <- res %>% filter(操作 %in% kUserEdit)
   res <- res %>% anti_join(userEditRes, by=colnames(userEditRes))
+  if (nrow(res) < 2) {
+    res <- res %>% filter(!is.na(内容))
+    return(res)
+  }
   # 同じ内容なら一番古い情報だけ残す
   for (i in nrow(res):2) {
     if (res[i, "内容"] == res[i - 1, "内容"]) {
       res[i, "内容"] <- NA
     }
   }
-  res <- res %>% filter(!is.na(内容))
+  res <- res %>% filter(!is.na(内容)) %>% select(-c("接続元"))
 }
 GetGoogleLog <- function() {
   targetFiles <- file.path(kParentPath, "Google") %>% list.files(pattern="*.csv", full.names=T)
+  if (is_list(kTargetYm)) {
+    targetYm <- str_c(kTargetYm$year, kTargetYm$month)
+    targetFiles <- targetFiles %>% GetTargetFile(targetYm)
+  }
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F) %>% 
                                     filter(イベント != "アラートセンターを表示しました" & 
                                            イベント != "アラート センターの表示" &
@@ -93,8 +159,11 @@ GetGoogleLog <- function() {
     target[[i]] <- df
   }
   df <- target %>% bind_rows() 
-  df$description <- ifelse(is.na(df$イベントの説明), df$説明, df$イベントの説明)
-  colnames(df)
+  if ("イベントの説明" %in% colnames(df)) {
+    df$description <- ifelse(is.na(df$イベントの説明), df$説明, df$イベントの説明)
+  } else {
+    df$description <- df$説明
+  }
   df <- df %>% select("event"="イベント", "actor"="アクター", "日付", "description") %>% filter(event != "メールログ検索")
   kUserEdit <- c("ユーザー名の変更", "ニックネームの作成", "ニックネームの削除", "パスワードの変更", "パスワード変更",
                  "次回ログイン時のパスワードの変更", "ユーザーの削除", "ユーザーの作成",
@@ -138,8 +207,16 @@ SetFortiGateLogHeader <- function(target) {
   }
   return(target)
 }
+GetTargetFile <- function(targetFiles, targetYm) {
+  res <- targetFiles %>% .[str_detect(., targetYm)]
+  return(res)
+} 
 GetFortiGateLog <- function() {
   targetFiles <- file.path(kParentPath, "FortiGate") %>% list.files(pattern="*.csv", full.names=T)
+  if (is_list(kTargetYm)) {
+    targetYm <- str_c("from_", kTargetYm$year, "-", kTargetYm$month)
+    targetFiles <- targetFiles %>% GetTargetFile(targetYm)
+  }
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F, col_names=F))
   # 列名の設定
   targets <- logList %>% map( ~ SetFortiGateLogHeader(.))
@@ -151,10 +228,81 @@ GetFortiGateLog <- function() {
     select(c("date", "time", "action", "cfgattr", "cfgobj", "cfgpath", "logdesc", "msg", "user")) %>%
     arrange(date, time)
 }
+SetFortiGateLog <- function() {
+  df <- GetFortiGateLog()
+  df %>% WriteSheet("FortiGate")
+}
+SetGoogleLog <- function() {
+  df <- GetGoogleLog()
+  df %>% WriteSheet("Google")
+}
+SetPrimeDriveLog <- function() {
+  df <- GetPrimeDriveLog()
+  df %>% WriteSheet("PrimeDrive")
+}
+SetNasLog <- function() {
+  df <- GetNasLog()
+  df %>% WriteSheet("ARONAS")
+}
+SetZoomLog <- function(target) {
+  df <- GetZoomLog(target)
+  sheetName <- ifelse(target == "z1", "Zoom1", "Zoom2")
+  df %>% WriteSheet(sheetName)
+}
+GetSpreadSheetId <- function(file_path) {
+  tryCatch(
+    {
+      json <- read_json(file_path)
+      id <- json$spreadsheet_id
+      return(id)
+    },
+    error = function(e) {
+      stop("JSONファイルの読み込みに失敗しました: ", conditionMessage(e))
+    }
+  )
+}
+GetSheetValues <- function(sheetName) {
+  return(read_sheet(kSpreadSheetId, sheet=sheetName))
+}
+WriteSheet <- function(target, sheetName) {
+  if (nrow(target) == 0) {
+    print(str_c("対象なし：", sheetName))
+    return()
+  }
+  existingData <- GetSheetValues(sheetName)
+  startRow = ifelse(nrow(existingData) == 0, 1, nrow(existingData) + 2)
+  col_f <- startRow == 1
+  startCell <- str_c("A", startRow)
+  targetRange <- target %>% GetRange(start_cell=startCell, col_f)
+  googlesheets4::range_write(ss=kSpreadSheetId, data=target, sheet=sheetName, col_names=col_f, range=targetRange)
+}
+GetRange <- function(df, start_cell="A1", col_f) {
+  start_col <- substr(start_cell, 1, 1)
+  start_row <- as.numeric(substr(start_cell, 2, nchar(start_cell)))
+  
+  end_col <- LETTERS[ncol(df)] # 列数をアルファベットで表現
+  end_row <- start_row + nrow(df) - 1
+  if (col_f) {
+    end_row <- end_row + 1
+  }
+  
+  paste0(start_col, start_row, ":", end_col, end_row)
+}
+# ------ constants ------
+#kTargetYm <- GetPreviousMonth() # NAを入れるとすべてのファイルが処理対象になります
+kTargetYm <- NA
+kSpreadSheetId <- here("config.json") %>% GetSpreadSheetId()
+volume_str <- GetVolumeStr()
+kParentPath <- volume_str %>% str_c("/Archives/Log/パッチのログ/")
 # ------ main ------
-fortiGateLog <- GetFortiGateLog()
-googleLog <- GetGoogleLog()
-primeDriveLog <- GetPrimeDriveLog()
-nasLog <- GetNasLog()
-z2Log <- "z2" %>% GetZoomLog()
-z1Log <- "z1" %>% GetZoomLog()
+gs4_auth(
+  email = gargle::gargle_oauth_email(),
+  scopes = "https://www.googleapis.com/auth/spreadsheets",
+  cache = gargle::gargle_oauth_cache(),
+  use_oob = gargle::gargle_oob_default(),
+  token = NULL)
+dummy <- SetFortiGateLog()
+dummy <- SetGoogleLog()
+dummy <- SetPrimeDriveLog()
+dummy <- SetNasLog()
+dummy <- c("z2", "z1") %>% map( ~ SetZoomLog(.))
