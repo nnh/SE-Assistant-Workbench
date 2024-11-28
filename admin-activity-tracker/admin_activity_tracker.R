@@ -289,8 +289,8 @@ GetRange <- function(df, start_cell="A1", col_f) {
   paste0(start_col, start_row, ":", end_col, end_row)
 }
 # ------ constants ------
-#kTargetYm <- GetPreviousMonth() # NAを入れるとすべてのファイルが処理対象になります
-kTargetYm <- NA
+kTargetYm <- GetPreviousMonth() # NAを入れるとすべてのファイルが処理対象になります
+#kTargetYm <- NA
 kSpreadSheetId <- here("config.json") %>% GetSpreadSheetId()
 volume_str <- GetVolumeStr()
 kParentPath <- volume_str %>% str_c("/Archives/Log/パッチのログ/")
