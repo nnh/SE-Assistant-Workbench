@@ -43,22 +43,30 @@ function main() {
     .map(event => {
       const usersWithoutOrganizer: GoogleAppsScript.Calendar.EventGuest[] =
         event.getGuestList();
-      if (usersWithoutOrganizer.length === 0) {
-        if (guestFlag) {
-          return [
-            event.getTitle(),
-            event.getStartTime().toISOString(),
-            event.getEndTime().toISOString(),
-            targetEmail,
-            'ゲストなし',
-          ];
-        } else {
-          return null;
-        }
+      if (usersWithoutOrganizer.length === 0 && !guestFlag) {
+        return null;
+      }
+      const eventSeries: string = event.isRecurringEvent()
+        ? event.getEventSeries().getId()
+        : '';
+      const visibility: string =
+        event.getVisibility() === CalendarApp.Visibility.PRIVATE
+          ? '非公開'
+          : '公開';
+      if (usersWithoutOrganizer.length === 0 && guestFlag) {
+        return [
+          event.getTitle(),
+          event.getStartTime().toISOString(),
+          event.getEndTime().toISOString(),
+          targetEmail,
+          visibility,
+          'ゲストなし',
+          eventSeries,
+        ];
       }
       const users: GoogleAppsScript.Calendar.EventGuest[] =
         event.getGuestList(true);
-      const checkOrganiser: boolean = getArrayDifference(
+      const checkOrganiser: boolean = getArrayDifference_(
         usersWithoutOrganizer,
         users,
         targetEmail
@@ -71,28 +79,32 @@ function main() {
         event.getStartTime().toISOString(),
         event.getEndTime().toISOString(),
         targetEmail,
+        visibility,
         '',
+        eventSeries,
       ];
     })
     .filter(event => event !== null);
+  const uniqueData = removeDuplicateIDs_(organiserEvents);
   const header: string[] = [
     'Title',
     'Start Time',
     'End Time',
     'Organiser',
+    'Public/Private',
     'memo',
   ];
-  const outputValues: string[][] = [header, ...organiserEvents];
+  const outputValues: string[][] = [header, ...uniqueData];
   outputSheet.clear();
   outputSheet
     .getRange(1, 1, outputValues.length, header.length)
     .setValues(outputValues);
   outputSheet.activate();
 }
-function getArrayDifference(
+function getArrayDifference_(
   usersWithoutOrganizer: GoogleAppsScript.Calendar.EventGuest[],
   users: GoogleAppsScript.Calendar.EventGuest[],
-  Organiser: string
+  organiser: string
 ): boolean {
   const usersWithoutOrganizerEmails: string[] = usersWithoutOrganizer.map(
     item => item.getEmail()
@@ -104,7 +116,30 @@ function getArrayDifference(
   if (diff1.length === 0) {
     return false;
   }
-  const result: boolean = diff1.some(item => item === Organiser);
+  const result: boolean = diff1.some(item => item === organiser);
+  return result;
+}
+function removeDuplicateIDs_(data: string[][]): string[][] {
+  const seen: Set<string> = new Set();
+  const targetIdx: number = 6;
+  const uniqueData: string[][] = data.filter(row => {
+    const id = row[targetIdx];
+    if (id === '') {
+      return true;
+    }
+    if (seen.has(id)) {
+      return false;
+    } else {
+      seen.add(id);
+      return true;
+    }
+  });
+  const result = uniqueData.map(row => {
+    const newRow = [...row];
+    newRow.splice(targetIdx, 1);
+    return newRow;
+  });
+
   return result;
 }
 
