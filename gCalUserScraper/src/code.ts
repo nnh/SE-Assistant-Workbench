@@ -120,21 +120,25 @@ function getArrayDifference_(
   return result;
 }
 function removeDuplicateIDs_(data: string[][]): string[][] {
-  const seen: Set<string> = new Set();
+  const sortIdx: number = 1;
   const targetIdx: number = 6;
-  const uniqueData: string[][] = data.filter(row => {
-    const id = row[targetIdx];
-    if (id === '') {
-      return true;
-    }
-    if (seen.has(id)) {
-      return false;
-    } else {
-      seen.add(id);
-      return true;
-    }
+  const idSet: Set<string> = new Set(data.map(row => row[targetIdx]));
+  idSet.delete('');
+  let uniqueData: string[][] = [];
+  idSet.forEach(id => {
+    const rows: string[][] = data.filter(row => row[targetIdx] === id);
+    uniqueData.push([...rows[0]]);
   });
-  const result = uniqueData.map(row => {
+  const uniqueData2: string[][] = data.filter(row => row[targetIdx] === '');
+  const finalData: string[][] = [...uniqueData, ...uniqueData2];
+
+  // ソート
+  finalData.sort((a, b) => {
+    if (a[sortIdx] < b[sortIdx]) return -1;
+    if (a[sortIdx] > b[sortIdx]) return 1;
+    return 0;
+  });
+  const result: string[][] = finalData.map(row => {
     const newRow = [...row];
     newRow.splice(targetIdx, 1);
     return newRow;
