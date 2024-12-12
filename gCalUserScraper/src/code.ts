@@ -53,11 +53,12 @@ function main() {
         event.getVisibility() === CalendarApp.Visibility.PRIVATE
           ? '非公開'
           : '公開';
+      const dateMap: Map<string, string> = getEventTimesInJST_(event);
       if (usersWithoutOrganizer.length === 0 && guestFlag) {
         return [
           event.getTitle(),
-          event.getStartTime().toISOString(),
-          event.getEndTime().toISOString(),
+          dateMap.get('start') as string,
+          dateMap.get('end') as string,
           targetEmail,
           visibility,
           'ゲストなし',
@@ -76,8 +77,8 @@ function main() {
       }
       return [
         event.getTitle(),
-        event.getStartTime().toISOString(),
-        event.getEndTime().toISOString(),
+        dateMap.get('start') as string,
+        dateMap.get('end') as string,
         targetEmail,
         visibility,
         '',
@@ -144,6 +145,23 @@ function removeDuplicateIDs_(data: string[][]): string[][] {
     return newRow;
   });
 
+  return result;
+}
+
+function getEventTimesInJST_(
+  event: GoogleAppsScript.Calendar.CalendarEvent
+): Map<string, string> {
+  const startTimeUTC: GoogleAppsScript.Base.Date = event.getStartTime();
+  const endTimeUTC: GoogleAppsScript.Base.Date = event.getEndTime();
+
+  const startTimeJST: Date = new Date(
+    startTimeUTC.getTime() + 9 * 60 * 60 * 1000
+  );
+  const endTimeJST: Date = new Date(endTimeUTC.getTime() + 9 * 60 * 60 * 1000);
+  const result: Map<string, string> = new Map([
+    ['start', startTimeJST.toISOString().replace('Z', '+09:00')],
+    ['end', endTimeJST.toISOString().replace('Z', '+09:00')],
+  ]);
   return result;
 }
 
