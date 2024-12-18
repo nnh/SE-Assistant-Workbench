@@ -6,8 +6,15 @@ const headers: string[] = [
   'Answer(Japanese)',
   'Question(English)',
   'Answer(English)',
+  'Response Date',
 ];
 function getTableDataFromDocA_main(): void {
+  const outputSheet: GoogleAppsScript.Spreadsheet.Sheet = getOutputSheet_();
+  const companyName: string | null =
+    PropertiesService.getScriptProperties().getProperty('company_a');
+  if (companyName === null) {
+    throw new Error('Company name is not set in script properties');
+  }
   const aPropertyHead: string = 'a_target_file_id_';
   const aPropertyKeys: string[] = PropertiesService.getScriptProperties()
     .getKeys()
@@ -23,7 +30,18 @@ function getTableDataFromDocA_main(): void {
       PropertiesService.getScriptProperties().getProperty('a_target_file_id_1')
         ? '2023-02-xx'
         : '';
-    getTableDataFromDocA_(docId, responseDate);
+    const outputBodies: string[][] = getTableDataFromDocA_(
+      docId,
+      responseDate,
+      companyName
+    );
+    const lastRow: number = outputSheet.getLastRow();
+    const outputValues: string[][] =
+      lastRow === 0 ? [headers, ...outputBodies] : outputBodies;
+    const startRow: number = lastRow + 1;
+    outputSheet
+      .getRange(startRow, 1, outputValues.length, headers.length)
+      .setValues(outputValues);
   });
 }
 
@@ -64,6 +82,14 @@ function getTableDataFromDocDs_(docId: string): string[][] {
   }
   return outputTables;
 }
+function getOutputSheet_(): GoogleAppsScript.Spreadsheet.Sheet {
+  const sheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('output');
+  if (sheet === null) {
+    throw new Error('Sheet not found');
+  }
+  return sheet;
+}
 
 function main() {
   const ds_wk_sheet =
@@ -74,14 +100,11 @@ function main() {
   const targetFileids: string[][] = ds_wk_sheet
     .getRange(2, 2, ds_wk_sheet.getLastRow() - 1, 1)
     .getValues();
-  const sheet: GoogleAppsScript.Spreadsheet.Sheet | null =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('output');
-  if (sheet === null) {
-    throw new Error('Sheet not found');
-  }
+
   const tablesList: string[][][] = targetFileids.map(fileId =>
     getTableDataFromDocDs_(fileId[0])
   );
+  const sheet: GoogleAppsScript.Spreadsheet.Sheet = getOutputSheet_();
   const tables: string[][] = tablesList.flat();
   const outputValues: string[][] = [headers, ...tables];
   sheet.clear();
