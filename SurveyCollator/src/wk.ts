@@ -20,3 +20,9 @@ function getDsFileInfo() {
   }
   sheet.getRange(2, 1, fileNameAndIds.length, 2).setValues(fileNameAndIds);
 }
+// categoryの値を一意に取得する関数
+const getUniqueCategories_ = (outputValues: { category: string }[]) => {
+  return Array.from(new Set(outputValues.map(({ category }) => category)));
+};
+// 使用例
+//const uniqueCategories = getUniqueCategories_(outputValues);

@@ -7,42 +7,26 @@ const headers: string[] = [
   'Question(English)',
   'Answer(English)',
 ];
-function getTableDataFromDocA() {
-  const docId: string = '';
-  const doc: GoogleAppsScript.Document.Document = DocumentApp.openById(docId);
-  const filename: string = doc.getName();
-  const body: GoogleAppsScript.Document.Body = doc.getBody();
-  const paragraphs: GoogleAppsScript.Document.Paragraph[] =
-    body.getParagraphs();
-
-  let outputTables: string[][] = [];
-  let tableTitle: string = '';
-  let key: string = '';
-  let values: string[][] = [];
-  for (let i = 0; i < paragraphs.length; i++) {
-    const paragraph = paragraphs[i];
-
-    if (paragraph.getHeading() === DocumentApp.ParagraphHeading.HEADING3) {
-      if (values.length > 0) {
-        outputTables.push(...values);
-      }
-      tableTitle = paragraph.getText();
-      values = [];
-    }
-    if (paragraph.getHeading() === DocumentApp.ParagraphHeading.HEADING4) {
-      key = paragraph.getText().replace(/^\d+(\.\d+)*\.\s/, '');
-    }
-    if (paragraph.getHeading() === DocumentApp.ParagraphHeading.NORMAL) {
-      if (paragraph.getText() !== '' && key !== '') {
-        values.push([tableTitle, paragraph.getText(), key]);
-      }
-    }
+function getTableDataFromDocA_main(): void {
+  const aPropertyHead: string = 'a_target_file_id_';
+  const aPropertyKeys: string[] = PropertiesService.getScriptProperties()
+    .getKeys()
+    .filter(key => key.includes(aPropertyHead));
+  if (aPropertyKeys.length === 0) {
+    throw new Error('No target file found');
   }
-  const outputBody: string[][] = outputTables.filter(
-    ([tableTitle, _1, _2]) => tableTitle !== ''
-  );
-  console.log(0);
+  const targetDocIds: string[] = aPropertyKeys
+    .map(key => PropertiesService.getScriptProperties().getProperty(key))
+    .filter((property): property is string => property !== null);
+  targetDocIds.forEach(docId => {
+    const responseDate: string =
+      PropertiesService.getScriptProperties().getProperty('a_target_file_id_1')
+        ? '2023-02-xx'
+        : '';
+    getTableDataFromDocA_(docId, responseDate);
+  });
 }
+
 function getTableDataFromDocDs_(docId: string): string[][] {
   const companyName: string | null =
     PropertiesService.getScriptProperties().getProperty('company_ds');
