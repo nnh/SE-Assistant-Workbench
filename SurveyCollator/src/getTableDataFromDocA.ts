@@ -216,3 +216,39 @@ function getTableDataFromDocA_(
   }
   return outputBodies;
 }
+function getTableDataFromDocA_main(): void {
+  const outputSheet: GoogleAppsScript.Spreadsheet.Sheet = getOutputSheet_();
+  const companyName: string | null =
+    PropertiesService.getScriptProperties().getProperty('company_a');
+  if (companyName === null) {
+    throw new Error('Company name is not set in script properties');
+  }
+  const aPropertyHead: string = 'a_target_file_id_';
+  const aPropertyKeys: string[] = PropertiesService.getScriptProperties()
+    .getKeys()
+    .filter(key => key.includes(aPropertyHead));
+  if (aPropertyKeys.length === 0) {
+    throw new Error('No target file found');
+  }
+  const targetDocIds: string[] = aPropertyKeys
+    .map(key => PropertiesService.getScriptProperties().getProperty(key))
+    .filter((property): property is string => property !== null);
+  targetDocIds.forEach(docId => {
+    const responseDate: string =
+      PropertiesService.getScriptProperties().getProperty('a_target_file_id_1')
+        ? '2023-02-xx'
+        : '';
+    const outputBodies: string[][] = getTableDataFromDocA_(
+      docId,
+      responseDate,
+      companyName
+    );
+    const lastRow: number = outputSheet.getLastRow();
+    const outputValues: string[][] =
+      lastRow === 0 ? [headers, ...outputBodies] : outputBodies;
+    const startRow: number = lastRow + 1;
+    outputSheet
+      .getRange(startRow, 1, outputValues.length, headers.length)
+      .setValues(outputValues);
+  });
+}
