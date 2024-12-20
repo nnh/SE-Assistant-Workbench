@@ -1,5 +1,3 @@
-import { util } from 'prettier';
-
 const inputColumnIndex = new Map<string, number>([
   ['question_ja', 0],
   ['question_en', 10],
