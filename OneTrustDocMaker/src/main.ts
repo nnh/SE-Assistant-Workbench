@@ -21,56 +21,76 @@ function main() {
   const targetValues: string[][] = getTargetValuesFromInputSheet_(inputSheet);
   setOutputValuesToOutputDocument_(targetValues, targetDocs.outputDocument);
 }
+function setParagraphValues_(
+  row: string[],
+  idx: number,
+  arr: string[][],
+  outputBody: GoogleAppsScript.Document.Body
+) {
+  if (
+    row[inputColumnIndex.get('key')!] !==
+    arr[idx - 1][inputColumnIndex.get('key')!]
+  ) {
+    const key = outputBody.appendParagraph(row[inputColumnIndex.get('key')!]);
+    key.setHeading(DocumentApp.ParagraphHeading.HEADING1); // 見出し1を設定
+  }
+  const question = outputBody.appendParagraph(
+    `${row[inputColumnIndex.get('question_ja')!]}\n${row[inputColumnIndex.get('question_en')!]}`
+  );
+  question.setHeading(DocumentApp.ParagraphHeading.HEADING2); // 見出し2を設定
+  if (row[inputColumnIndex.get('description_en')!] !== '') {
+    const descriptionTitle = outputBody.appendParagraph('説明');
+    descriptionTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
+    const description = outputBody.appendParagraph(
+      `${row[inputColumnIndex.get('description_ja')!]}\n${row[inputColumnIndex.get('description_en')!]}`
+    );
+  }
+  const questionTypeTitle = outputBody.appendParagraph('質問タイプ');
+  questionTypeTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
+  const questionType = outputBody.appendParagraph(
+    row[inputColumnIndex.get('questionType')!]
+  );
+  const draftAnswerTitle = outputBody.appendParagraph('回答案');
+  draftAnswerTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
+  const draftAnswer = outputBody.appendParagraph(
+    row[inputColumnIndex.get('draftAnswer_ja')!]
+  );
+  const referenceURLTitle = outputBody.appendParagraph('参考URL等');
+  referenceURLTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
+  const referenceURL = outputBody.appendParagraph(
+    row[inputColumnIndex.get('ReferenceURL')!]
+  );
+}
 function setOutputValuesToOutputDocument_(
   inputValues: string[][],
   outputDocument: GoogleAppsScript.Document.Document
 ) {
-  const outputBody = outputDocument.getBody();
+  const documentId = outputDocument.getId();
+  let outputBody = outputDocument.getBody();
   outputBody.clear();
   // 配列の各要素を処理
-  inputValues.forEach((row, idx, arr) => {
+  for (let idx = 0; idx < inputValues.length; idx++) {
     if (idx === 0) {
-      return;
+      continue;
     }
-    if (
-      row[inputColumnIndex.get('key')!] !==
-      arr[idx - 1][inputColumnIndex.get('key')!]
-    ) {
-      const key = outputBody.appendParagraph(row[inputColumnIndex.get('key')!]);
-      key.setHeading(DocumentApp.ParagraphHeading.HEADING1); // 見出し1を設定
-    }
-    const question = outputBody.appendParagraph(
-      `${row[inputColumnIndex.get('question_ja')!]}\n${row[inputColumnIndex.get('question_en')!]}`
-    );
-    question.setHeading(DocumentApp.ParagraphHeading.HEADING2); // 見出し2を設定
-    if (row[inputColumnIndex.get('description_en')!] !== '') {
-      const descriptionTitle = outputBody.appendParagraph('説明');
-      descriptionTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
-      const description = outputBody.appendParagraph(
-        `${row[inputColumnIndex.get('description_ja')!]}\n${row[inputColumnIndex.get('description_en')!]}`
+    try {
+      const row = inputValues[idx];
+      setParagraphValues_(row, idx, inputValues, outputBody);
+
+      if (idx % 5 === 0) {
+        outputDocument.saveAndClose();
+        Utilities.sleep(1000);
+        outputDocument = DocumentApp.openById(documentId);
+        Utilities.sleep(1000);
+        outputBody = outputDocument.getBody();
+      }
+    } catch (error) {
+      console.log(
+        `Error at index ${idx}: ${error}\n${inputValues[idx][inputColumnIndex.get('question_en')!]}`
       );
+      break; // エラー発生時にループを終了
     }
-    const questionTypeTitle = outputBody.appendParagraph('質問タイプ');
-    questionTypeTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
-    const questionType = outputBody.appendParagraph(
-      row[inputColumnIndex.get('questionType')!]
-    );
-    const draftAnswerTitle = outputBody.appendParagraph('回答案');
-    draftAnswerTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
-    const draftAnswer = outputBody.appendParagraph(
-      row[inputColumnIndex.get('draftAnswer_ja')!]
-    );
-    const referenceURLTitle = outputBody.appendParagraph('参考URL等');
-    referenceURLTitle.setHeading(DocumentApp.ParagraphHeading.HEADING3); // 見出し3を設定
-    const referenceURL = outputBody.appendParagraph(
-      row[inputColumnIndex.get('ReferenceURL')!]
-    );
-    if (idx % 10 === 0) {
-      outputDocument.saveAndClose();
-      Utilities.sleep(1000);
-      outputDocument = DocumentApp.openById(outputDocument.getId());
-    }
-  });
+  }
 }
 function getItemNumber_(inputValues: string[][]) {
   const itemNumber: string[] = inputValues.map((row, idx) => {
