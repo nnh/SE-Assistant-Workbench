@@ -79,9 +79,9 @@ function setOutputValuesToOutputDocument_(
 
       if (idx % 5 === 0) {
         outputDocument.saveAndClose();
-        Utilities.sleep(1000);
+        Utilities.sleep(3000);
         outputDocument = DocumentApp.openById(documentId);
-        Utilities.sleep(1000);
+        Utilities.sleep(3000);
         outputBody = outputDocument.getBody();
       }
     } catch (error) {
@@ -110,14 +110,34 @@ function getItemNumber_(inputValues: string[][]) {
   ]);
   return result;
 }
+function isCellWhite_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  targetRow: number
+): boolean {
+  const targetCol: number = 5;
+  const cellColor = sheet.getRange(targetRow, targetCol).getBackground();
+  return cellColor === '#ffffff' || cellColor.toLowerCase() === 'white';
+}
+
 function getTargetValuesFromInputSheet_(
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
 ): string[][] {
-  const inputValues: string[][] = inputSheet
-    .getRange(7, 1, inputSheet.getLastRow(), inputSheet.getLastColumn())
-    .getValues();
+  const startRow: number = 7;
+  const inputRange: GoogleAppsScript.Spreadsheet.Range = inputSheet.getRange(
+    startRow,
+    1,
+    inputSheet.getLastRow(),
+    inputSheet.getLastColumn()
+  );
+  const inputValues: string[][] = inputRange.getValues();
+  const targetValues: string[][] = inputValues
+    .filter((_, idx) => {
+      const targetRow = idx + startRow;
+      return isCellWhite_(inputSheet, targetRow);
+    })
+    .filter(row => row[inputColumnIndex.get('question_en')!] !== '');
   const inputValuesAndKeyQuestions: string[][] =
-    getInputValuesAndKeyQuestions_(inputValues);
+    getInputValuesAndKeyQuestions_(targetValues);
   const inputValuesAndKeyQuestionsAndItemNumber: string[][] = getItemNumber_(
     inputValuesAndKeyQuestions
   );
