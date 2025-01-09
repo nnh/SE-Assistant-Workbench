@@ -1,5 +1,9 @@
 const templateDocIdHead: string = 'templateDocId_';
 const testDocIdHead: string = 'testDocId_';
+const splitLanguage: string = 'splitLanguage';
+const splitMultipleLanguage: string = 'splitMultipleLanguage';
+const documentHeader = 'gd-slicer-test-';
+const testFolderId = 'testFolderId';
 function getDocument_(id: string): GoogleAppsScript.Document.Document {
   const doc: GoogleAppsScript.Document.Document = DocumentApp.openById(id);
   if (!doc) {
@@ -7,16 +11,11 @@ function getDocument_(id: string): GoogleAppsScript.Document.Document {
   }
   return doc;
 }
-function test20250109() {
-  const getTargetProperties = new GetTargetProperties();
-  const properties = getTargetProperties.getproperties(templateDocIdHead);
-  console.log(properties);
-}
 class GetTargetProperties {
   categoryCodes: string[];
 
   constructor() {
-    this.categoryCodes = ['splitLanguage', 'splitMultipleLanguage', 'zenkaku'];
+    this.categoryCodes = [splitLanguage, splitMultipleLanguage, 'zenkaku'];
   }
 
   getProperty_(key: string): string {
@@ -26,14 +25,13 @@ class GetTargetProperties {
     }
     return value;
   }
-
-  getproperties(head: string): string[] {
-    const propertyIdList = this.categoryCodes.map(
-      categoryCode => `${head}${categoryCode}`
-    );
-    const properties = propertyIdList.map(propertyId =>
-      this.getProperty_(propertyId)
-    );
-    return properties;
+  getPropertiesMap(head: string): Map<string, string> {
+    const propertiesMap: Map<string, string> = new Map();
+    this.categoryCodes.forEach(categoryCode => {
+      const category = `${head}${categoryCode}`;
+      const property = this.getProperty_(category);
+      propertiesMap.set(category, property);
+    });
+    return propertiesMap;
   }
 }

@@ -1,26 +1,45 @@
-const documentHeader = 'gd-slicer-test-';
+function createFolderForTest_(): void {
+  const thisFolderId: string = new GetTargetProperties().getProperty_(
+    'thisFolderId'
+  );
+  const thisFolder: GoogleAppsScript.Drive.Folder =
+    DriveApp.getFolderById(thisFolderId);
+  if (thisFolder === null) {
+    throw new Error('The folder is not found.');
+  }
+  const folderName: string = `${documentHeader}${new Date().toLocaleString()}`;
+  const folder: GoogleAppsScript.Drive.Folder =
+    DriveApp.createFolder(folderName);
+  PropertiesService.getScriptProperties().setProperty(
+    testFolderId,
+    folder.getId()
+  );
+  folder.moveTo(thisFolder);
+}
 function copyTemplateDoc() {
   const templateDocIdMap: Map<string, GoogleAppsScript.Document.Document> =
     getTemplateDocIdList_();
-  const newDocs: Map<string, GoogleAppsScript.Document.Document> =
-    copyGoogleDocs_(templateDocIdMap);
+  createFolderForTest_();
+  copyGoogleDocs_(templateDocIdMap);
 }
 function copyGoogleDocs_(
   templateMap: Map<string, GoogleAppsScript.Document.Document>
-): Map<string, GoogleAppsScript.Document.Document> {
-  const result: Map<string, GoogleAppsScript.Document.Document> = new Map();
+) {
   templateMap.forEach(
     (templateDoc: GoogleAppsScript.Document.Document, categoryCode: string) => {
       const templateDocId: string = templateDoc.getId();
       try {
+        const copyToFolderId: string = new GetTargetProperties().getProperty_(
+          testFolderId
+        );
+        const copyToFolder: GoogleAppsScript.Drive.Folder =
+          DriveApp.getFolderById(copyToFolderId);
         const sourceDoc: GoogleAppsScript.Drive.File =
           DriveApp.getFileById(templateDocId);
-        const newDocName: string = `${documentHeader}${categoryCode}_${new Date().toLocaleString()}`;
+        const newDocName: string = `${documentHeader}${categoryCode}`;
         const copiedFile: GoogleAppsScript.Drive.File =
           sourceDoc.makeCopy(newDocName);
-        const copiedDoc: GoogleAppsScript.Document.Document =
-          DocumentApp.openById(copiedFile.getId());
-        result.set(categoryCode, copiedDoc);
+        copiedFile.moveTo(copyToFolder);
         PropertiesService.getScriptProperties().setProperty(
           `${testDocIdHead}${categoryCode}`,
           copiedFile.getId()
@@ -36,7 +55,6 @@ function copyGoogleDocs_(
       }
     }
   );
-  return result;
 }
 
 function getTemplateDocIdList_(): Map<
@@ -44,8 +62,9 @@ function getTemplateDocIdList_(): Map<
   GoogleAppsScript.Document.Document
 > {
   const getTargetProperties: GetTargetProperties = new GetTargetProperties();
-  const templateDocIdList: string[] =
-    getTargetProperties.getproperties(templateDocIdHead);
+  const templateDocIdMap: Map<string, string> =
+    getTargetProperties.getPropertiesMap(templateDocIdHead);
+  const templateDocIdList: string[] = [...templateDocIdMap.values()];
   const templateDocs: GoogleAppsScript.Document.Document[] =
     templateDocIdList.map(templateDocId => getDocument_(templateDocId));
   const templateDocMap: Map<string, GoogleAppsScript.Document.Document> =
