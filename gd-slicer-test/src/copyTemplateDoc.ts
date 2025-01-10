@@ -65,8 +65,11 @@ function getTemplateDocIdList_(): Map<
   const templateDocIdMap: Map<string, string> =
     getTargetProperties.getPropertiesMap(templateDocIdHead);
   const templateDocIdList: string[] = [...templateDocIdMap.values()];
+  const docFetcher: DocFetcher = new DocFetcher();
   const templateDocs: GoogleAppsScript.Document.Document[] =
-    templateDocIdList.map(templateDocId => getDocument_(templateDocId));
+    templateDocIdList.map(templateDocId =>
+      docFetcher.getDocument_(templateDocId)
+    );
   const templateDocMap: Map<string, GoogleAppsScript.Document.Document> =
     new Map();
   for (let i = 0; i < templateDocs.length; i++) {

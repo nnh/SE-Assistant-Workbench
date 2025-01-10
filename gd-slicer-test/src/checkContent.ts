@@ -1,41 +1,52 @@
 function checkContent_splitLanguage() {
+  const targetLanguages: string[] = ['jp', 'en'];
   const getTargetProperties: GetTargetProperties = new GetTargetProperties();
-  const checkJpDocId: string = getTargetProperties.getProperty_(
-    'check_splitLanguagejpDocId'
-  );
+  const checkDocIdMap: Map<string, string> = new Map();
+  targetLanguages.forEach(language => {
+    const targetDocId: string = getTargetProperties.getProperty_(
+      `check_splitLanguageDocId_${language}`
+    );
+    checkDocIdMap.set(language, targetDocId);
+  });
   const testFolderId: string = getTargetProperties.getProperty_('testFolderId');
-  const testFolder: GoogleAppsScript.Drive.Folder =
-    DriveApp.getFolderById(testFolderId);
-  const testFolderFiles: GoogleAppsScript.Drive.FileIterator =
-    testFolder.getFiles();
-  let targetDocJpParagraphs: string[] = [];
-  while (testFolderFiles.hasNext()) {
-    const file: GoogleAppsScript.Drive.File = testFolderFiles.next();
-    if (file.getName() === `${documentHeader}${splitLanguage}jp`) {
-      const targetDocJp: GoogleAppsScript.Document.Document = getDocument_(
-        file.getId()
-      );
-      targetDocJpParagraphs = filterNonEmptyStrings_(
-        getParagraphTexts_(targetDocJp)
-      );
-    }
-    if (targetDocJpParagraphs.length > 0) {
-      break;
-    }
-  }
-  const checkJpDoc: GoogleAppsScript.Document.Document =
-    getDocument_(checkJpDocId);
-  const checkJpParagraphs: string[] = filterNonEmptyStrings_(
-    getParagraphTexts_(checkJpDoc)
+  const docFetcher: DocFetcher = new DocFetcher();
+  const targetDocParagraphMap: Map<string, string[]> = new Map();
+  const checkDocParagraphMap: Map<string, string[]> = new Map();
+  targetLanguages.forEach(language => {
+    const targetDocParagraphs: string[] = getSplitLanguageText_(
+      `${documentHeader}${splitLanguage}${language}`,
+      testFolderId
+    );
+    const checkDocParagraphs: string[] = filterNonEmptyStrings_(
+      docFetcher.getParagraphTextsByDocId_(checkDocIdMap.get(language)!)
+    );
+    targetDocParagraphMap.set(language, targetDocParagraphs);
+    checkDocParagraphMap.set(language, checkDocParagraphs);
+  });
+  targetLanguages.forEach(language => {
+    compareContent_(
+      targetDocParagraphMap.get(language)!,
+      checkDocParagraphMap.get(language)!
+    );
+    console.log(`The content of ${language} is the same.`);
+  });
+}
+
+function getSplitLanguageText_(docName: string, folderId: string): string[] {
+  const docFetcher: DocFetcher = new DocFetcher();
+  const targetDoc: GoogleAppsScript.Document.Document =
+    docFetcher.getDocumentByName_(docName, folderId);
+  const targetDocParagraphs: string[] = filterNonEmptyStrings_(
+    docFetcher.getParagraphTexts_(targetDoc)
   );
-  compareContent_(targetDocJpParagraphs, checkJpParagraphs);
-  console.log('日英分割（日本語）テストOK');
+  return targetDocParagraphs;
 }
 function filterNonEmptyStrings_(texts: string[]): string[] {
   return texts
     .filter(text => text !== '')
     .filter(text => !new RegExp(/^\r$/).test(text));
 }
+
 function compareContent_(targetTexts: string[], checkTexts: string[]): void {
   if (targetTexts.length !== checkTexts.length) {
     console.log('The number of paragraphs is different.');
@@ -51,42 +62,3 @@ function compareContent_(targetTexts: string[], checkTexts: string[]): void {
     }
   });
 }
-function getParagraphTexts_(doc: GoogleAppsScript.Document.Document): string[] {
-  const body: GoogleAppsScript.Document.Body = doc.getBody();
-  const result: string[] = body
-    .getParagraphs()
-    .map(paragraph => paragraph.getText());
-  // Bodyの全てのテキストが取得できていることを確認する
-  const bodyText = body.getText().replace(/\s+/g, '');
-  const paragraphTexts = result.join('').replace(/\s+/g, '');
-  if (paragraphTexts !== bodyText) {
-    throw new Error('Failed to get all paragraph texts.');
-  }
-  return result;
-}
-
-/*
-function checkContent() {
-  const targetId: string = getProperty_(testDocId);
-  const targetDoc: GoogleAppsScript.Document.Document = getDocument_(targetId);
-  const body: GoogleAppsScript.Document.Body = targetDoc.getBody();
-  const paragraphs: GoogleAppsScript.Document.Paragraph[] =
-    body.getParagraphs();
-  paragraphs.forEach((paragraph, idx) => {
-    const paragraphText: string = paragraph.getText();
-    if (paragraphText !== checkTextArray[idx]) {
-      if (
-        paragraphText.replace('\\', '').replace('\\', '') !==
-        checkTextArray[idx]
-      ) {
-        console.log(paragraphText);
-        console.log(checkTextArray[idx]);
-        throw new Error('Error: ' + paragraphText);
-      }
-    }
-  });
-  console.log('check ok.');
-}
-
-const checkTextArray: string[] = [];
-*/
