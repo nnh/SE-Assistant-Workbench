@@ -1,3 +1,7 @@
+function checkContents(): void {
+  checkContent_splitLanguage();
+  checkContent_splitMultipleLanguage();
+}
 function checkContent_splitMultipleLanguage() {
   const targetLanguages: string[] = ['_2', '_3', '_4', '_5'];
   checkContent_splitLanguage_(targetLanguages, splitMultipleLanguage);
