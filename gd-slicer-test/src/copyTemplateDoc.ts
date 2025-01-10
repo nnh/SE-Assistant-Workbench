@@ -16,12 +16,14 @@ function createFolderForTest_(): void {
   );
   folder.moveTo(thisFolder);
 }
-function copyTemplateDoc() {
+
+function copyTemplateDoc(): void {
   const templateDocIdMap: Map<string, GoogleAppsScript.Document.Document> =
     getTemplateDocIdList_();
   createFolderForTest_();
   copyGoogleDocs_(templateDocIdMap);
 }
+
 function copyGoogleDocs_(
   templateMap: Map<string, GoogleAppsScript.Document.Document>
 ) {

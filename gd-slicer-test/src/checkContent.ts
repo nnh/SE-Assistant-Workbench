@@ -2,11 +2,11 @@ function checkContents(): void {
   checkContent_splitLanguage();
   checkContent_splitMultipleLanguage();
 }
-function checkContent_splitMultipleLanguage() {
+function checkContent_splitMultipleLanguage(): void {
   const targetLanguages: string[] = ['_2', '_3', '_4', '_5'];
   checkContent_splitLanguage_(targetLanguages, splitMultipleLanguage);
 }
-function checkContent_splitLanguage() {
+function checkContent_splitLanguage(): void {
   const targetLanguages: string[] = ['jp', 'en'];
   checkContent_splitLanguage_(targetLanguages, splitLanguage);
 }

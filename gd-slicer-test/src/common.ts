@@ -29,6 +29,7 @@ class GetTargetProperties {
     return propertiesMap;
   }
 }
+
 class DriveAccessor {
   constractor() {}
   getFolderById_(id: string): GoogleAppsScript.Drive.Folder {
@@ -63,6 +64,7 @@ class DriveAccessor {
     return file;
   }
 }
+
 class DocFetcher {
   getTargetProperties: GetTargetProperties;
   driveAccessor: DriveAccessor;
