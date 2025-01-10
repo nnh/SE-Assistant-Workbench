@@ -1,5 +1,16 @@
+function checkContent_splitMultipleLanguage() {
+  const targetLanguages: string[] = ['_2', '_3', '_4', '_5'];
+  checkContent_splitLanguage_(targetLanguages, splitMultipleLanguage);
+}
 function checkContent_splitLanguage() {
   const targetLanguages: string[] = ['jp', 'en'];
+  checkContent_splitLanguage_(targetLanguages, splitLanguage);
+}
+
+function checkContent_splitLanguage_(
+  targetLanguages: string[],
+  documentNameBody: string
+): void {
   const getTargetProperties: GetTargetProperties = new GetTargetProperties();
   const checkDocIdMap: Map<string, string> = new Map();
   targetLanguages.forEach(language => {
@@ -14,7 +25,7 @@ function checkContent_splitLanguage() {
   const checkDocParagraphMap: Map<string, string[]> = new Map();
   targetLanguages.forEach(language => {
     const targetDocParagraphs: string[] = getSplitLanguageText_(
-      `${documentHeader}${splitLanguage}${language}`,
+      `${documentHeader}${documentNameBody}${language}`,
       testFolderId
     );
     const checkDocParagraphs: string[] = filterNonEmptyStrings_(
