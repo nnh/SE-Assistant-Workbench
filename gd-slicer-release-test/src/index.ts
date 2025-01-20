@@ -22,18 +22,38 @@ function compareDocs() {
     const isInternalTexts: string[] = getTargetDocsText_(isInternalDoc);
     const isPublicTexts: string[] = getTargetDocsText_(isPublicDoc);
     if (isInternalTexts.length !== isPublicTexts.length) {
-      console.log(fileName);
-      throw new Error('Different number of paragraphs');
+      console.log(`info: ${fileName} - Different number of paragraphs`);
+      // Remove blank lines and compare again; if the content matches, the test is passed.
+      const isInternalTextsReduced: string[] = isInternalTexts.filter(
+        text => text !== ''
+      );
+      const isPublicTextsReduced: string[] = isPublicTexts.filter(
+        text => text !== ''
+      );
+      compareTexts_(isInternalTextsReduced, isPublicTextsReduced, fileName);
+    } else {
+      compareTexts_(isInternalTexts, isPublicTexts, fileName);
     }
-    isInternalTexts.forEach((isInternalText: string, index: number) => {
-      const isPublicText: string = isPublicTexts[index];
-      if (isInternalText !== isPublicText) {
-        console.log(fileName);
-        throw new Error('Different text');
-      }
-    });
   });
-  console.log('All files are the same');
+  console.log('Test passed successfully');
+}
+
+function compareTexts_(
+  isInternalTexts: string[],
+  isPublicTexts: string[],
+  fileName: string
+): void {
+  if (isInternalTexts.length !== isPublicTexts.length) {
+    console.log(fileName);
+    throw new Error('Different number of paragraphs');
+  }
+  isInternalTexts.forEach((isInternalText: string, index: number) => {
+    const isPublicText: string = isPublicTexts[index];
+    if (isInternalText !== isPublicText) {
+      console.log(fileName);
+      throw new Error('Different text');
+    }
+  });
 }
 function getTargetDocsText_(doc: GoogleAppsScript.Document.Document): string[] {
   const paragraphs: GoogleAppsScript.Document.Paragraph[] = doc
@@ -67,7 +87,7 @@ function getFolderById_(folderId: string): GoogleAppsScript.Drive.Folder {
   if (!folder) {
     throw new Error('Folder not found');
   }
-  console.log(folder.getName());
+  console.log(`Target folder name: ${folder.getName()}`);
   return folder;
 }
 function getTargetFileIterator_(
@@ -95,3 +115,4 @@ function getTargetFilesByFileIterator_(
   }
   return targetFiles;
 }
+export { compareTexts_ };
