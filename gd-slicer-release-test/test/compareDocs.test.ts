@@ -1,5 +1,4 @@
-import { compareTexts_ } from '../src/index';
-
+import { compareTexts_ } from '../src/compareDocs';
 describe('compareTexts_', () => {
   it('should not throw an error when texts match', () => {
     const texts1 = ['Line 1', 'Line 2', 'Line 3'];
