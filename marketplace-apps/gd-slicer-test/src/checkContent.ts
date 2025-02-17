@@ -29,12 +29,16 @@ function checkContent_splitLanguage_(
   const checkDocParagraphMap: Map<string, string[]> = new Map();
   targetLanguages.forEach(language => {
     const targetDocParagraphs: string[] = getSplitLanguageText_(
-      `${documentHeader}${documentNameBody}${language}`,
-      testFolderId
+      `${documentHeader}${documentNameBody}`,
+      testFolderId,
+      language
     );
-    const checkDocParagraphs: string[] = filterNonEmptyStrings_(
-      docFetcher.getParagraphTextsByDocId_(checkDocIdMap.get(language)!)
-    );
+    const checkDocParagraphs: string[] =
+      language !== 'jp' && language !== 'en'
+        ? filterNonEmptyStrings_(
+            docFetcher.getParagraphTextsByDocId_(checkDocIdMap.get(language)!)
+          )
+        : docFetcher.getParagraphTextsByDocId_(checkDocIdMap.get(language)!);
     targetDocParagraphMap.set(language, targetDocParagraphs);
     checkDocParagraphMap.set(language, checkDocParagraphs);
   });
@@ -47,13 +51,18 @@ function checkContent_splitLanguage_(
   });
 }
 
-function getSplitLanguageText_(docName: string, folderId: string): string[] {
+function getSplitLanguageText_(
+  docName: string,
+  folderId: string,
+  language: string
+): string[] {
   const docFetcher: DocFetcher = new DocFetcher();
   const targetDoc: GoogleAppsScript.Document.Document =
-    docFetcher.getDocumentByName_(docName, folderId);
-  const targetDocParagraphs: string[] = filterNonEmptyStrings_(
-    docFetcher.getParagraphTexts_(targetDoc)
-  );
+    docFetcher.getDocumentByName_(`${docName}${language}`, folderId);
+  const targetDocParagraphs: string[] =
+    language !== 'jp' && language !== 'en'
+      ? filterNonEmptyStrings_(docFetcher.getParagraphTexts_(targetDoc))
+      : docFetcher.getParagraphTexts_(targetDoc);
   return targetDocParagraphs;
 }
 function filterNonEmptyStrings_(texts: string[]): string[] {
