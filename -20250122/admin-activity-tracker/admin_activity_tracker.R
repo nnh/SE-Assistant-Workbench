@@ -2,7 +2,7 @@
 #' This is a program that consolidates information that has been changed with administrative privileges.
 #' @file admin_activity_tracker.R
 #' @author Mariko Ohtsuka
-#' @date 2024.11.28
+#' @date 2025.3.3
 rm(list=ls())
 # ------ libraries ------
 library(tidyverse)
@@ -220,13 +220,25 @@ GetFortiGateLog <- function() {
   logList <- targetFiles %>% map( ~ read_csv(., show_col_types=F, col_names=F))
   # 列名の設定
   targets <- logList %>% map( ~ SetFortiGateLogHeader(.))
-  df <- targets %>% bind_rows()
+  temp_df <- targets %>% bind_rows()
   kExclude <- c("Admin logout successful", "Admin login successful", "Admin login failed","Test",
                 "Device rebooted","Alert email send status failed",
                 "Admin performed an action from GUI")
-  res <- df %>% filter(!logdesc %in% kExclude) %>% 
+  df <- temp_df %>% filter(!logdesc %in% kExclude)
+  if (nrow(df) == 0) {
+    return(df)
+  }
+  required_columns <- c("date", "time", "action", "cfgattr", "cfgobj", "cfgpath", "logdesc", "msg", "user")
+  fortigate_colnames <- df %>% colnames()
+  for (i in 1:length(required_columns)) {
+    if (!required_columns[i] %in% fortigate_colnames) {
+      df[, required_columns[i]] <- NA
+    }
+  }
+  res <- df %>%
     select(c("date", "time", "action", "cfgattr", "cfgobj", "cfgpath", "logdesc", "msg", "user")) %>%
     arrange(date, time)
+  return(res)
 }
 SetFortiGateLog <- function() {
   df <- GetFortiGateLog()
