@@ -76,6 +76,7 @@ boxDownloadDir <- "box" |> CreateMeddraTestDir()
 boxZipFromDir <- file.path(homeDir, "\\Box\\References\\Coding\\MedDRA\\圧縮ファイル") 
 temp <- boxZipFromDir |> list.files(pattern="zip") |> str_extract("MEDDRAJ[0-9]{3}\\.zip") |>
   str_extract("[0-9]{3}") |> as.numeric() |> max() |> as.character()
+password_meddra <- file.path(boxZipFromDir, str_c("MEDDRAJ", temp, "_pw.txt")) |> read.delim(header=F) %>% .[1, 1, drop=T]
 boxTargetVer <- str_c(str_sub(temp, 1, 2), ".", str_sub(temp, 3, 3))
 boxZipFileName <- kMeddra |>toupper() %>% str_c("^.*\\", ., "J", str_remove(boxTargetVer, "\\."), kZipExtention, "$")
 boxZipPath <- list.files(boxZipFromDir, full.names=T) |> str_extract(boxZipFileName) |> na.omit()
@@ -85,7 +86,7 @@ if (length(boxZipPath) != 1) {
 file.copy(boxZipPath, file.path(boxDownloadDir, basename(boxZipPath)))
 boxUnzipDir <- file.path(boxDownloadDir, "test")
 CreateDir(boxUnzipDir)
-ExecUnzip(boxZipPath, boxDownloadDir)
+ExecUnzipByPassword(boxZipPath, boxDownloadDir, password_meddra)
 # aws
 downloadFromAwsDir <- "aws" |> CreateMeddraTestDir()
 CreateDir(file.path(downloadFromAwsDir, kMeddraAwsParentDirName))

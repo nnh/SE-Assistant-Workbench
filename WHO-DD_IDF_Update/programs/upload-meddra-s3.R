@@ -2,7 +2,7 @@
 #' 
 #' @file upload-meddra-s3.R
 #' @author Mariko Ohtsuka
-#' @date 2024.9.30
+#' @date 2025.3.5
 # ------ libraries ------
 rm(list=ls())
 library(here)
@@ -16,8 +16,9 @@ source(here("programs", "functions", "download-box.R"),  encoding="UTF-8")
 # ------ main ------
 # download the ZIP file from BOX.
 meddra_zip <- GetMeddraDownloadFilesInfoFromBox()
+
 # unzip medDRA
-temp <- meddra_zip |> UnzipMeddra()
+temp <- UnzipMeddra(meddra_zip$localPath, meddra_zip$password)
 unzipDir <- temp$unzipDir
 version <- temp$version
 if (!exists("unzipDir")) {
