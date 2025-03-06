@@ -11,10 +11,10 @@ function checkContent_splitLanguage(): void {
   const targetLanguages: string[] = ['jp', 'en'];
   checkContent_splitLanguage_(targetLanguages, splitLanguage);
 }
-
-function compareAttributes_(
-  doc1: GoogleAppsScript.Document.Document,
-  doc2: GoogleAppsScript.Document.Document
+function compareElementAttributes_(
+  element1: GoogleAppsScript.Document.Element,
+  element2: GoogleAppsScript.Document.Element,
+  saveText: string
 ): void {
   const attributeProperties: string[] = [
     'BACKGROUND_COLOR',
@@ -56,6 +56,30 @@ function compareAttributes_(
     'VERTICAL_ALIGNMENT',
     'WIDTH',
   ];
+
+  const attributes1: { [key: string]: any } = element1.getAttributes();
+  const attributes2: { [key: string]: any } = element2.getAttributes();
+  const res = attributeProperties.map(property => {
+    if (attributes1[property] !== attributes2[property]) {
+      return property;
+    } else {
+    }
+    return null;
+  });
+  if (res.filter(e => e !== null).length > 0) {
+    console.log(saveTexts[saveTexts.length - 1]);
+    console.log(res.filter(e => e !== null).join(','));
+    console.log(JSON.stringify(attributes1));
+    console.log(JSON.stringify(attributes2));
+    throw new Error('The attributes are different.');
+  } else {
+    saveTexts.push(saveText);
+  }
+}
+function compareAttributes_(
+  doc1: GoogleAppsScript.Document.Document,
+  doc2: GoogleAppsScript.Document.Document
+): void {
   const doc1Body: GoogleAppsScript.Document.Body = doc1.getBody();
   const doc2Body: GoogleAppsScript.Document.Body = doc2.getBody();
   if (doc1Body.getNumChildren() !== doc2Body.getNumChildren()) {
@@ -68,29 +92,28 @@ function compareAttributes_(
       throw new Error('The type of children is different.');
     }
     if (child1.getType() === DocumentApp.ElementType.PARAGRAPH) {
-      const paragraph1: GoogleAppsScript.Document.Paragraph =
-        child1.asParagraph();
-      const paragraph2: GoogleAppsScript.Document.Paragraph =
-        child2.asParagraph();
-      const attributes1: { [key: string]: any } = paragraph1.getAttributes();
-      const attributes2: { [key: string]: any } = paragraph2.getAttributes();
-      const res = attributeProperties.map(property => {
-        if (attributes1[property] !== attributes2[property]) {
-          return property;
-        } else {
-        }
-        return null;
-      });
-      if (res.filter(e => e !== null).length > 0) {
-        console.log(i);
-        console.log(saveTexts[saveTexts.length - 1]);
-        console.log(res.filter(e => e !== null).join(','));
-        console.log(JSON.stringify(attributes1));
-        console.log(JSON.stringify(attributes2));
-        throw new Error('The attributes are different.');
-      } else {
-        saveTexts.push(paragraph1.getText());
+      compareElementAttributes_(child1, child2, child1.asParagraph().getText());
+    } else if (child1.getType() === DocumentApp.ElementType.TABLE) {
+      const table1: GoogleAppsScript.Document.Table = child1.asTable();
+      const table2: GoogleAppsScript.Document.Table = child2.asTable();
+      if (table1.getNumRows() !== table2.getNumRows()) {
+        throw new Error('The number of rows is different.');
       }
+      for (let r = 0; r < table1.getNumRows(); r++) {
+        const row: GoogleAppsScript.Document.TableRow = table1.getRow(r);
+        for (let c = 0; c < row.getNumCells(); c++) {
+          const cell1: GoogleAppsScript.Document.TableCell = row.getCell(c);
+          const cell2: GoogleAppsScript.Document.TableCell = table2
+            .getRow(r)
+            .getCell(c);
+          compareElementAttributes_(cell1, cell2, cell1.getText());
+        }
+      }
+    } else if (child1.getType() === DocumentApp.ElementType.TABLE_OF_CONTENTS) {
+      console.log('This child is not paragraph.');
+      console.log(child1.getType().toString());
+    } else if (child1.getType() === DocumentApp.ElementType.LIST_ITEM) {
+      compareElementAttributes_(child1, child2, child1.asListItem().getText());
     } else {
       console.log('This child is not paragraph.');
       console.log(child1.getType().toString());
