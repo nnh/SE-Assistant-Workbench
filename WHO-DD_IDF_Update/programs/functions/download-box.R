@@ -2,7 +2,7 @@
 #' This script includes functions to download WHODD and IDF files from Box.
 #' @file download-box.R
 #' @author Mariko Ohtsuka
-#' @date 2024.8.7
+#' @date 2025.3.5
 # ------ libraries ------
 # ------ constants ------
 # ------ functions ------
@@ -43,12 +43,16 @@ GetTargetIdfFile <- function(idfBoxDirInfo) {
 }
 
 GetIdfPassword <- function(idfBoxDirInfo, inputFilename) {
-  filename <- inputFilename |> str_remove(kZipExtention) |> str_c(kIdfPasswordFileFooter)
-  targetIdfPasswordFile <- idfBoxDirInfo$zipId |> GetBoxTargetFiles(filename)
-  if (nrow(targetIdfPasswordFile) != 1) {
+  res <- GetTargetPassword(idfBoxDirInfo, inputFilename, kIdfPasswordFileFooter)
+  return(res)
+}
+GetTargetPassword <- function(boxDirInfo, inputFilename, footer) {
+  filename <- inputFilename |> str_remove(kZipExtention) |> str_c(footer)
+  targetPasswordFile <- boxDirInfo$zipId |> GetBoxTargetFiles(filename)
+  if (nrow(targetPasswordFile) != 1) {
     stop("The specified file is not found.")
   }
-  res <- targetIdfPasswordFile[1, "id", drop=T] |> flatten_chr() |> box_read_tsv(header=F) %>% .[1, 1, drop=T]
+  res <- targetPasswordFile[1, "id", drop=T] |> flatten_chr() |> box_read_tsv(header=F) %>% .[1, 1, drop=T]
   return(res)
 }
 
@@ -87,5 +91,9 @@ GetTargetMeddraFile <- function(meddraBoxDirInfo) {
   meddraFileInfo <- targetMeddraFiles |> filter(ver == max(ver)) 
   meddraFileInfo$id |> flatten_chr() |> box_dl(downloads_path, overwrite=T)  
   localPathMeddra <- meddraFileInfo$name %>% file.path(downloads_path, .)
-  return(localPathMeddra)
+  meddraPassword <- GetTargetPassword(meddraBoxDirInfo, meddraFileInfo$name, kIdfPasswordFileFooter)
+  res <- list()
+  res$localPath <- localPathMeddra
+  res$password <- meddraPassword
+  return(res)
 }
