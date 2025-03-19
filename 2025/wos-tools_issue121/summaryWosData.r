@@ -47,9 +47,19 @@ filter_uid_addresses <- df_uid_addresses %>%
     filter(str_detect(addresses, "(?i)NHO") |
         str_detect(addresses, "(?i)Natl Hosp Org") |
         str_detect(addresses, "(?i)National Hospital Organization"))
-output_values <- filter_uid_addresses %>%
+
+name_facility <- filter_uid_addresses$addresses %>%
+    map(~ {
+        addr <- .
+        temp <- str_split_1(addr, "\\]")
+        res <- list(name = str_remove(temp[1], "\\["), facility = temp[2])
+        return(res)
+    }) %>%
+    bind_rows()
+uid_name_facility <- uid_name_facility %>% bind_cols(name_facility)
+output_values <- uid_name_facility %>%
     left_join(xls_data_list, by = c("id" = "UT (Unique WOS ID)")) %>%
-    select(c("id", "Pubmed Id", "addresses"))
+    select(c("id", "Pubmed Id", "name", "facility"))
 output_values$wos_url <- str_c("https://www.webofscience.com/wos/woscc/full-record/", output_values$id)
 output_values$pubmed_url <- ifelse(is.na(output_values$`Pubmed Id`), "", str_c("https://pubmed.ncbi.nlm.nih.gov/", output_values$`Pubmed Id`))
 # Authenticate and specify the Google Sheet
