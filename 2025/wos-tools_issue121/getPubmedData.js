@@ -13,9 +13,7 @@ function writePubMedData() {
     .setValues(outputValues);
 }
 function readAndProcessXML_() {
-  const folderId =
-    PropertiesService.getScriptProperties().getProperty("folderId");
-  const folder = DriveApp.getFolderById(folderId);
+  const folder = getFolder_();
   const files = folder.getFilesByName("pubmed_data.xml");
   if (files.hasNext()) {
     const file = files.next();
@@ -45,20 +43,18 @@ function readAndProcessXML_() {
             if (author.getChild("AffiliationInfo") === null) {
               return null;
             }
-            const affiliationInfo = author
-              .getChild("AffiliationInfo")
-              .getChildren("Affiliation");
-            const affiliations = affiliationInfo
-              .map((affiliation) => {
-                const affiliationText = affiliation.getText();
-                const res = checkString_(affiliationText);
-                return res;
+            const affiliationInfos = author.getChildren("AffiliationInfo");
+            const affiliations = affiliationInfos
+              .map((affiliationInfo) => {
+                const affiliation = affiliationInfo.getChild("Affiliation");
+                return affiliation.getText();
               })
-              .filter((affiliation) => affiliation !== null);
+              .join(" | ");
+
             if (affiliations.length === 0) {
               return null;
             }
-            return [name, affiliations.join(" | ")];
+            return [name, affiliations];
           })
           .filter((authorInfo) => authorInfo !== null);
         if (authorsInfo.length === 0) {
@@ -75,8 +71,8 @@ function readAndProcessXML_() {
   }
 }
 function fetchAndSavePubMedXMLToFolder() {
-  const pubmedIdIdx = 10;
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("シート1");
+  const pubmedIdIdx = 1;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("wosData");
   const tempValues = sheet
     .getRange(2, 1, sheet.getLastRow(), sheet.getLastColumn())
     .getValues();
@@ -89,12 +85,11 @@ function fetchAndSavePubMedXMLToFolder() {
       return null;
     })
     .filter((id) => id !== null);
-  fetchAndSavePubMedXMLToFolder_(pubMedIds);
+  const uniquePubMedIds = [...new Set(pubMedIds)];
+  fetchAndSavePubMedXMLToFolder_(uniquePubMedIds);
 }
 function fetchAndSavePubMedXMLToFolder_(pubMedIds) {
-  const folderId =
-    PropertiesService.getScriptProperties().getProperty("folderId");
-  const folder = DriveApp.getFolderById(folderId);
+  const folder = getFolder_();
   const url =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&retmode=xml&id=";
   const idString = pubMedIds.join(",");
