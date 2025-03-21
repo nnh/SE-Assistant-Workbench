@@ -1,3 +1,4 @@
+rm(list = ls())
 # --- libraries ---
 library(readxl)
 library(tidyverse)
@@ -52,12 +53,18 @@ name_facility <- filter_uid_addresses$addresses %>%
     map(~ {
         addr <- .
         temp <- str_split_1(addr, "\\]")
-        res <- list(name = str_remove(temp[1], "\\["), facility = temp[2])
+        res <- list(names = str_remove(temp[1], "\\["), facility = str_trim(temp[2]))
         return(res)
     }) %>%
     bind_rows()
-uid_name_facility <- uid_name_facility %>% bind_cols(name_facility)
-output_values <- uid_name_facility %>%
+uid_name_facility <- filter_uid_addresses %>% bind_cols(name_facility)
+df_uid_name_facility <- uid_name_facility %>%
+    separate_rows(names, sep = ";")
+df_uid_name_facility$name <- df_uid_name_facility$names %>%
+    str_remove(",") %>%
+    str_trim()
+
+output_values <- df_uid_name_facility %>%
     left_join(xls_data_list, by = c("id" = "UT (Unique WOS ID)")) %>%
     select(c("id", "Pubmed Id", "name", "facility"))
 output_values$wos_url <- str_c("https://www.webofscience.com/wos/woscc/full-record/", output_values$id)
