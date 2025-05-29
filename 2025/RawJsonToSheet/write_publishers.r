@@ -1,24 +1,8 @@
-library(tidyverse)
-library(jsonlite)
-library(here)
-library(googlesheets4)
+source("common.r")
 # --- functions ---
-get_latest_result_folder <- function(parent_path) {
-    folders <- list.dirs(parent_path, full.names = TRUE, recursive = FALSE)
-    pattern <- "^result_\\d{14}$"
-    result_folders <- folders[grepl(pattern, basename(folders))]
-    if (length(result_folders) == 0) {
-        stop("No matching folders found.")
-    }
-    numbers <- as.numeric(sub("result_", "", basename(result_folders)))
-    latest_folder <- result_folders[which.max(numbers)]
-    return(latest_folder)
-}
+
 # --- main ---
-config <- fromJSON("config.json")
-target_result_folder <- config$parent_path %>% get_latest_result_folder()
-raw_json <- file.path(target_result_folder, config$raw_dir_name, config$raw_json_name) %>% jsonlite::read_json()
-rec <- raw_json %>% map(~ .$Data$Records$records$REC)
+rec <- get_rec(config)
 rec[1][[1]][[1]] %>% names()
 View(rec[1][[1]][[1]])
 publish_data <- rec %>%
