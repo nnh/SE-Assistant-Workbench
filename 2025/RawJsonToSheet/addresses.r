@@ -219,20 +219,54 @@ query_fix_institution <- c(
     "kyusyu canc ctr",
     "kyusyu med ctr",
     "higashi nagoya natl hosp",
-    "higashi owari natl hosp",
-)
-html_uids <- append(html_uids, wos_ids_fix_requested)
+    "higashi owari natl hosp"
+) %>%
+    str_c(collapse = "|") %>%
+    str_to_lower()
+# 対象外の既知のWoS ID
+excluded_known_wos_ids <- c(
+    "WOS:001384446000001",
+    "WOS:001372932100001",
+    "WOS:001358380900001",
+    "WOS:001257412600001",
+    "WOS:001236962600001",
+    "WOS:001199433100001",
+    "WOS:001151350800001"
+) %>% unique()
+
+html_uids <- append(html_uids, wos_ids_fix_requested) %>% append(., excluded_known_wos_ids)
 # html_uidsに含まれていないWoS IDを抽出
 nho_not_in_html <- get_not_in_html(nho_records, html_uids)
 nho_not_in_html <- exclude_institution(nho_not_in_html, "tsukuba univ")
 nho_not_in_html <- exclude_institution(nho_not_in_html, "univ tsukuba")
 nho_not_in_html <- exclude_institution(nho_not_in_html, "ntt tokyo med ctr")
 nho_not_in_html <- exclude_institution(nho_not_in_html, "mito kyodo gen hosp")
-for (institution in query_fix_institution) {
-    nho_not_in_html <- exclude_institution(nho_not_in_html, institution)
-}
+nho_not_in_html <- nho_not_in_html %>%
+    filter(
+        !str_detect(forcheck_ad, query_fix_institution) &
+            !str_detect(forcheck_oo, query_fix_institution)
+    )
 # 対象の施設名らしき文字列が入っていて、htmlファイルに出力されていないもの
 View(nho_not_in_html)
 unique_nho_not_in_html <- get_unique_nho_not_in_html(nho_not_in_html)
 View(unique_nho_not_in_html)
-target_uid_list <- unique_nho_not_in_html$uid %>% unique()
+# 施設名の修正が必要なものを抽出
+fix_targets <- nho_not_in_html %>%
+    filter(
+        !str_detect(forcheck_ad, hospital_pattern) &
+            !str_detect(forcheck_oo, hospital_pattern)
+    )
+View(fix_targets)
+fix_targets_wos_ids <- fix_targets$uid %>% unique()
+# ジャーナル情報の取得
+publish_data <- get_publish_data(rec)
+str(publish_data)
+publish_data_fix_targets <- publish_data %>%
+    filter(UID %in% fix_targets_wos_ids)
+View(publish_data_fix_targets)
+# PubMed IDのリストを取得
+pmid_list <- publish_data_fix_targets$pmid %>%
+    na.omit() %>%
+    unique()
+# 使用例
+download_pubmed_xml(pmid_list)
