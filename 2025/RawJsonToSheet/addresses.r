@@ -101,6 +101,13 @@ exclude_institution <- function(df, institution_pattern) {
                 !str_detect(forcheck_oo, institution_pattern)
         )
 }
+get_unique_nho_not_in_html <- function(nho_not_in_html) {
+    unique_nho_not_in_html <- nho_not_in_html %>%
+        select(full_address, organization, uid) %>%
+        distinct()
+    return(unique_nho_not_in_html)
+}
+
 # --- main ---
 rec <- get_rec(config)
 address_data_list <- rec %>%
@@ -141,24 +148,15 @@ for (i in seq_along(address_data_list)) {
 }
 address_data$forcheck_ad <- str_to_lower(address_data$full_address)
 address_data$forcheck_oo <- str_to_lower(address_data$organization)
+hospital_pattern <- str_c(hospitals, collapse = "|") %>% str_to_lower()
 # full_addressまたは organizationsに"natl hosp org"または"nho"が含まれていたら国立病院機構
 nho_records <- address_data %>%
     filter(
         str_detect(forcheck_ad, "natl hosp org|nho") |
-            str_detect(forcheck_oo, "natl hosp org|nho")
-    )
-hospital_pattern <- str_c(hospitals, collapse = "|") %>% str_to_lower()
-hospital_records <- address_data %>%
-    filter(
-        str_detect(forcheck_ad, hospital_pattern) |
+            str_detect(forcheck_oo, "natl hosp org|nho") |
+            str_detect(forcheck_ad, hospital_pattern) |
             str_detect(forcheck_oo, hospital_pattern)
     )
-# natl hosp org, nhoが入っていないものを抽出
-# check1 <- hospital_records %>% anti_join(., nho_records, by = c("uid", "addr_no"))
-# View(check1)
-# natl hosp org またはnhoが含まれていて、施設名が含まれていないものを抽出
-# check2 <- hospital_records %>% anti_join(nho_records, ., by = c("uid", "addr_no"))
-# View(check2)
 # htmlファイルを取得する
 html_files <- get_html_files(config)
 # htmlファイルに出力されているWOS IDを抽出する
@@ -201,15 +199,40 @@ wos_ids_fix_requested <- c(
     "WOS:001101929300001",
     "WOS:001429215100001"
 ) %>% unique()
+# クエリ修正予定の施設名
+query_fix_institution <- c(
+    "hirosaki gen med ctr",
+    "hakodate med ctr",
+    "higashiomi gen med ctr",
+    "higashiohmi gen med ctr",
+    "hizen psychiat ctr",
+    "shimofusa psychiat ctr",
+    "matsumoto natl hosp",
+    "ibaraki higashi natl hosp",
+    "awara natl hosp",
+    "saitama natl hosp",
+    "sakakibara natl hosp",
+    "chiba higashi natl hosp",
+    "nishi niigata chuo natl hosp",
+    "tenryuu hosp",
+    "fukuoka higashi med ctr",
+    "kyusyu canc ctr",
+    "kyusyu med ctr",
+    "higashi nagoya natl hosp",
+    "higashi owari natl hosp",
+)
 html_uids <- append(html_uids, wos_ids_fix_requested)
 # html_uidsに含まれていないWoS IDを抽出
-nho_not_in_html_1 <- get_not_in_html(nho_records, html_uids)
-nho_not_in_html_2 <- get_not_in_html(hospital_records, html_uids)
-nho_not_in_html_2 <- exclude_institution(nho_not_in_html_2, "tsukuba univ")
-nho_not_in_html_2 <- exclude_institution(nho_not_in_html_2, "univ tsukuba")
-nho_not_in_html_2 <- exclude_institution(nho_not_in_html_2, "ntt tokyo med ctr")
-nho_not_in_html_2 <- exclude_institution(nho_not_in_html_2, "mito kyodo gen hosp")
-# natl hosp org, nhoが入っていて、htmlファイルに出力されていないもの
-View(nho_not_in_html_1)
+nho_not_in_html <- get_not_in_html(nho_records, html_uids)
+nho_not_in_html <- exclude_institution(nho_not_in_html, "tsukuba univ")
+nho_not_in_html <- exclude_institution(nho_not_in_html, "univ tsukuba")
+nho_not_in_html <- exclude_institution(nho_not_in_html, "ntt tokyo med ctr")
+nho_not_in_html <- exclude_institution(nho_not_in_html, "mito kyodo gen hosp")
+for (institution in query_fix_institution) {
+    nho_not_in_html <- exclude_institution(nho_not_in_html, institution)
+}
 # 対象の施設名らしき文字列が入っていて、htmlファイルに出力されていないもの
-View(nho_not_in_html_2)
+View(nho_not_in_html)
+unique_nho_not_in_html <- get_unique_nho_not_in_html(nho_not_in_html)
+View(unique_nho_not_in_html)
+target_uid_list <- unique_nho_not_in_html$uid %>% unique()
