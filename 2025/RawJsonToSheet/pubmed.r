@@ -1,7 +1,10 @@
-source("common.r")
 library(xml2)
 # --- functions ---
 download_pubmed_xml <- function(pmid_list, save_dir = get_download_folder_path(), batch_size = 100) {
+  if (missing(pmid_list) || !is.vector(pmid_list) || length(pmid_list) == 0 || !all(nzchar(pmid_list))) {
+    message("pmid_listが空、ベクトルでない、または無効な値を含んでいます")
+    return(invisible(NULL))
+  }
   pmid_batches <- split(pmid_list, ceiling(seq_along(pmid_list) / batch_size))
   for (i in seq_along(pmid_batches)) {
     pmids <- pmid_batches[[i]]
@@ -89,5 +92,3 @@ fetch_pubmed_data <- function() {
   return(df)
 }
 # --- main ---
-pubmed_data <- fetch_pubmed_data()
-print(pubmed_data)
