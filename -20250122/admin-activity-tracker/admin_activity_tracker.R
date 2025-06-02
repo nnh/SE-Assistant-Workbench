@@ -2,14 +2,13 @@
 #' This is a program that consolidates information that has been changed with administrative privileges.
 #' @file admin_activity_tracker.R
 #' @author Mariko Ohtsuka
-#' @date 2025.5.22
+#' @date 2025.6.2
 rm(list = ls())
 # ------ libraries ------
 library(tidyverse)
 library(here)
 library(googlesheets4)
 library(jsonlite)
-library(vroom)
 # ------ functions ------
 GetYmList <- function(targetDate) {
   year <- targetDate %>% year()
@@ -257,7 +256,18 @@ GetFortiGateLog <- function() {
     targetYm <- str_c("from_", kTargetYm$year, "-", kTargetYm$month)
     targetFiles <- targetFiles %>% GetTargetFile(targetYm)
   }
-  logList <- targetFiles %>% map(~ vroom(., col_types = cols(.default = col_character())))
+  logList <- map(targetFiles, function(path) {
+    # ファイル全体を行単位で読み込み（バイナリが混じっても壊れにくい）
+    lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
+
+    # 不正な文字（翻訳不能なバイト列）を削除
+    clean_lines <- iconv(lines, from = "UTF-8", to = "UTF-8", sub = "")
+
+    # 一時ファイルに保存して read_csv で読み込む
+    tmp <- tempfile(fileext = ".csv")
+    writeLines(clean_lines, tmp)
+    read_csv(tmp)
+  })
   # 列名の設定
   targets <- logList %>% map(~ SetFortiGateLogHeader(.))
   temp_df <- targets %>% bind_rows()
