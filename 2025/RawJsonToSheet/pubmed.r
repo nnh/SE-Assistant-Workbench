@@ -1,36 +1,6 @@
 library(xml2)
 # --- functions ---
-download_pubmed_xml <- function(pmid_list, save_dir = get_download_folder_path(), batch_size = 100) {
-  if (missing(pmid_list) || !is.vector(pmid_list) || length(pmid_list) == 0 || !all(nzchar(pmid_list))) {
-    message("pmid_listが空、ベクトルでない、または無効な値を含んでいます")
-    return(invisible(NULL))
-  }
-  pmid_batches <- split(pmid_list, ceiling(seq_along(pmid_list) / batch_size))
-  for (i in seq_along(pmid_batches)) {
-    pmids <- pmid_batches[[i]]
-    pmid_str <- paste(pmids, collapse = ",")
-    url <- paste0(
-      "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=",
-      pmid_str,
-      "&retmode=xml"
-    )
-    date_str <- format(Sys.Date(), "%Y%m%d")
-    save_path <- file.path(save_dir, sprintf("pubmed_%s_%03d.xml", date_str, i))
-    tryCatch(
-      {
-        download.file(url, destfile = save_path, mode = "wb", quiet = TRUE)
-        message("Saved: ", save_path)
-      },
-      error = function(e) {
-        message("Failed: ", save_path, " - ", e$message)
-      }
-    )
-    Sys.sleep(5)
-  }
-}
-
-fetch_pubmed_data <- function() {
-  download_path <- get_download_folder_path()
+get_target_pubmed_files <- function(download_path = data_path) {
   # ダウンロードフォルダ内のpubmed_yyyymmdd_xxx.xmlファイルを取得
   files <- list.files(download_path, pattern = "^pubmed_\\d{8}_\\d{3}\\.xml$", full.names = TRUE)
   if (length(files) == 0) {
@@ -42,8 +12,12 @@ fetch_pubmed_data <- function() {
   latest_date <- max(dates)
   # 最新日付のファイルのみ抽出
   latest_files <- files[dates == latest_date]
+  return(latest_files)
+}
+
+fetch_pubmed_data <- function(download_path = data_path) {
   # すべてのファイルを読み込んで結合
-  xml_path <- latest_files
+  xml_path <- get_target_pubmed_files(download_path)
   # XMLファイルの読み込み
   articles <- list()
   for (path in xml_path) {
@@ -61,26 +35,65 @@ fetch_pubmed_data <- function() {
 
   for (article in articles) {
     pmid <- xml_text(xml_find_first(article, ".//PMID"))
-    journal_title <- xml_text(xml_find_first(article, ".//Journal/Title"))
-    journal_iso <- xml_text(xml_find_first(article, ".//Journal/ISOAbbreviation"))
-    issn <- xml_text(xml_find_first(article, ".//Journal/ISSN"))
     year <- xml_text(xml_find_first(article, ".//PubDate/Year"))
     month <- xml_text(xml_find_first(article, ".//PubDate/Month"))
     volume <- xml_text(xml_find_first(article, ".//JournalIssue/Volume"))
     issue <- xml_text(xml_find_first(article, ".//JournalIssue/Issue"))
     article_title <- xml_text(xml_find_first(article, ".//ArticleTitle"))
-
-    article_list[[length(article_list) + 1]] <- c(
-      PubMedID = pmid,
-      JournalTitle = journal_title,
-      JournalISOAbbreviation = journal_iso,
-      ISSN = issn,
-      Year = year,
-      month = month,
-      Volume = volume,
-      Issue = issue,
-      ArticleTitle = article_title
-    )
+    article_date_node <- xml_find_first(article, ".//ArticleDate[@DateType='Electronic']")
+    if (!is.na(article_date_node)) {
+      article_year <- xml_text(xml_find_first(article_date_node, "./Year"))
+      article_month <- xml_text(xml_find_first(article_date_node, "./Month"))
+      article_day <- xml_text(xml_find_first(article_date_node, "./Day"))
+    } else {
+      article_year <- NA
+      article_month <- NA
+      article_day <- NA
+    }
+    # AuthorListノードを取得し、すべてのAuthorノードを抽出
+    author_nodes <- xml_find_all(article, ".//AuthorList/Author")
+    # 各AuthorノードからAffiliationInfo/Affiliationをすべて取得し、1つのAffiliationごとにレコードを作成
+    for (i in seq_along(author_nodes)) {
+      author <- author_nodes[[i]]
+      last <- xml_text(xml_find_first(author, "./LastName"))
+      fore <- xml_text(xml_find_first(author, "./ForeName"))
+      author_name <- paste(na.omit(c(last, fore)), collapse = ", ")
+      aff_nodes <- xml_find_all(author, "./AffiliationInfo/Affiliation")
+      if (length(aff_nodes) == 0) {
+        # Affiliationがない場合もレコードを作成
+        article_list[[length(article_list) + 1]] <- c(
+          PubMedID = pmid,
+          DP_Year = year,
+          DP_Month = month,
+          Volume = volume,
+          Issue = issue,
+          ArticleTitle = article_title,
+          DEP_Year = article_year,
+          DEP_Month = article_month,
+          DEP_Day = article_day,
+          Author = author_name,
+          Affiliation = NA
+        )
+      } else {
+        for (aff in aff_nodes) {
+          aff_text <- xml_text(aff)
+          article_list[[length(article_list) + 1]] <- c(
+            PubMedID = pmid,
+            DP_Year = year,
+            DP_Month = month,
+            Volume = volume,
+            Issue = issue,
+            ArticleTitle = article_title,
+            DEP_Year = article_year,
+            DEP_Month = article_month,
+            DEP_Day = article_day,
+            Author = author_name,
+            Affiliation = aff_text
+          )
+        }
+      }
+    }
+    next
   }
 
   # データフレームに変換

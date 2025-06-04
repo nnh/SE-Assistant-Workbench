@@ -49,3 +49,8 @@ get_download_folder_path <- function() {
 config <- fromJSON("config.json")
 hospitals <- fromJSON("hospitals.json")
 hospital_pattern <- str_c(hospitals, collapse = "|") %>% str_to_lower()
+this_project_path <- here("2025", "rawJsonToSheet")
+data_path <- file.path(this_project_path, "data")
+if (!dir.exists(data_path)) {
+    dir.create(data_path, recursive = TRUE)
+}

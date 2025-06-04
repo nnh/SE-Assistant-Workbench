@@ -29,5 +29,8 @@ get_publish_data <- function(rec) {
         }) %>%
         bind_rows()
     publish_data$pmid <- publish_data$pmid %>% str_remove_all("MEDLINE:")
+    publish_data$publisher_name <- publish_data$full_name
+    publish_data$journal_title <- publish_data$source
+    publish_data <- publish_data %>% select(-c("full_name", "addr_no", "source"))
     return(publish_data)
 }
