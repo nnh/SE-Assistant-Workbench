@@ -24,7 +24,6 @@ get_nho_not_in_html <- function(address_data, html_uids, hospital_pattern) {
         "chiba higashi natl hosp",
         "nishi niigata chuo natl hosp",
         "tenryuu hosp",
-        "fukuoka higashi med ctr",
         "kyusyu canc ctr",
         "kyusyu med ctr",
         "higashi nagoya natl hosp",

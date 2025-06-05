@@ -34,6 +34,18 @@ fetch_pubmed_data <- function(download_path = data_path) {
   article_list <- list()
 
   for (article in articles) {
+    # PubMedPubDate PubStatus="pmc-release" の年月日を取得
+    pmc_release_node <- xml_find_first(article, ".//PubMedPubDate[@PubStatus='pmc-release']")
+    if (!is.na(pmc_release_node)) {
+      pmc_release_year <- xml_text(xml_find_first(pmc_release_node, "./Year"))
+      pmc_release_month <- xml_text(xml_find_first(pmc_release_node, "./Month"))
+      pmc_release_day <- xml_text(xml_find_first(pmc_release_node, "./Day"))
+    } else {
+      pmc_release_year <- NA
+      pmc_release_month <- NA
+      pmc_release_day <- NA
+    }
+    pmc_release_date <- paste(pmc_release_year, pmc_release_month, pmc_release_day, sep = "-")
     pmid <- xml_text(xml_find_first(article, ".//PMID"))
     year <- xml_text(xml_find_first(article, ".//PubDate/Year"))
     month <- xml_text(xml_find_first(article, ".//PubDate/Month"))
@@ -72,7 +84,8 @@ fetch_pubmed_data <- function(download_path = data_path) {
           DEP_Month = article_month,
           DEP_Day = article_day,
           Author = author_name,
-          Affiliation = NA
+          Affiliation = NA,
+          PMC_Release_Date = pmc_release_date
         )
       } else {
         for (aff in aff_nodes) {
@@ -88,7 +101,8 @@ fetch_pubmed_data <- function(download_path = data_path) {
             DEP_Month = article_month,
             DEP_Day = article_day,
             Author = author_name,
-            Affiliation = aff_text
+            Affiliation = aff_text,
+            PMC_Release_Date = pmc_release_date
           )
         }
       }
