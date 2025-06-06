@@ -15,10 +15,10 @@
  */
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
-const numberOfDaysFormulaRows = [14, 15, 16];
+const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
 const dailyUnitPriceArray: number[] = [];
 const numberOfPeopleArray: [row: number, value: number[]][] = [];
-const numberOfDaysArray: number[] = [];
+const numberOfDaysArray: [row: number, value: number[]][] = [];
 export function generateUnitPriceTableFromQuoteTemplate_() {
   const inputSpreadSheetId: string | null =
     PropertiesService.getScriptProperties().getProperty('INPUT_SPREADSHEET_ID');
@@ -120,9 +120,308 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
       }
     }
   }
-  console.log('Joined data:', rowAndItemNameAndDailyPricesAndNumberOfPeople);
-}
+  // rowAndItemNameAndDailyPricesAndNumberOfPeopleとnumberOfDaysをrowをキーにして多対多の結合
+  const rowAndItemNameAndDailyPricesAndNumberOfPeopleAndDays: Array<
+    [
+      row: number,
+      major: string,
+      minor: string,
+      unitPrice: number,
+      numberOfPeople: number,
+      numberOfDays: number,
+    ]
+  > = [];
+  for (const [
+    row,
+    major,
+    minor,
+    unitPrice,
+    numberOfPeople,
+  ] of rowAndItemNameAndDailyPricesAndNumberOfPeople) {
+    if (numberOfDaysFormulaRows.includes(row)) {
+      const targetIndex: number = numberOfDaysFormulaRows.indexOf(row);
+      const targetValueArray: number[] = numberOfDaysArray[targetIndex][1];
+      let numberOfDays: number;
+      if (row === numberOfDaysFormulaRows[0]) {
+        numberOfDays =
+          minor === 'ミーティング準備・実行' ||
+          minor === 'キックオフミーティング準備・実行'
+            ? targetValueArray[0]
+            : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[1]) {
+        numberOfDays =
+          minor === '症例検討会準備・実行'
+            ? targetValueArray[0]
+            : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[2]) {
+        numberOfDays =
+          minor === 'CTR登録案' ? targetValueArray[0] : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[3]) {
+        numberOfDays =
+          minor === 'IRB承認確認'
+            ? 0.04
+            : minor === '初期アカウント設定（施設・ユーザー）'
+              ? targetValueArray[0]
+              : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[4]) {
+        numberOfDays =
+          minor === '統計解析計画書作成'
+            ? 5
+            : minor === '統計解析計画書・出力計画書作成'
+              ? targetValueArray[0]
+              : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[5]) {
+        numberOfDays =
+          minor === '中間解析プログラム作成、解析実施（ダブル）'
+            ? targetValueArray[0]
+            : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[6]) {
+        numberOfDays =
+          minor === '最終解析プログラム作成、解析実施（シングル）'
+            ? targetValueArray[0]
+            : targetValueArray[1];
+      } else if (row === numberOfDaysFormulaRows[7]) {
+        numberOfDays =
+          minor === 'CSRの作成支援' ? targetValueArray[0] : targetValueArray[1];
+      } else {
+        console.warn(`Row ${row} is not in numberOfDaysFormulaRows.`);
+        numberOfDays = -1;
+      }
+      rowAndItemNameAndDailyPricesAndNumberOfPeopleAndDays.push([
+        row,
+        major,
+        minor,
+        unitPrice,
+        numberOfPeople,
+        numberOfDays,
+      ]);
+    } else {
+      for (const [daysRow, numberOfDaysValue] of numberOfDays) {
+        if (row === daysRow) {
+          rowAndItemNameAndDailyPricesAndNumberOfPeopleAndDays.push([
+            row,
+            major,
+            minor,
+            unitPrice,
+            numberOfPeople,
+            Number(numberOfDaysValue),
+          ]);
+        }
+      }
+    }
+  }
+  // itemNamesとrowAndItemNameAndDailyPricesAndNumberOfPeopleAndDaysでitemNamesの全ての要素をキーにして左結合する
+  const itemsAndpriceAndPeopleAndDay: Array<
+    [
+      row: number,
+      major: string,
+      minor: string,
+      unitPrice: number,
+      numberOfPeople: number,
+      numberOfDays: number,
+    ]
+  > = [];
+  for (const [row, major, minor] of itemNames) {
+    const found = rowAndItemNameAndDailyPricesAndNumberOfPeopleAndDays.find(
+      item => item[0] === row && item[1] === major && item[2] === minor
+    );
+    if (found) {
+      itemsAndpriceAndPeopleAndDay.push(found);
+    } else {
+      // foundがなかった場合はunitPrice, numberOfPeople, numberOfDaysを0にして追加
+      itemsAndpriceAndPeopleAndDay.push([row, major, minor, 0, 0, 0]);
+    }
+  }
+  // inputSheetから行番号とC列のformula, D列のValue, R列のformulaを取得
+  const priceAndUnitAndBasePrice: Array<
+    [row: number, price: string, unit: string, basePrice: string]
+  > = [];
+  for (let i = 1; i <= inputSheet.getLastRow(); i++) {
+    const price = inputSheet.getRange(i, 3).getFormula();
+    const unit = inputSheet.getRange(i, 4).getValue();
+    const basePrice = inputSheet.getRange(i, 18).getFormula();
+    if (price || unit || basePrice) {
+      priceAndUnitAndBasePrice.push([i, price, unit, basePrice]);
+    } else {
+      // 空白の行はスキップ
+      continue;
+    }
+  }
+  // itemsAndpriceAndPeopleAndDayとpriceAndUnitAndBasePriceをrowをキーにしてleft join
+  const itemsAndPriceAndPeopleAndDayAndPrice: Array<
+    [
+      row: number,
+      major: string,
+      minor: string,
+      unitPrice: number,
+      numberOfPeople: number,
+      numberOfDays: number,
+      price: string,
+      unit: string,
+      basePrice: string,
+    ]
+  > = [];
+  let rowNumber = 1;
+  for (const [
+    row,
+    major,
+    minor,
+    unitPrice,
+    numberOfPeople,
+    numberOfDays,
+  ] of itemsAndpriceAndPeopleAndDay) {
+    const found = priceAndUnitAndBasePrice.find(item => item[0] === row);
+    rowNumber++;
+    if (found) {
+      // foundの`R${row}`を`R${rowNumber}`に置き換える
+      found[1] = found[1].replace(/R\d+/, `R${rowNumber}`);
+      found[3] = found[3].replace(/S\d+/, `S${rowNumber}`);
+      found[3] = found[3].replace(/T\d+/, `T${rowNumber}`);
+      found[3] = found[3].replace(/U\d+/, `U${rowNumber}`);
+      itemsAndPriceAndPeopleAndDayAndPrice.push([
+        row,
+        major,
+        minor,
+        unitPrice,
+        numberOfPeople,
+        numberOfDays,
+        found[1], // price
+        found[2], // unit
+        found[3], // basePrice
+      ]);
+    } else {
+      itemsAndPriceAndPeopleAndDayAndPrice.push([
+        row,
+        major,
+        minor,
+        unitPrice,
+        numberOfPeople,
+        numberOfDays,
+        '', // price
+        '', // unit
+        '', // basePrice
+      ]);
+    }
+  }
+  // 出力用配列を作成
+  const outputRows: string[][] = [];
+  // ヘッダー行
+  outputRows.push([
+    '大項目', // A
+    '小項目', // B
+    '単価', // C
+    '単位', // D
+    '行数', // E
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '', // F～Q 空白
+    '基準単価', // R
+    '単価(1人日)', // S
+    '日数', // T
+    '人数', // U
+  ]);
+  const outputRowMap = new Map([
+    ['major', 0],
+    ['minor', 1],
+    ['price', 2],
+    ['basePrice', 17],
+    ['unitPrice', 18],
+  ]);
+  for (const [
+    row,
+    major,
+    minor,
+    unitPrice,
+    numberOfPeople,
+    numberOfDays,
+    price,
+    unit,
+    basePrice,
+  ] of itemsAndPriceAndPeopleAndDayAndPrice) {
+    const outputRow: string[] = [];
+    outputRow[outputRowMap.get('major')!] = major; // A
+    outputRow[outputRowMap.get('minor')!] = minor; // B
+    outputRow[outputRowMap.get('price')!] = price; // C
+    outputRow[3] = unit; // D
+    outputRow[4] = String(row); // E
+    // F～Q 空白
+    for (let i = 5; i <= 16; i++) outputRow[i] = '';
+    outputRow[outputRowMap.get('basePrice')!] = basePrice; // R
+    outputRow[outputRowMap.get('unitPrice')!] = String(unitPrice); // S
+    outputRow[19] = String(numberOfDays); // T
+    outputRow[20] = String(numberOfPeople); // U
+    outputRows.push(outputRow);
+  }
 
+  const outputSheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  outputSheet.clear();
+  const outputRowsFiltered = outputRows
+    .filter(row => row[outputRowMap.get('major')!] !== '合計')
+    .map(row => {
+      if (
+        row[outputRowMap.get('minor')!] === 'DB作成・eCRF作成・バリデーション'
+      ) {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※1)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'バリデーション報告書') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※2)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (
+        row[outputRowMap.get('minor')!] ===
+        'ロジカルチェック、マニュアルチェック、クエリ対応'
+      ) {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※3)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'データクリーニング') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※4)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'プロジェクト管理') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※5)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      return row;
+    });
+
+  outputSheet
+    .getRange(1, 1, outputRowsFiltered.length, outputRowsFiltered[0].length)
+    .setValues(outputRowsFiltered);
+  outputSheet.hideColumns(5, 13);
+  ['price', 'basePrice', 'unitPrice'].forEach(key => {
+    if (outputRowMap.has(key)) {
+      const col = outputRowMap.get(key)! + 1;
+      setNumberFormatForColumn_(outputSheet, col, outputRowsFiltered.length);
+    }
+  });
+
+  SpreadsheetApp.flush();
+}
+/**
+ * 指定したシートの列に対して、2行目から最終行まで数値フォーマットを設定する
+ * @param sheet 対象のシート
+ * @param col 列番号（1始まり）
+ * @param lastRow 最終行番号
+ */
+function setNumberFormatForColumn_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  col: number,
+  lastRow: number
+) {
+  if (lastRow <= 1) return; // データ行がなければ何もしない
+  sheet.getRange(2, col, lastRow - 1, 1).setNumberFormat('#,##0_);(#,##0)');
+}
 function getItemNameAndRow_(
   values: string[][],
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
@@ -229,7 +528,7 @@ function getNumberOfDaysAndRow_(
       } else {
         const [splitFormula1, splitFormula2] =
           extractLastTwoNumbersFromFormula_(formula);
-        numberOfPeopleArray.push([i, [splitFormula1, splitFormula2]]);
+        numberOfDaysArray.push([i, [splitFormula1, splitFormula2]]);
       }
     }
   }
