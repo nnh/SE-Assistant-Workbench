@@ -15,8 +15,10 @@
  */
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
+const numberOfDaysFormulaRows = [14, 15, 16];
 const dailyUnitPriceArray: number[] = [];
 const numberOfPeopleArray: [row: number, value: number[]][] = [];
+const numberOfDaysArray: number[] = [];
 export function generateUnitPriceTableFromQuoteTemplate_() {
   const inputSpreadSheetId: string | null =
     PropertiesService.getScriptProperties().getProperty('INPUT_SPREADSHEET_ID');
@@ -35,6 +37,8 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
   }
   const inputData: GoogleAppsScript.Spreadsheet.Range =
     inputSheet.getDataRange();
+  const numberOfDays: [row: number, value: string][] =
+    getNumberOfDaysAndRow_(inputSheet);
   const numberOfPeople: [row: number, value: string][] =
     getNumberOfPeopleAndRow_(inputSheet);
   const dailyUnitPrices: [row: number, value: number][] =
@@ -186,7 +190,7 @@ function getDailyUnitPriceAndRow_(
 }
 function getNumberOfPeopleAndRow_(
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
-) {
+): [row: number, value: string][] {
   const targetCol = 21;
   const lastRow = inputSheet.getLastRow();
   const result: Array<[row: number, value: string]> = [];
@@ -197,6 +201,30 @@ function getNumberOfPeopleAndRow_(
       result.push([i, value]);
     } else {
       if (!numberOfPeopleFormulaRows.includes(i)) {
+        console.log(`Row ${i} formula: ${formula}`);
+      } else {
+        const [splitFormula1, splitFormula2] =
+          extractLastTwoNumbersFromFormula_(formula);
+        numberOfPeopleArray.push([i, [splitFormula1, splitFormula2]]);
+      }
+    }
+  }
+  // valueが空白のレコードを削除
+  return result.filter(([, value]) => value !== '');
+}
+function getNumberOfDaysAndRow_(
+  inputSheet: GoogleAppsScript.Spreadsheet.Sheet
+): [row: number, value: string][] {
+  const targetCol = 20;
+  const lastRow = inputSheet.getLastRow();
+  const result: Array<[row: number, value: string]> = [];
+  for (let i = 1; i <= lastRow; i++) {
+    const formula = inputSheet.getRange(i, targetCol).getFormula();
+    if (formula === '') {
+      const value = inputSheet.getRange(i, targetCol).getValue();
+      result.push([i, value]);
+    } else {
+      if (!numberOfDaysFormulaRows.includes(i)) {
         console.log(`Row ${i} formula: ${formula}`);
       } else {
         const [splitFormula1, splitFormula2] =
