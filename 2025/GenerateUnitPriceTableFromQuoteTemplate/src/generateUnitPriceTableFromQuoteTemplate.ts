@@ -19,6 +19,14 @@ const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
 const dailyUnitPriceArray: number[] = [];
 const numberOfPeopleArray: [row: number, value: number[]][] = [];
 const numberOfDaysArray: [row: number, value: number[]][] = [];
+const outputRowMap: Map<string, number> = new Map([
+  ['major', 0],
+  ['minor', 1],
+  ['price', 2],
+  ['basePrice', 17],
+  ['unitPrice', 18],
+]);
+
 export function generateUnitPriceTableFromQuoteTemplate_() {
   const inputSpreadSheetId: string | null =
     PropertiesService.getScriptProperties().getProperty('INPUT_SPREADSHEET_ID');
@@ -329,13 +337,6 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
     '日数', // T
     '人数', // U
   ]);
-  const outputRowMap = new Map([
-    ['major', 0],
-    ['minor', 1],
-    ['price', 2],
-    ['basePrice', 17],
-    ['unitPrice', 18],
-  ]);
   for (const [
     row,
     major,
@@ -405,8 +406,45 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
       setNumberFormatForColumn_(outputSheet, col, outputRowsFiltered.length);
     }
   });
-
+  writeOutputSheet_('Trial参照', outputRowsFiltered);
+  const coefficient_10 = replaceCoefficient_(outputRowsFiltered, 1);
+  writeOutputSheet_('係数1', coefficient_10);
+  const coefficient_15 = replaceCoefficient_(outputRowsFiltered, 1.5);
+  writeOutputSheet_('係数1.5', coefficient_15);
   SpreadsheetApp.flush();
+}
+function replaceCoefficient_(
+  inputValues: string[][],
+  coefficient: number
+): string[][] {
+  return inputValues.map(row => {
+    const priceCol = outputRowMap.get('price')!;
+    if (row[priceCol] && typeof row[priceCol] === 'string') {
+      row[priceCol] = row[priceCol].replace(
+        /Trial!\$B\$44/g,
+        String(coefficient)
+      );
+    }
+    return row;
+  });
+}
+function writeOutputSheet_(outputSheetName: string, values: string[][]) {
+  const outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(outputSheetName);
+  const sheet: GoogleAppsScript.Spreadsheet.Sheet = !outputSheet
+    ? SpreadsheetApp.getActiveSpreadsheet().insertSheet()
+    : outputSheet;
+  sheet.setName(outputSheetName);
+  sheet.clear();
+
+  sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+  sheet.hideColumns(5, 13);
+  ['price', 'basePrice', 'unitPrice'].forEach(key => {
+    if (outputRowMap.has(key)) {
+      const col = outputRowMap.get(key)! + 1;
+      setNumberFormatForColumn_(sheet, col, values.length);
+    }
+  });
 }
 /**
  * 指定したシートの列に対して、2行目から最終行まで数値フォーマットを設定する
