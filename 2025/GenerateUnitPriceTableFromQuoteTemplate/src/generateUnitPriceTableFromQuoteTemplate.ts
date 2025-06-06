@@ -407,26 +407,25 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
     }
   });
   writeOutputSheet_('Trial参照', outputRowsFiltered);
-  const coefficient_10 = replaceCoefficient_(outputRowsFiltered, 1);
+  const coefficient_10 = replaceCoefficient_(outputRowsFiltered, '1');
   writeOutputSheet_('係数1', coefficient_10);
-  const coefficient_15 = replaceCoefficient_(outputRowsFiltered, 1.5);
+  const coefficient_15 = replaceCoefficient_(outputRowsFiltered, '1.5');
   writeOutputSheet_('係数1.5', coefficient_15);
   SpreadsheetApp.flush();
 }
 function replaceCoefficient_(
   inputValues: string[][],
-  coefficient: number
+  coefficient: string
 ): string[][] {
-  return inputValues.map(row => {
+  const result = inputValues.map(row => {
+    const res = [...row]; // 新しい配列を作成
     const priceCol = outputRowMap.get('price')!;
-    if (row[priceCol] && typeof row[priceCol] === 'string') {
-      row[priceCol] = row[priceCol].replace(
-        /Trial!\$B\$44/g,
-        String(coefficient)
-      );
+    if (res[priceCol] && typeof res[priceCol] === 'string') {
+      res[priceCol] = res[priceCol].replace(/Trial!\$B\$44/g, coefficient);
     }
-    return row;
+    return res;
   });
+  return result;
 }
 function writeOutputSheet_(outputSheetName: string, values: string[][]) {
   const outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
@@ -445,6 +444,13 @@ function writeOutputSheet_(outputSheetName: string, values: string[][]) {
       setNumberFormatForColumn_(sheet, col, values.length);
     }
   });
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 500);
+  for (let col = 3; col <= values[0].length; col++) {
+    if (col !== 3 && col !== 4) {
+      sheet.setColumnWidth(col, 100);
+    }
+  }
 }
 /**
  * 指定したシートの列に対して、2行目から最終行まで数値フォーマットを設定する
