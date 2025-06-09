@@ -13,6 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+export const outputRowMap: Map<string, number> = new Map([
+  ['major', 0],
+  ['minor', 1],
+  ['price', 2],
+  ['basePrice', 17],
+  ['unitPrice', 18],
+]);
+
 export const coefficientSheetNameMap: Map<string, string> = new Map([
   ['coefficient10', '係数1'],
   ['coefficient15', '係数1.5'],

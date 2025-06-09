@@ -13,20 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { coefficientSheetNameMap } from './common';
+import { coefficientSheetNameMap, outputRowMap } from './common';
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
 const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
 const dailyUnitPriceArray: number[] = [];
 const numberOfPeopleArray: [row: number, value: number[]][] = [];
 const numberOfDaysArray: [row: number, value: number[]][] = [];
-const outputRowMap: Map<string, number> = new Map([
-  ['major', 0],
-  ['minor', 1],
-  ['price', 2],
-  ['basePrice', 17],
-  ['unitPrice', 18],
-]);
 const referTrialSheetName = 'Trial参照';
 
 function prepareSheets_(

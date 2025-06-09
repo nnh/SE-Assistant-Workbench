@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { coefficientSheetNameMap } from './common';
+import { coefficientSheetNameMap, outputRowMap } from './common';
 import { coefficient_10_2015 } from './forTest_coefficient_10_2015';
 function compareValues_(
   inputValues: string[][],
@@ -68,7 +68,9 @@ export function execCheckValues_(year: string): boolean {
   const compareValues: Map<string, string[][]> = new Map();
   if (year === '2015') {
     compareValues.set('coefficient10', coefficient_10_2015);
-    compareValues.set('coefficient15', coefficient_10_2015);
+    const coefficient_15_2015: string[][] =
+      convertCoefficient10To15_(coefficient_10_2015);
+    compareValues.set('coefficient15', coefficient_15_2015);
   } else if (year === '2025') {
     compareValues.set('coefficient10', coefficient_10_2015);
     compareValues.set('coefficient15', coefficient_10_2015);
@@ -95,4 +97,52 @@ export function execCheckValues_(year: string): boolean {
   });
   console.log(`All values checked for year ${year}.`);
   return true; // 全てのチェックが成功した場合はtrueを返す
+}
+
+function convertCoefficient10To15_(coefficient10: string[][]): string[][] {
+  const majorItems = [
+    'プロトコル等作成支援',
+    '薬事戦略相談支援',
+    '競争的資金獲得支援',
+    'プロジェクト管理',
+    '試験事務局業務',
+    'モニタリング業務',
+    'データベース管理',
+    '準備作業',
+    'EDC構築',
+    '中央モニタリング',
+    'データセット作成',
+    '安全性管理業務',
+    '統計解析業務',
+    '研究結果報告書業務',
+    '研究結果発表',
+    'その他',
+  ];
+  // ヘッダー行をコピー
+  const result: string[][] = [coefficient10[0]];
+
+  for (let i = 1; i < coefficient10.length; i++) {
+    const row = [...coefficient10[i]];
+    const majorItem = row[outputRowMap.get('major')!];
+    if (majorItems.includes(majorItem)) {
+      if (
+        majorItem !== '研究結果発表' ||
+        (majorItem === '研究結果発表' &&
+          row[outputRowMap.get('minor')!] === '論文作成')
+      ) {
+        const rValue = Number(
+          String(row[outputRowMap.get('basePrice')!]).replace(/[\s,]/g, '')
+        );
+        if (!isNaN(rValue)) {
+          const newValue: number = roundToNearest100_(rValue * 1.5);
+          row[outputRowMap.get('price')!] = String(newValue);
+        }
+      }
+    }
+    result.push(row);
+  }
+  return result;
+}
+function roundToNearest100_(amount: number): number {
+  return Math.round(amount / 1000) * 1000;
 }
