@@ -263,9 +263,17 @@ export function generateUnitPriceTableFromQuoteTemplate_(
   for (let i = 1; i <= inputSheet.getLastRow(); i++) {
     const price = inputSheet.getRange(i, 3).getFormula();
     const unit = inputSheet.getRange(i, 4).getValue();
-    const basePrice = inputSheet.getRange(i, 18).getFormula();
-    if (price || unit || basePrice) {
-      priceAndUnitAndBasePrice.push([i, price, unit, basePrice]);
+    let basePrice = inputSheet.getRange(i, 18).getFormula();
+    const basePriceValue = inputSheet.getRange(i, 18).getValue();
+    // basePriceが空白の場合はbasePriceValueを使用
+    if (basePrice === '') {
+      basePrice = basePriceValue.toString();
+    }
+    const priceStr = price ? price : '';
+    const unitStr = unit ? unit : '';
+    const basePriceStr = basePrice ? basePrice : '';
+    if (priceStr || unitStr || basePriceStr) {
+      priceAndUnitAndBasePrice.push([i, priceStr, unitStr, basePriceStr]);
     } else {
       // 空白の行はスキップ
       continue;
