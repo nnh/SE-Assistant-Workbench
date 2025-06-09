@@ -258,7 +258,7 @@ function editParticipantList_(
   const headers =
     surveyHeader !== null
       ? [...headers_base_reg, ...surveyHeader]
-      : baseHeaders;
+      : headers_base_reg;
   const outputData = [
     headers,
     ...temp_userList,
