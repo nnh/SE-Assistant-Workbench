@@ -14,8 +14,24 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { getSpreadsheetByProperty_ } from './common';
 import { generateUnitPriceTableFromQuoteTemplate_ } from './generateUnitPriceTableFromQuoteTemplate';
+import { execCheckValues_ } from './execCheckValues';
 function main() {
-  const test = generateUnitPriceTableFromQuoteTemplate_();
+  const inputSpreadSheet2015 = getSpreadsheetByProperty_(
+    'INPUT_SPREADSHEET_2015'
+  );
+  const outputSpreadSheet2015 = getSpreadsheetByProperty_(
+    'OUTPUT_SPREADSHEET_2015'
+  );
+  const test = generateUnitPriceTableFromQuoteTemplate_(
+    inputSpreadSheet2015,
+    outputSpreadSheet2015
+  );
   console.log(test);
+}
+function execCheckValues() {
+  const year = '2015'; // or '2025'
+  const result = execCheckValues_(year);
+  console.log(`Check values for ${year}: ${result}`);
 }

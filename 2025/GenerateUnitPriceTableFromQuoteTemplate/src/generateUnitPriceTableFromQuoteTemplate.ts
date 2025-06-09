@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { coefficientSheetNameMap } from './common';
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
 const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
@@ -26,23 +27,38 @@ const outputRowMap: Map<string, number> = new Map([
   ['basePrice', 17],
   ['unitPrice', 18],
 ]);
+const referTrialSheetName = 'Trial参照';
 
-export function generateUnitPriceTableFromQuoteTemplate_() {
-  const inputSpreadSheetId: string | null =
-    PropertiesService.getScriptProperties().getProperty('INPUT_SPREADSHEET_ID');
-  if (!inputSpreadSheetId) {
-    throw new Error('INPUT_SPREADSHEET_ID is not set in script properties.');
+function prepareSheets_(
+  inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  outputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet
+): GoogleAppsScript.Spreadsheet.Sheet[] {
+  let trialSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    outputSpreadSheet.getSheetByName('Trial');
+  if (!trialSheet) {
+    trialSheet = outputSpreadSheet.insertSheet('Trial');
   }
-  const inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    SpreadsheetApp.openById(inputSpreadSheetId);
-  if (!inputSpreadSheet) {
-    throw new Error(`Spreadsheet with ID ${inputSpreadSheetId} not found.`);
+  trialSheet.getRange('A44:B44').setValues([['係数', '1']]);
+  trialSheet.hideSheet();
+  let outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    outputSpreadSheet.getSheetByName(referTrialSheetName);
+  if (!outputSheet) {
+    outputSheet = outputSpreadSheet.insertSheet(referTrialSheetName);
   }
+
   const inputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
     inputSpreadSheet.getSheetByName('Items');
   if (!inputSheet) {
     throw new Error('Sheet "Items" not found in the spreadsheet.');
   }
+  return [inputSheet, outputSheet];
+}
+export function generateUnitPriceTableFromQuoteTemplate_(
+  inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  outputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet
+): void {
+  const [inputSheet, outputSheet]: GoogleAppsScript.Spreadsheet.Sheet[] =
+    prepareSheets_(inputSpreadSheet, outputSpreadSheet);
   const inputData: GoogleAppsScript.Spreadsheet.Range =
     inputSheet.getDataRange();
   const numberOfDays: [row: number, value: string][] =
@@ -185,7 +201,7 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
             : targetValueArray[1];
       } else if (row === numberOfDaysFormulaRows[6]) {
         numberOfDays =
-          minor === '最終解析プログラム作成、解析実施（シングル）'
+          minor === '最終解析プログラム作成、解析実施（ダブル）'
             ? targetValueArray[0]
             : targetValueArray[1];
       } else if (row === numberOfDaysFormulaRows[7]) {
@@ -363,7 +379,6 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
     outputRows.push(outputRow);
   }
 
-  const outputSheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
   outputSheet.clear();
   const outputRowsFiltered = outputRows
     .filter(row => row[outputRowMap.get('major')!] !== '合計')
@@ -406,11 +421,20 @@ export function generateUnitPriceTableFromQuoteTemplate_() {
       setNumberFormatForColumn_(outputSheet, col, outputRowsFiltered.length);
     }
   });
-  writeOutputSheet_('Trial参照', outputRowsFiltered);
+  writeOutputSheet_(outputSpreadSheet, referTrialSheetName, outputRowsFiltered);
   const coefficient_10 = replaceCoefficient_(outputRowsFiltered, '1');
-  writeOutputSheet_('係数1', coefficient_10);
+  writeOutputSheet_(
+    outputSpreadSheet,
+    coefficientSheetNameMap.get('coefficient10')!,
+    coefficient_10
+  );
   const coefficient_15 = replaceCoefficient_(outputRowsFiltered, '1.5');
-  writeOutputSheet_('係数1.5', coefficient_15);
+  writeOutputSheet_(
+    outputSpreadSheet,
+    coefficientSheetNameMap.get('coefficient15')!,
+    coefficient_15
+  );
+  outputSpreadSheet.getSheetByName(referTrialSheetName)?.hideSheet();
   SpreadsheetApp.flush();
 }
 function replaceCoefficient_(
@@ -427,11 +451,15 @@ function replaceCoefficient_(
   });
   return result;
 }
-function writeOutputSheet_(outputSheetName: string, values: string[][]) {
+function writeOutputSheet_(
+  spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  outputSheetName: string,
+  values: string[][]
+) {
   const outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(outputSheetName);
+    spreadSheet.getSheetByName(outputSheetName);
   const sheet: GoogleAppsScript.Spreadsheet.Sheet = !outputSheet
-    ? SpreadsheetApp.getActiveSpreadsheet().insertSheet()
+    ? spreadSheet.insertSheet()
     : outputSheet;
   sheet.setName(outputSheetName);
   sheet.clear();
