@@ -41,3 +41,30 @@ export function getSpreadsheetByProperty_(
   }
   return spreadsheet;
 }
+export function getAndClearOutputSheet_(
+  spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  outputSheetName: string
+): GoogleAppsScript.Spreadsheet.Sheet {
+  const outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
+    spreadSheet.getSheetByName(outputSheetName);
+  const sheet: GoogleAppsScript.Spreadsheet.Sheet = !outputSheet
+    ? spreadSheet.insertSheet()
+    : outputSheet;
+  sheet.setName(outputSheetName);
+  sheet.clear();
+  return sheet;
+}
+/**
+ * 指定したシートの列に対して、2行目から最終行まで数値フォーマットを設定する
+ * @param sheet 対象のシート
+ * @param col 列番号（1始まり）
+ * @param lastRow 最終行番号
+ */
+export function setNumberFormatForColumn_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  col: number,
+  lastRow: number
+) {
+  if (lastRow <= 1) return; // データ行がなければ何もしない
+  sheet.getRange(2, col, lastRow - 1, 1).setNumberFormat('#,##0_);(#,##0)');
+}

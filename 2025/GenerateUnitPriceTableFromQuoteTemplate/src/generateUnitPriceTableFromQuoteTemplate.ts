@@ -13,7 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { coefficientSheetNameMap, outputRowMap } from './common';
+import {
+  coefficientSheetNameMap,
+  outputRowMap,
+  getAndClearOutputSheet_,
+  setNumberFormatForColumn_,
+} from './common';
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
 const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
@@ -452,19 +457,13 @@ function replaceCoefficient_(
   });
   return result;
 }
+
 function writeOutputSheet_(
   spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
   outputSheetName: string,
   values: string[][]
 ) {
-  const outputSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
-    spreadSheet.getSheetByName(outputSheetName);
-  const sheet: GoogleAppsScript.Spreadsheet.Sheet = !outputSheet
-    ? spreadSheet.insertSheet()
-    : outputSheet;
-  sheet.setName(outputSheetName);
-  sheet.clear();
-
+  const sheet = getAndClearOutputSheet_(spreadSheet, outputSheetName);
   sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
   sheet.hideColumns(5, 13);
   ['price', 'basePrice', 'unitPrice'].forEach(key => {
@@ -481,20 +480,7 @@ function writeOutputSheet_(
     }
   }
 }
-/**
- * 指定したシートの列に対して、2行目から最終行まで数値フォーマットを設定する
- * @param sheet 対象のシート
- * @param col 列番号（1始まり）
- * @param lastRow 最終行番号
- */
-function setNumberFormatForColumn_(
-  sheet: GoogleAppsScript.Spreadsheet.Sheet,
-  col: number,
-  lastRow: number
-) {
-  if (lastRow <= 1) return; // データ行がなければ何もしない
-  sheet.getRange(2, col, lastRow - 1, 1).setNumberFormat('#,##0_);(#,##0)');
-}
+
 function getItemNameAndRow_(
   values: string[][],
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
