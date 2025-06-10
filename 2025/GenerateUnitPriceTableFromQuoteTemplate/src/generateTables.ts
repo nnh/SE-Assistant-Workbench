@@ -18,6 +18,7 @@ import {
   getAndClearOutputSheet_,
   coefficientSheetNameMap,
   setNumberFormatForColumn_,
+  roundToNearest100_,
 } from './common';
 import { generateUnitPriceTableFromQuoteTemplate_ } from './generateUnitPriceTableFromQuoteTemplate';
 import { execCheckValues_ } from './execCheckValues';
@@ -77,23 +78,28 @@ class UnitPriceTableGenerator {
         this.outputSpreadSheet,
         targetSheetName
       );
-      let targetValues: string[][] = values;
-      // 係数1.5の場合は値を変換
-      if (key === 'coefficient15') {
-        targetValues = values.map((row, idx) => {
-          if (idx === 0) {
-            // ヘッダー行はそのまま返す
-            return row;
-          }
-          return row.map((value, index) => {
-            if (priceColumnIndexes.includes(index)) {
+      const targetValues: string[][] = values.map((row, idx) => {
+        if (idx === 0) {
+          // ヘッダー行はそのまま返す
+          return row;
+        }
+        return row.map((value, index) => {
+          if (priceColumnIndexes.includes(index)) {
+            // 係数1.5の場合は値を変換
+            if (key === 'coefficient15') {
               // 指定されたindexの価格を1.5倍に変換
-              return String(Math.round(Number(value) * 1.5));
+              return String(
+                roundToNearest100_(Math.round(Number(value) * 1.5))
+              );
+            } else {
+              return roundToNearest100_(Number(value)).toString();
             }
+          } else {
+            // 価格以外の値はそのまま返す
             return value;
-          });
+          }
         });
-      }
+      });
       outputSheet
         .getRange(1, 1, targetValues.length, targetValues[0].length)
         .setValues(targetValues);
@@ -149,7 +155,7 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
     const values: string[][] = [
       ['CRF項目数', 'DB作成・eCRF作成・バリデーション', 'バリデーション報告書'],
       ['50', '325000', '12500'],
-      ['100', '450000', '25000'],
+      ['100', '550000', '25000'],
       ['500', '1450000', '125000'],
       ['1000', '2575000', '250000'],
       ['2000', '3675000', '500000'],

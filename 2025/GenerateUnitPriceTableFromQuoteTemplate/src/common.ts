@@ -68,3 +68,6 @@ export function setNumberFormatForColumn_(
   if (lastRow <= 1) return; // データ行がなければ何もしない
   sheet.getRange(2, col, lastRow - 1, 1).setNumberFormat('#,##0_);(#,##0)');
 }
+export function roundToNearest100_(amount: number): number {
+  return Math.round(amount / 1000) * 1000;
+}

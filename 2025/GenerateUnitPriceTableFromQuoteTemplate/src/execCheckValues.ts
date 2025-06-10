@@ -13,7 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { coefficientSheetNameMap, outputRowMap } from './common';
+import {
+  coefficientSheetNameMap,
+  outputRowMap,
+  roundToNearest100_,
+} from './common';
 import { coefficient_10_2015 } from './forTest_coefficient_10_2015';
 function compareValues_(
   inputValues: string[][],
@@ -142,7 +146,4 @@ function convertCoefficient10To15_(coefficient10: string[][]): string[][] {
     result.push(row);
   }
   return result;
-}
-function roundToNearest100_(amount: number): number {
-  return Math.round(amount / 1000) * 1000;
 }
