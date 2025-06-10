@@ -17,58 +17,16 @@ import {
   coefficientSheetNameMap,
   outputRowMap,
   roundToNearest100_,
+  compareValues_,
+  getSpreadsheetByProperty_,
 } from './common';
 import { coefficient_10_2015 } from './forTest_coefficient_10_2015';
-function compareValues_(
-  inputValues: string[][],
-  compareValues: string[][]
-): boolean {
-  // 入力値と比較値の行数が異なる場合はエラー
-  if (inputValues.length !== compareValues.length) {
-    throw new Error(
-      'Input values and compare values must have the same number of rows.'
-    );
-  }
 
-  // 各行を比較
-  for (let i = 0; i < inputValues.length; i++) {
-    const inputRow = inputValues[i];
-    const compareRow = compareValues[i];
-
-    // 各列を比較
-    for (let j = 0; j < inputRow.length; j++) {
-      if (inputRow[j] !== compareRow[j]) {
-        const inputValue =
-          typeof inputRow[j] === 'number'
-            ? String(inputRow[j]).replace(/[\s,]/g, '')
-            : inputRow[j].replace(/[\s,]/g, '');
-        const compareValue = compareRow[j].replace(/[\s,]/g, '');
-        if (inputValue !== compareValue) {
-          throw new Error(
-            `Mismatch at row ${i + 1}, column ${j + 1}: "${inputRow[j]}" vs "${compareRow[j]}"`
-          );
-        }
-      }
-    }
-  }
-  return true; // 全ての値が一致した場合はtrueを返す
-}
 export function execCheckValues_(year: string): boolean {
-  // シート名
-  const spreadsheetId: string | null =
-    PropertiesService.getScriptProperties().getProperty(
-      `OUTPUT_SPREADSHEET_${year}`
-    );
-  if (!spreadsheetId) {
-    throw new Error(
-      `OUTPUT_SPREADSHEET_${year} is not set in script properties.`
-    );
-  }
+  const targetProperty = `OUTPUT_SPREADSHEET_${year}`;
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    SpreadsheetApp.openById(spreadsheetId);
-  if (!ss) {
-    throw new Error(`Spreadsheet with ID ${spreadsheetId} not found.`);
-  }
+    getSpreadsheetByProperty_(targetProperty);
+
   const compareValues: Map<string, string[][]> = new Map();
   if (year === '2015') {
     compareValues.set('coefficient10', coefficient_10_2015);

@@ -22,6 +22,7 @@ import {
 } from './common';
 import { generateUnitPriceTableFromQuoteTemplate_ } from './generateUnitPriceTableFromQuoteTemplate';
 import { execCheckValues_ } from './execCheckValues';
+import { execCheckValuesVariable_ } from './execCheckValuesVariable';
 
 class UnitPriceTableGenerator {
   inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
@@ -144,6 +145,8 @@ class UnitPriceTableGenerator {
   execCheckValues(): void {
     const result = execCheckValues_(this.year);
     console.log(`Check values for ${this.year}: ${result}`);
+    const resultVariable1 = execCheckValuesVariable_(this.year);
+    console.log(`Check variable1 values for ${this.year}: ${resultVariable1}`);
   }
 }
 
