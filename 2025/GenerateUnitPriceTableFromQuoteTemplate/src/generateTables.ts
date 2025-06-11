@@ -168,7 +168,7 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
   createCentralMonitoringPriceSheet(): void {
     const trialTypeArray = [
       ['1', '観察研究・レジストリ'],
-      ['2', '介入研究'],
+      ['2', '介入研究（特定臨床研究以外）'],
       ['3', '特定臨床研究'],
       ['5', '医師主導治験・先進'],
     ];

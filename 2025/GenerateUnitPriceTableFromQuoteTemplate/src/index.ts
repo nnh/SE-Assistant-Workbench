@@ -15,6 +15,7 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { UnitPriceTableGenerator2015 } from './generateTables';
+import { checkTemplateFormulas2015 } from './execCheckTemplateFormulas';
 
 function createSheet2015(): void {
   const generator = new UnitPriceTableGenerator2015();
@@ -24,4 +25,8 @@ function createSheet2015(): void {
 function execCheckValues2015(): void {
   const generator = new UnitPriceTableGenerator2015();
   generator.execCheckValues();
+}
+function execCheckTemplateVariables2015(): void {
+  const generator = new checkTemplateFormulas2015();
+  generator.execCheckTemplateVariables();
 }
