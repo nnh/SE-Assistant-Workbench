@@ -13,12 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/*import {
-  coefficientSheetNameMap,
-  getSpreadsheetByProperty_,
-  compareValues_,
-} from './common';*/
-import { variable3_2015_10, variable3_2015_15 } from './forTest_variables';
+import { removeCommasAndSpaces_ } from './common';
+import { variable3_2015_10, variable3_2015_15 } from './variablesConst';
 class checkTemplateFormulas {
   inputSpreadsheetIdProperty: string;
   year: string;
@@ -129,8 +125,10 @@ export class checkTemplateFormulas2015 extends checkTemplateFormulas {
         SpreadsheetApp.flush(); // 変更を反映
         const var1Value = itemsSheet.getRange('C43').getValue();
         const var2Value = itemsSheet.getRange('C44').getValue();
-        const expectedVar1Num = Number(String(var1).replace(/,/g, ''));
-        const expectedVar2Num = Number(String(var2).replace(/,/g, ''));
+        const expectedVar: string = removeCommasAndSpaces_(var1);
+        const expectedVar2: string = removeCommasAndSpaces_(var2);
+        const expectedVar1Num = Number(expectedVar);
+        const expectedVar2Num = Number(expectedVar2);
 
         if (var1Value !== expectedVar1Num) {
           throw new Error(

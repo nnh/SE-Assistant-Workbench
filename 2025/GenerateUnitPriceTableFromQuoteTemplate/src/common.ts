@@ -25,6 +25,10 @@ export const coefficientSheetNameMap: Map<string, string> = new Map([
   ['coefficient10', '係数1'],
   ['coefficient15', '係数1.5'],
 ]);
+export const variableSheetNameMap: Map<string, string> = new Map([
+  ['createDatabase', '変動*1,2'],
+  ['centralMonitoring', '変動*3,4'],
+]);
 
 export function getSpreadsheetByProperty_(
   propertyName: string
@@ -90,11 +94,8 @@ export function compareValues_(
     // 各列を比較
     for (let j = 0; j < inputRow.length; j++) {
       if (inputRow[j] !== compareRow[j]) {
-        const inputValue =
-          typeof inputRow[j] === 'number'
-            ? String(inputRow[j]).replace(/[\s,]/g, '')
-            : inputRow[j].replace(/[\s,]/g, '');
-        const compareValue = compareRow[j].replace(/[\s,]/g, '');
+        const inputValue: string = removeCommasAndSpaces_(inputRow[j]);
+        const compareValue: string = removeCommasAndSpaces_(compareRow[j]);
         if (inputValue !== compareValue) {
           throw new Error(
             `Mismatch at row ${i + 1}, column ${j + 1}: "${inputRow[j]}" vs "${compareRow[j]}"`
@@ -104,4 +105,12 @@ export function compareValues_(
     }
   }
   return true; // 全ての値が一致した場合はtrueを返す
+}
+export function removeCommasAndSpaces_(value: string | number): string {
+  if (typeof value === 'string') {
+    return value.replace(/[\s,]/g, '');
+  } else if (typeof value === 'number') {
+    return String(value).replace(/[\s,]/g, '');
+  }
+  return value; // その他の型はそのまま返す
 }

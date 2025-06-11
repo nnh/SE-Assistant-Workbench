@@ -22,11 +22,11 @@ function createSheet2015(): void {
   generator.execCreateSheet();
   generator.execCheckValues();
 }
-function execCheckValues2015(): void {
-  const generator = new UnitPriceTableGenerator2015();
-  generator.execCheckValues();
-}
 function execCheckTemplateVariables2015(): void {
   const generator = new checkTemplateFormulas2015();
   generator.execCheckTemplateVariables();
+}
+function execCheckValues2015(): void {
+  const generator = new UnitPriceTableGenerator2015();
+  generator.execCheckValues();
 }

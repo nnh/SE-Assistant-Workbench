@@ -17,13 +17,14 @@ import {
   coefficientSheetNameMap,
   getSpreadsheetByProperty_,
   compareValues_,
+  variableSheetNameMap,
 } from './common';
 import {
   variable1_2015_10,
   variable1_2015_15,
   variable3_2015_10,
   variable3_2015_15,
-} from './forTest_variables';
+} from './variablesConst';
 
 export function execCheckValuesVariable_(year: string): boolean {
   const targetProperty = `OUTPUT_SPREADSHEET_${year}`;
@@ -42,8 +43,7 @@ export function execCheckValuesVariable_(year: string): boolean {
   } else {
     throw new Error(`Unsupported year: ${year}`);
   }
-
-  const targetSheetNames = ['変動*1,2', '変動*3,4'];
+  const targetSheetNames: string[] = Array.from(variableSheetNameMap.values());
   coefficientSheetNameMap.forEach((sheetName, key) => {
     targetSheetNames.forEach((targetSheetName, idx) => {
       const sheet: GoogleAppsScript.Spreadsheet.Sheet | null =
