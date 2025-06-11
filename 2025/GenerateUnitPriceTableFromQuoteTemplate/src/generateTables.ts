@@ -155,6 +155,6 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
     this.createCreateDatabasePriceSheet_(sheetNames[1], variable1_2015_15);
     this.createCentralMonitoringPriceSheet_(sheetNames[2], variable3_2015_10);
     this.createCentralMonitoringPriceSheet_(sheetNames[3], variable3_2015_15);
-    //this.createSheet();
+    this.createSheet();
   }
 }
