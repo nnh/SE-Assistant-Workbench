@@ -14,8 +14,15 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { UnitPriceTableGenerator2015 } from './generateTables';
+import {
+  UnitPriceTableGenerator2015,
+  UnitPriceTableGenerator2025,
+} from './generateTables';
 import { checkTemplateFormulas2015 } from './execCheckTemplateFormulas';
+function createSheet2025(): void {
+  const generator = new UnitPriceTableGenerator2025();
+  generator.execCreateSheet();
+}
 
 function createSheet2015(): void {
   const generator = new UnitPriceTableGenerator2015();

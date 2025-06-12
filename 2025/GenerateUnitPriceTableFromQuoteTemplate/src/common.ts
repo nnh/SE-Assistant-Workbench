@@ -114,3 +114,58 @@ export function removeCommasAndSpaces_(value: string | number): string {
   }
   return value; // その他の型はそのまま返す
 }
+export function writeOutputSheet_(
+  spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  outputSheetName: string,
+  values: string[][]
+) {
+  const sheet = getAndClearOutputSheet_(spreadSheet, outputSheetName);
+  sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+  sheet.hideColumns(5, 13);
+  ['price', 'basePrice', 'unitPrice'].forEach(key => {
+    if (outputRowMap.has(key)) {
+      const col = outputRowMap.get(key)! + 1;
+      setNumberFormatForColumn_(sheet, col, values.length);
+    }
+  });
+  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(2, 500);
+  for (let col = 3; col <= values[0].length; col++) {
+    if (col !== 3 && col !== 4) {
+      sheet.setColumnWidth(col, 100);
+    }
+  }
+}
+export function filterOutputRow_(outputRows: string[][]): string[][] {
+  const outputRowsFiltered = outputRows
+    .filter(row => row[outputRowMap.get('major')!] !== '合計')
+    .map(row => {
+      if (
+        row[outputRowMap.get('minor')!] === 'DB作成・eCRF作成・バリデーション'
+      ) {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※1)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'バリデーション報告書') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※2)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (
+        row[outputRowMap.get('minor')!] ===
+        'ロジカルチェック、マニュアルチェック、クエリ対応'
+      ) {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※3)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'データクリーニング') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※4)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      if (row[outputRowMap.get('minor')!] === 'プロジェクト管理') {
+        row[outputRowMap.get('basePrice')!] = '(変動 ※5)';
+        row[outputRowMap.get('price')!] = '';
+      }
+      return row;
+    });
+  return outputRowsFiltered;
+}

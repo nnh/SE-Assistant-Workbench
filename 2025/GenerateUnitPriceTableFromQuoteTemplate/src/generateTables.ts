@@ -20,6 +20,8 @@ import {
   setNumberFormatForColumn_,
   removeCommasAndSpaces_,
   variableSheetNameMap,
+  writeOutputSheet_,
+  filterOutputRow_,
 } from './common';
 import { generateUnitPriceTableFromQuoteTemplate_ } from './generateUnitPriceTableFromQuoteTemplate';
 import { execCheckValues_ } from './execCheckValues';
@@ -29,7 +31,10 @@ import {
   variable1_2015_15,
   variable3_2015_10,
   variable3_2015_15,
+  variable1_2025_10,
+  variable1_2025_15,
 } from './variablesConst';
+import { convertPriceFrom2015To2025_ } from './forTest_coefficient_10_2025';
 
 class UnitPriceTableGenerator {
   inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
@@ -143,6 +148,13 @@ class UnitPriceTableGenerator {
     const resultVariable1 = execCheckValuesVariable_(this.year);
     console.log(`Check variable1 values for ${this.year}: ${resultVariable1}`);
   }
+  createVariableSheet(variableValues: string[][][]): void {
+    const sheetNames = this.getVariableSheetNames_();
+    this.createCreateDatabasePriceSheet_(sheetNames[0], variableValues[0]);
+    this.createCreateDatabasePriceSheet_(sheetNames[1], variableValues[1]);
+    this.createCentralMonitoringPriceSheet_(sheetNames[2], variableValues[2]);
+    this.createCentralMonitoringPriceSheet_(sheetNames[3], variableValues[3]);
+  }
 }
 
 export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
@@ -150,11 +162,43 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
     super('INPUT_SPREADSHEET_2015', 'OUTPUT_SPREADSHEET_2015', '2015');
   }
   execCreateSheet(): void {
-    const sheetNames = this.getVariableSheetNames_();
-    this.createCreateDatabasePriceSheet_(sheetNames[0], variable1_2015_10);
-    this.createCreateDatabasePriceSheet_(sheetNames[1], variable1_2015_15);
-    this.createCentralMonitoringPriceSheet_(sheetNames[2], variable3_2015_10);
-    this.createCentralMonitoringPriceSheet_(sheetNames[3], variable3_2015_15);
+    this.createVariableSheet([
+      variable1_2015_10,
+      variable1_2015_15,
+      variable3_2015_10,
+      variable3_2015_15,
+    ]);
+    this.createSheet();
+  }
+}
+
+export class UnitPriceTableGenerator2025 extends UnitPriceTableGenerator {
+  constructor() {
+    super('INPUT_SPREADSHEET_2025', 'OUTPUT_SPREADSHEET_2025', '2025');
+  }
+  createSheet(): void {
+    const coefficient2025Map: Map<string, string[][]> =
+      convertPriceFrom2015To2025_();
+    coefficient2025Map.forEach((values, coefficient) => {
+      const targetSheetName = coefficientSheetNameMap.get(coefficient);
+      if (!targetSheetName) {
+        throw new Error(`Target sheet name for ${coefficient} not found.`);
+      }
+      const filteredValues = filterOutputRow_(values);
+      writeOutputSheet_(
+        this.outputSpreadSheet,
+        targetSheetName,
+        filteredValues
+      );
+    });
+  }
+  execCreateSheet(): void {
+    this.createVariableSheet([
+      variable1_2025_10,
+      variable1_2025_15,
+      variable1_2025_10,
+      variable1_2025_15,
+    ]);
     this.createSheet();
   }
 }

@@ -16,8 +16,9 @@
 import {
   coefficientSheetNameMap,
   outputRowMap,
-  getAndClearOutputSheet_,
+  writeOutputSheet_,
   setNumberFormatForColumn_,
+  filterOutputRow_,
 } from './common';
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
@@ -386,37 +387,7 @@ export function generateUnitPriceTableFromQuoteTemplate_(
   }
 
   outputSheet.clear();
-  const outputRowsFiltered = outputRows
-    .filter(row => row[outputRowMap.get('major')!] !== '合計')
-    .map(row => {
-      if (
-        row[outputRowMap.get('minor')!] === 'DB作成・eCRF作成・バリデーション'
-      ) {
-        row[outputRowMap.get('basePrice')!] = '(変動 ※1)';
-        row[outputRowMap.get('price')!] = '';
-      }
-      if (row[outputRowMap.get('minor')!] === 'バリデーション報告書') {
-        row[outputRowMap.get('basePrice')!] = '(変動 ※2)';
-        row[outputRowMap.get('price')!] = '';
-      }
-      if (
-        row[outputRowMap.get('minor')!] ===
-        'ロジカルチェック、マニュアルチェック、クエリ対応'
-      ) {
-        row[outputRowMap.get('basePrice')!] = '(変動 ※3)';
-        row[outputRowMap.get('price')!] = '';
-      }
-      if (row[outputRowMap.get('minor')!] === 'データクリーニング') {
-        row[outputRowMap.get('basePrice')!] = '(変動 ※4)';
-        row[outputRowMap.get('price')!] = '';
-      }
-      if (row[outputRowMap.get('minor')!] === 'プロジェクト管理') {
-        row[outputRowMap.get('basePrice')!] = '(変動 ※5)';
-        row[outputRowMap.get('price')!] = '';
-      }
-      return row;
-    });
-
+  const outputRowsFiltered = filterOutputRow_(outputRows);
   outputSheet
     .getRange(1, 1, outputRowsFiltered.length, outputRowsFiltered[0].length)
     .setValues(outputRowsFiltered);
@@ -456,29 +427,6 @@ function replaceCoefficient_(
     return res;
   });
   return result;
-}
-
-function writeOutputSheet_(
-  spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
-  outputSheetName: string,
-  values: string[][]
-) {
-  const sheet = getAndClearOutputSheet_(spreadSheet, outputSheetName);
-  sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
-  sheet.hideColumns(5, 13);
-  ['price', 'basePrice', 'unitPrice'].forEach(key => {
-    if (outputRowMap.has(key)) {
-      const col = outputRowMap.get(key)! + 1;
-      setNumberFormatForColumn_(sheet, col, values.length);
-    }
-  });
-  sheet.setColumnWidth(1, 140);
-  sheet.setColumnWidth(2, 500);
-  for (let col = 3; col <= values[0].length; col++) {
-    if (col !== 3 && col !== 4) {
-      sheet.setColumnWidth(col, 100);
-    }
-  }
 }
 
 function getItemNameAndRow_(
