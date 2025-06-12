@@ -14,14 +14,28 @@
  * limitations under the License.
  */
 import { removeCommasAndSpaces_ } from './common';
-import { variable3_2015_10, variable3_2015_15 } from './variablesConst';
+import {
+  variable3_2015_10,
+  variable3_2015_15,
+  variable3_2025_10,
+  variable3_2025_15,
+} from './variablesConst';
 class checkTemplateFormulas {
   inputSpreadsheetIdProperty: string;
   year: string;
+  templateSpreadSheetId: string;
+  testVariables: string[][][];
 
-  constructor(inputSpreadsheetIdProperty: string, year: string) {
+  constructor(
+    inputSpreadsheetIdProperty: string,
+    year: string,
+    templateSpreadSheetId: string,
+    testVariables: string[][][]
+  ) {
     this.inputSpreadsheetIdProperty = inputSpreadsheetIdProperty;
     this.year = year;
+    this.templateSpreadSheetId = templateSpreadSheetId;
+    this.testVariables = testVariables;
   }
   getTargetSheet_(
     spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
@@ -95,20 +109,12 @@ class checkTemplateFormulas {
     // コピーしたファイルのIDをスクリプトプロパティに保存
     scriptProperties.setProperty(propertyKey, copiedFile.getId());
   }
-}
-export class checkTemplateFormulas2015 extends checkTemplateFormulas {
-  constructor() {
-    super('INPUT_SPREADSHEET_2015', '2015');
-  }
-
   execCheckTemplateVariables(): void {
-    const propertyKey = 'FOR_CHECK_FORMULAS_2015';
     const spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
-      this.getSpreadsheetByProperty_(propertyKey);
+      this.getSpreadsheetByProperty_(this.templateSpreadSheetId);
     const [trialSheet, itemsSheet]: GoogleAppsScript.Spreadsheet.Sheet[] =
       this.getTargetSheets_(spreadSheet);
-    const testVariables = [variable3_2015_10, variable3_2015_15];
-    testVariables.forEach((testVariable, testIndex) => {
+    this.testVariables.forEach((testVariable, testIndex) => {
       if (testIndex === 0) {
         trialSheet.getRange('B44').setValue(1);
       } else {
@@ -145,5 +151,21 @@ export class checkTemplateFormulas2015 extends checkTemplateFormulas {
         `変数チェックが完了しました: ${testIndex === 0 ? '係数1' : '係数1.5'}`
       );
     });
+  }
+}
+export class checkTemplateFormulas2015 extends checkTemplateFormulas {
+  constructor() {
+    super('INPUT_SPREADSHEET_2015', '2015', 'FOR_CHECK_FORMULAS_2015', [
+      variable3_2015_10,
+      variable3_2015_15,
+    ]);
+  }
+}
+export class checkTemplateFormulas2025 extends checkTemplateFormulas {
+  constructor() {
+    super('INPUT_SPREADSHEET_2025', '2025', 'FOR_CHECK_FORMULAS_2025', [
+      variable3_2025_10,
+      variable3_2025_15,
+    ]);
   }
 }

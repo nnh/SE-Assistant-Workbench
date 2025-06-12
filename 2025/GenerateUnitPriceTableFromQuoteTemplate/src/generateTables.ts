@@ -33,6 +33,8 @@ import {
   variable3_2015_15,
   variable1_2025_10,
   variable1_2025_15,
+  variable3_2025_10,
+  variable3_2025_15,
 } from './variablesConst';
 import { convertPriceFrom2015To2025_ } from './forTest_coefficient_10_2025';
 
@@ -53,17 +55,17 @@ class UnitPriceTableGenerator {
       outputSpreadsheetIdProperty
     );
     this.year = year;
+    const sheet1: GoogleAppsScript.Spreadsheet.Sheet | null =
+      this.outputSpreadSheet.getSheetByName('シート1');
+    if (sheet1) {
+      sheet1.hideSheet();
+    }
   }
   createSheet(): void {
     generateUnitPriceTableFromQuoteTemplate_(
       this.inputSpreadSheet,
       this.outputSpreadSheet
     );
-    const sheet1: GoogleAppsScript.Spreadsheet.Sheet | null =
-      this.outputSpreadSheet.getSheetByName('シート1');
-    if (sheet1) {
-      sheet1.hideSheet();
-    }
   }
   createTargetOutputSheetNameMap(sheetName: string): Map<string, string> {
     const sheetNameMap = new Map<string, string>();
@@ -196,8 +198,8 @@ export class UnitPriceTableGenerator2025 extends UnitPriceTableGenerator {
     this.createVariableSheet([
       variable1_2025_10,
       variable1_2025_15,
-      variable1_2025_10,
-      variable1_2025_15,
+      variable3_2025_10,
+      variable3_2025_15,
     ]);
     this.createSheet();
   }

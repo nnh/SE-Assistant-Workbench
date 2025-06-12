@@ -26,6 +26,8 @@ import {
   variable3_2015_15,
   variable1_2025_10,
   variable1_2025_15,
+  variable3_2025_10,
+  variable3_2025_15,
 } from './variablesConst';
 
 export function execCheckValuesVariable_(year: string): boolean {
@@ -40,8 +42,10 @@ export function execCheckValuesVariable_(year: string): boolean {
     compareValues.set('coefficient10_3', variable3_2015_10);
     compareValues.set('coefficient15_3', variable3_2015_15);
   } else if (year === '2025') {
-    compareValues.set('coefficient10', variable1_2025_10);
-    compareValues.set('coefficient15', variable1_2025_15);
+    compareValues.set('coefficient10_1', variable1_2025_10);
+    compareValues.set('coefficient15_1', variable1_2025_15);
+    compareValues.set('coefficient10_3', variable3_2025_10);
+    compareValues.set('coefficient15_3', variable3_2025_15);
   } else {
     throw new Error(`Unsupported year: ${year}`);
   }

@@ -84,13 +84,13 @@ class convertFrom2015To2025 {
 }
 export function convertPriceFrom2015To2025_(): Map<string, string[][]> {
   const converter = new convertFrom2015To2025();
-  const coefficient10_2025: string[][] =
+  const coefficient_10_2025: string[][] =
     converter.convertFrom2015To2025('coefficient10');
-  const coefficient15_2025: string[][] =
+  const coefficient_15_2025: string[][] =
     converter.convertFrom2015To2025('coefficient15');
   const coefficient2025Map: Map<string, string[][]> = new Map([
-    ['coefficient10', coefficient10_2025],
-    ['coefficient15', coefficient15_2025],
+    ['coefficient10', coefficient_10_2025],
+    ['coefficient15', coefficient_15_2025],
   ]);
   return coefficient2025Map;
 }

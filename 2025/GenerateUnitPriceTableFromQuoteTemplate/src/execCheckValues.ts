@@ -24,10 +24,18 @@ import {
 } from './common';
 import { coefficient_10_2015 } from './forTest_coefficient_10_2015';
 import {
+  coefficient_10_2025,
+  coefficient_15_2025,
+} from './forTest_coefficient_10_2025';
+import {
   variable1_2015_10,
   variable1_2015_15,
   variable3_2015_10,
   variable3_2015_15,
+  variable1_2025_10,
+  variable1_2025_15,
+  variable3_2025_10,
+  variable3_2025_15,
 } from './variablesConst';
 
 export function execCheckValues_(year: string): boolean {
@@ -46,8 +54,12 @@ export function execCheckValues_(year: string): boolean {
     compareValues.set('coefficient10_3', variable3_2015_10);
     compareValues.set('coefficient15_3', variable3_2015_15);
   } else if (year === '2025') {
-    compareValues.set('coefficient10', coefficient_10_2015);
-    compareValues.set('coefficient15', coefficient_10_2015);
+    compareValues.set('coefficient10', coefficient_10_2025);
+    compareValues.set('coefficient15', coefficient_15_2025);
+    compareValues.set('coefficient10_1', variable1_2025_10);
+    compareValues.set('coefficient15_1', variable1_2025_15);
+    compareValues.set('coefficient10_3', variable3_2025_10);
+    compareValues.set('coefficient15_3', variable3_2025_15);
   } else {
     throw new Error(`Unsupported year: ${year}`);
   }

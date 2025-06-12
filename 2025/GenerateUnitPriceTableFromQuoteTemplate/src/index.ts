@@ -18,12 +18,25 @@ import {
   UnitPriceTableGenerator2015,
   UnitPriceTableGenerator2025,
 } from './generateTables';
-import { checkTemplateFormulas2015 } from './execCheckTemplateFormulas';
+import {
+  checkTemplateFormulas2015,
+  checkTemplateFormulas2025,
+} from './execCheckTemplateFormulas';
+// 2025年度版
 function createSheet2025(): void {
   const generator = new UnitPriceTableGenerator2025();
   generator.execCreateSheet();
+  generator.execCheckValues();
 }
-
+function execCheckTemplateVariables2025(): void {
+  const generator = new checkTemplateFormulas2025();
+  generator.execCheckTemplateVariables();
+}
+function execCheckValues2025(): void {
+  const generator = new UnitPriceTableGenerator2025();
+  generator.execCheckValues();
+}
+// 2015年度版
 function createSheet2015(): void {
   const generator = new UnitPriceTableGenerator2015();
   generator.execCreateSheet();
