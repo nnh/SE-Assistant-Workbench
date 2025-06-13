@@ -42,6 +42,7 @@ class UnitPriceTableGenerator {
   inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
   outputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
   year: string;
+  tiai: number;
 
   constructor(
     inputSpreadsheetIdProperty: string,
@@ -55,17 +56,23 @@ class UnitPriceTableGenerator {
       outputSpreadsheetIdProperty
     );
     this.year = year;
+    this.tiai = year === '2015' ? 1 : year === '2025' ? 1.07 : 0; // 2015年は1、2025年は1.1、その他は1.2
+  }
+  hideSheet1(): void {
     const sheet1: GoogleAppsScript.Spreadsheet.Sheet | null =
       this.outputSpreadSheet.getSheetByName('シート1');
     if (sheet1) {
       sheet1.hideSheet();
     }
   }
-  createSheet(): void {
+  createSheet(numberOfDaysFormulaRows: number[]): void {
     generateUnitPriceTableFromQuoteTemplate_(
       this.inputSpreadSheet,
-      this.outputSpreadSheet
+      this.outputSpreadSheet,
+      numberOfDaysFormulaRows,
+      this.tiai
     );
+    this.hideSheet1();
   }
   createTargetOutputSheetNameMap(sheetName: string): Map<string, string> {
     const sheetNameMap = new Map<string, string>();
@@ -170,7 +177,7 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
       variable3_2015_10,
       variable3_2015_15,
     ]);
-    this.createSheet();
+    this.createSheet([14, 15, 16, 40, 52, 53, 55, 58]);
   }
 }
 
@@ -193,6 +200,8 @@ export class UnitPriceTableGenerator2025 extends UnitPriceTableGenerator {
         filteredValues
       );
     });
+    UnitPriceTableGenerator2025;
+    this.hideSheet1();
   }
   execCreateSheet(): void {
     this.createVariableSheet([
@@ -202,5 +211,23 @@ export class UnitPriceTableGenerator2025 extends UnitPriceTableGenerator {
       variable3_2025_15,
     ]);
     this.createSheet();
+  }
+}
+export class UnitPriceTableGenerator2025_AfterMonitoringUnitPriceFix extends UnitPriceTableGenerator {
+  constructor() {
+    super(
+      'INPUT_SPREADSHEET_2025_AFTER',
+      'OUTPUT_SPREADSHEET_2025_AFTER',
+      '2025'
+    );
+  }
+  execCreateSheet(): void {
+    this.createVariableSheet([
+      variable1_2025_10,
+      variable1_2025_15,
+      variable3_2025_10,
+      variable3_2025_15,
+    ]);
+    this.createSheet([14, 15, 16, 39, 51, 52, 54, 57]);
   }
 }

@@ -29,6 +29,7 @@ export const variableSheetNameMap: Map<string, string> = new Map([
   ['createDatabase', '変動*1,2'],
   ['centralMonitoring', '変動*3,4'],
 ]);
+export const tiai_formula = 'TIAI!$B$2/100';
 
 export function getSpreadsheetByProperty_(
   propertyName: string

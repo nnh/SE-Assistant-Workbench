@@ -17,18 +17,31 @@
 import {
   UnitPriceTableGenerator2015,
   UnitPriceTableGenerator2025,
+  UnitPriceTableGenerator2025_AfterMonitoringUnitPriceFix,
 } from './generateTables';
 import {
   checkTemplateFormulas2015,
   checkTemplateFormulas2025,
+  checkTemplateFormulas2025_AfterMonitoringUnitPriceFix,
 } from './execCheckTemplateFormulas';
 // 2025年度版
+function createSheet2025_AfterMonitoringUnitPriceFix(): void {
+  const generator =
+    new UnitPriceTableGenerator2025_AfterMonitoringUnitPriceFix();
+  generator.execCreateSheet();
+  generator.execCheckValues();
+}
+
+function execCheckTemplateVariables2025_AfterMonitoringUnitPriceFix(): void {
+  const generator = new checkTemplateFormulas2025_AfterMonitoringUnitPriceFix();
+  generator.execCheckTemplateVariables();
+}
 function createSheet2025(): void {
   const generator = new UnitPriceTableGenerator2025();
   generator.execCreateSheet();
   generator.execCheckValues();
 }
-function execCheckTemplateVariables2025(): void {
+function execCheckTemplateVariables2025_BeforeMonitoringUnitPriceFix(): void {
   const generator = new checkTemplateFormulas2025();
   generator.execCheckTemplateVariables();
 }

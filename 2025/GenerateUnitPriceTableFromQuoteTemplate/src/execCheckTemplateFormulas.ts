@@ -25,17 +25,23 @@ class checkTemplateFormulas {
   year: string;
   templateSpreadSheetId: string;
   testVariables: string[][][];
+  targetRange1 = 'C42';
+  targetRange2 = 'C43';
 
   constructor(
     inputSpreadsheetIdProperty: string,
     year: string,
     templateSpreadSheetId: string,
-    testVariables: string[][][]
+    testVariables: string[][][],
+    targetRange1 = 'C42',
+    targetRange2 = 'C43'
   ) {
     this.inputSpreadsheetIdProperty = inputSpreadsheetIdProperty;
     this.year = year;
     this.templateSpreadSheetId = templateSpreadSheetId;
     this.testVariables = testVariables;
+    this.targetRange1 = targetRange1;
+    this.targetRange2 = targetRange2;
   }
   getTargetSheet_(
     spreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
@@ -129,8 +135,8 @@ class checkTemplateFormulas {
         trialSheet.getRange('B30').setValue(crf);
         trialSheet.getRange('B27').setValue(trialType);
         SpreadsheetApp.flush(); // 変更を反映
-        const var1Value = itemsSheet.getRange('C43').getValue();
-        const var2Value = itemsSheet.getRange('C44').getValue();
+        const var1Value = itemsSheet.getRange(this.targetRange1).getValue();
+        const var2Value = itemsSheet.getRange(this.targetRange2).getValue();
         const expectedVar: string = removeCommasAndSpaces_(var1);
         const expectedVar2: string = removeCommasAndSpaces_(var2);
         const expectedVar1Num = Number(expectedVar);
@@ -155,17 +161,36 @@ class checkTemplateFormulas {
 }
 export class checkTemplateFormulas2015 extends checkTemplateFormulas {
   constructor() {
-    super('INPUT_SPREADSHEET_2015', '2015', 'FOR_CHECK_FORMULAS_2015', [
-      variable3_2015_10,
-      variable3_2015_15,
-    ]);
+    super(
+      'INPUT_SPREADSHEET_2015',
+      '2015',
+      'FOR_CHECK_FORMULAS_2015',
+      [variable3_2015_10, variable3_2015_15],
+      'C43',
+      'C44'
+    );
   }
 }
 export class checkTemplateFormulas2025 extends checkTemplateFormulas {
   constructor() {
-    super('INPUT_SPREADSHEET_2025', '2025', 'FOR_CHECK_FORMULAS_2025', [
-      variable3_2025_10,
-      variable3_2025_15,
-    ]);
+    super(
+      'INPUT_SPREADSHEET_2025',
+      '2025',
+      'FOR_CHECK_FORMULAS_2025',
+      [variable3_2025_10, variable3_2025_15],
+      'C43',
+      'C44'
+    );
+  }
+}
+// モニタリング単価修正後の2025年用クラス
+export class checkTemplateFormulas2025_AfterMonitoringUnitPriceFix extends checkTemplateFormulas {
+  constructor() {
+    super(
+      'INPUT_SPREADSHEET_2025_AFTER',
+      '2025',
+      'FOR_CHECK_FORMULAS_2025_AFTER',
+      [variable3_2025_10, variable3_2025_15]
+    );
   }
 }

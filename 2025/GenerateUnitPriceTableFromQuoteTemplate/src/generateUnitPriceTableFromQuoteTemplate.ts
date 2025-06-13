@@ -19,10 +19,10 @@ import {
   writeOutputSheet_,
   setNumberFormatForColumn_,
   filterOutputRow_,
+  tiai_formula,
 } from './common';
 const dailyUnitPriceFormulaRow = 16;
 const numberOfPeopleFormulaRows = [14, 15];
-const numberOfDaysFormulaRows = [14, 15, 16, 40, 52, 53, 55, 58];
 const dailyUnitPriceArray: number[] = [];
 const numberOfPeopleArray: [row: number, value: number[]][] = [];
 const numberOfDaysArray: [row: number, value: number[]][] = [];
@@ -54,18 +54,22 @@ function prepareSheets_(
 }
 export function generateUnitPriceTableFromQuoteTemplate_(
   inputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
-  outputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet
+  outputSpreadSheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  numberOfDaysFormulaRows: number[],
+  tiai: number
 ): void {
   const [inputSheet, outputSheet]: GoogleAppsScript.Spreadsheet.Sheet[] =
     prepareSheets_(inputSpreadSheet, outputSpreadSheet);
   const inputData: GoogleAppsScript.Spreadsheet.Range =
     inputSheet.getDataRange();
-  const numberOfDays: [row: number, value: string][] =
-    getNumberOfDaysAndRow_(inputSheet);
+  const numberOfDays: [row: number, value: string][] = getNumberOfDaysAndRow_(
+    inputSheet,
+    numberOfDaysFormulaRows
+  );
   const numberOfPeople: [row: number, value: string][] =
     getNumberOfPeopleAndRow_(inputSheet);
   const dailyUnitPrices: [row: number, value: number][] =
-    getDailyUnitPriceAndRow_(inputSheet);
+    getDailyUnitPriceAndRow_(inputSheet, tiai);
   const values: string[][] = inputData.getValues();
   const itemNames: Array<[row: number, major: string, minor: string]> =
     getItemNameAndRow_(values, inputSheet);
@@ -309,6 +313,7 @@ export function generateUnitPriceTableFromQuoteTemplate_(
       found[3] = found[3].replace(/S\d+/, `S${rowNumber}`);
       found[3] = found[3].replace(/T\d+/, `T${rowNumber}`);
       found[3] = found[3].replace(/U\d+/, `U${rowNumber}`);
+      found[3] = found[3].replace(tiai_formula, String(tiai));
       itemsAndPriceAndPeopleAndDayAndPrice.push([
         row,
         major,
@@ -466,7 +471,8 @@ function getItemNameAndRow_(
   return itemNames.filter(([, , minor]) => minor && minor.trim() !== '');
 }
 function getDailyUnitPriceAndRow_(
-  inputSheet: GoogleAppsScript.Spreadsheet.Sheet
+  inputSheet: GoogleAppsScript.Spreadsheet.Sheet,
+  tiai: number
 ): [row: number, value: number][] {
   const targetCol = 19;
   const lastRow = inputSheet.getLastRow();
@@ -478,7 +484,36 @@ function getDailyUnitPriceAndRow_(
       result.push([i, value]);
     } else {
       if (i !== dailyUnitPriceFormulaRow) {
-        console.log(`Row ${i} formula: ${formula}`);
+        const replaceTest = new RegExp(escapeRegExp_(tiai_formula)).test(
+          formula
+        );
+        if (!replaceTest) {
+          console.log(`getDailyUnitPriceAndRow_: Row ${i} formula: ${formula}`);
+        } else {
+          const splitFormulas: string[] = formula
+            .replace(tiai_formula, String(tiai))
+            .split('*');
+          if (splitFormulas.length !== 2) {
+            console.warn(
+              `getDailyUnitPriceAndRow_: Row ${i} formula does not contain two parts: ${formula}`
+            );
+          }
+          const dailyUnitPriceString: string = splitFormulas[0].replace(
+            '=',
+            ''
+          );
+          const tiaiString: string = splitFormulas[1];
+
+          const dailyUnitPriceNum = Number(dailyUnitPriceString);
+          const tiaiNum = Number(tiaiString);
+          if (isNaN(dailyUnitPriceNum) || isNaN(tiaiNum)) {
+            throw new Error(
+              `getDailyUnitPriceAndRow_: Row ${i} formula contains non-numeric values: dailyUnitPriceString='${dailyUnitPriceString}', tiaiString='${tiaiString}'`
+            );
+          }
+          const dailyUnitPrice = dailyUnitPriceNum * tiaiNum;
+          result.push([i, String(dailyUnitPrice)]);
+        }
       } else {
         const [splitFormula1, splitFormula2] =
           extractLastTwoNumbersFromFormula_(formula);
@@ -494,6 +529,9 @@ function getDailyUnitPriceAndRow_(
   }
   return res;
 }
+function escapeRegExp_(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // 特殊文字をエスケープ
+}
 function getNumberOfPeopleAndRow_(
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
 ): [row: number, value: string][] {
@@ -507,7 +545,7 @@ function getNumberOfPeopleAndRow_(
       result.push([i, value]);
     } else {
       if (!numberOfPeopleFormulaRows.includes(i)) {
-        console.log(`Row ${i} formula: ${formula}`);
+        console.log(`getNumberOfPeopleAndRow_: Row ${i} formula: ${formula}`);
       } else {
         const [splitFormula1, splitFormula2] =
           extractLastTwoNumbersFromFormula_(formula);
@@ -519,7 +557,8 @@ function getNumberOfPeopleAndRow_(
   return result.filter(([, value]) => value !== '');
 }
 function getNumberOfDaysAndRow_(
-  inputSheet: GoogleAppsScript.Spreadsheet.Sheet
+  inputSheet: GoogleAppsScript.Spreadsheet.Sheet,
+  numberOfDaysFormulaRows: number[]
 ): [row: number, value: string][] {
   const targetCol = 20;
   const lastRow = inputSheet.getLastRow();
@@ -531,7 +570,7 @@ function getNumberOfDaysAndRow_(
       result.push([i, value]);
     } else {
       if (!numberOfDaysFormulaRows.includes(i)) {
-        console.log(`Row ${i} formula: ${formula}`);
+        console.log(`getNumberOfDaysAndRow_: Row ${i} formula: ${formula}`);
       } else {
         const [splitFormula1, splitFormula2] =
           extractLastTwoNumbersFromFormula_(formula);
@@ -549,13 +588,21 @@ function getNumberOfDaysAndRow_(
  * @throws Error if the extracted values are not numbers.
  */
 function extractLastTwoNumbersFromFormula_(formula: string): [number, number] {
+  const removeText = `*${tiai_formula}`;
   const parts = formula.split(',');
   if (parts.length < 2) {
     throw new Error('Formula does not contain enough comma-separated values.');
   }
   // Remove trailing ')' from the last part if present
-  const lastRaw = parts[parts.length - 1].replace(/\)/g, '').trim();
-  const secondLastRaw = parts[parts.length - 2].trim();
+  const lastRaw = parts[parts.length - 1]
+    .replace(/\)/g, '')
+    .trim()
+    .replace(removeText, '')
+    .trim();
+  const secondLastRaw = parts[parts.length - 2]
+    .trim()
+    .replace(removeText, '')
+    .trim();
   const last = Number(lastRaw);
   const secondLast = Number(secondLastRaw);
   if (isNaN(secondLast) || isNaN(last)) {
