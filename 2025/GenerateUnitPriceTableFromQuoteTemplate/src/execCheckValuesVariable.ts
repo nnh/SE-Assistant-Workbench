@@ -30,8 +30,12 @@ import {
   variable3_2025_15,
 } from './variablesConst';
 
-export function execCheckValuesVariable_(year: string): boolean {
-  const targetProperty = `OUTPUT_SPREADSHEET_${year}`;
+export function execCheckValuesVariable_(
+  year: string,
+  targetPropertyKey = ''
+): boolean {
+  const targetProperty =
+    targetPropertyKey === '' ? `OUTPUT_SPREADSHEET_${year}` : targetPropertyKey;
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheetByProperty_(targetProperty);
 

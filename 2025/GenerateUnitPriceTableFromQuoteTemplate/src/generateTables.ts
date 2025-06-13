@@ -151,10 +151,13 @@ class UnitPriceTableGenerator {
     return sheetNames;
   }
 
-  execCheckValues(): void {
-    const result = execCheckValues_(this.year);
+  execCheckValues(targetPropertyKey = ''): void {
+    const result = execCheckValues_(this.year, targetPropertyKey);
     console.log(`Check values for ${this.year}: ${result}`);
-    const resultVariable1 = execCheckValuesVariable_(this.year);
+    const resultVariable1 = execCheckValuesVariable_(
+      this.year,
+      targetPropertyKey
+    );
     console.log(`Check variable1 values for ${this.year}: ${resultVariable1}`);
   }
   createVariableSheet(variableValues: string[][][]): void {

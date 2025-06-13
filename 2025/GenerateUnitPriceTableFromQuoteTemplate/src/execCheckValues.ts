@@ -26,6 +26,8 @@ import { coefficient_10_2015 } from './forTest_coefficient_10_2015';
 import {
   coefficient_10_2025,
   coefficient_15_2025,
+  coefficient_10_2025_after,
+  coefficient_15_2025_after,
 } from './forTest_coefficient_10_2025';
 import {
   variable1_2015_10,
@@ -38,13 +40,17 @@ import {
   variable3_2025_15,
 } from './variablesConst';
 
-export function execCheckValues_(year: string): boolean {
-  const targetProperty = `OUTPUT_SPREADSHEET_${year}`;
+export function execCheckValues_(
+  year: string,
+  targetPropertyKey = ''
+): boolean {
+  const targetProperty =
+    targetPropertyKey === '' ? `OUTPUT_SPREADSHEET_${year}` : targetPropertyKey;
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheetByProperty_(targetProperty);
 
   const compareValues: Map<string, string[][]> = new Map();
-  if (year === '2015') {
+  if (targetProperty === 'OUTPUT_SPREADSHEET_2015') {
     compareValues.set('coefficient10', coefficient_10_2015);
     const coefficient_15_2015: string[][] =
       convertCoefficient10To15_(coefficient_10_2015);
@@ -53,9 +59,16 @@ export function execCheckValues_(year: string): boolean {
     compareValues.set('coefficient15_1', variable1_2015_15);
     compareValues.set('coefficient10_3', variable3_2015_10);
     compareValues.set('coefficient15_3', variable3_2015_15);
-  } else if (year === '2025') {
+  } else if (targetProperty === 'OUTPUT_SPREADSHEET_2025_BEFORE') {
     compareValues.set('coefficient10', coefficient_10_2025);
     compareValues.set('coefficient15', coefficient_15_2025);
+    compareValues.set('coefficient10_1', variable1_2025_10);
+    compareValues.set('coefficient15_1', variable1_2025_15);
+    compareValues.set('coefficient10_3', variable3_2025_10);
+    compareValues.set('coefficient15_3', variable3_2025_15);
+  } else if (targetProperty === 'OUTPUT_SPREADSHEET_2025_AFTER') {
+    compareValues.set('coefficient10', coefficient_10_2025_after);
+    compareValues.set('coefficient15', coefficient_15_2025_after);
     compareValues.set('coefficient10_1', variable1_2025_10);
     compareValues.set('coefficient15_1', variable1_2025_15);
     compareValues.set('coefficient10_3', variable3_2025_10);

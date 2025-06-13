@@ -109,9 +109,9 @@ export function compareValues_(
 }
 export function removeCommasAndSpaces_(value: string | number): string {
   if (typeof value === 'string') {
-    return value.replace(/[\s,]/g, '');
+    return value.replace(/[\s,\r\n]+/g, '');
   } else if (typeof value === 'number') {
-    return String(value).replace(/[\s,]/g, '');
+    return String(value).replace(/[\s,\r\n]+/g, '');
   }
   return value; // その他の型はそのまま返す
 }

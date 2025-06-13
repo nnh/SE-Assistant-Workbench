@@ -25,37 +25,36 @@ import {
   checkTemplateFormulas2025_AfterMonitoringUnitPriceFix,
 } from './execCheckTemplateFormulas';
 import { compareBeforeAfter_ } from './compareBeforeAfter';
+// モニタリング単価修正前後の比較
 function execCompareBeforeAfterMonitoringUnitPriceFix(): void {
   compareBeforeAfter_(
     'OUTPUT_SPREADSHEET_2025_BEFORE',
     'OUTPUT_SPREADSHEET_2025_AFTER'
   );
 }
-// 2025年度版
+
+// 2025年度版・モニタリング単価修正後
 function createSheet2025_AfterMonitoringUnitPriceFix(): void {
   const generator =
     new UnitPriceTableGenerator2025_AfterMonitoringUnitPriceFix();
   generator.execCreateSheet();
-  generator.execCheckValues();
+  generator.execCheckValues('OUTPUT_SPREADSHEET_2025_AFTER');
 }
-
 function execCheckTemplateVariables2025_AfterMonitoringUnitPriceFix(): void {
   const generator = new checkTemplateFormulas2025_AfterMonitoringUnitPriceFix();
   generator.execCheckTemplateVariables();
 }
+// 2025年度版・モニタリング単価修正後
 function createSheet2025(): void {
   const generator = new UnitPriceTableGenerator2025();
   generator.execCreateSheet();
-  generator.execCheckValues();
+  generator.execCheckValues('OUTPUT_SPREADSHEET_2025_BEFORE');
 }
 function execCheckTemplateVariables2025_BeforeMonitoringUnitPriceFix(): void {
   const generator = new checkTemplateFormulas2025();
   generator.execCheckTemplateVariables();
 }
-function execCheckValues2025(): void {
-  const generator = new UnitPriceTableGenerator2025();
-  generator.execCheckValues();
-}
+
 // 2015年度版
 function createSheet2015(): void {
   const generator = new UnitPriceTableGenerator2015();
@@ -65,8 +64,4 @@ function createSheet2015(): void {
 function execCheckTemplateVariables2015(): void {
   const generator = new checkTemplateFormulas2015();
   generator.execCheckTemplateVariables();
-}
-function execCheckValues2015(): void {
-  const generator = new UnitPriceTableGenerator2015();
-  generator.execCheckValues();
 }

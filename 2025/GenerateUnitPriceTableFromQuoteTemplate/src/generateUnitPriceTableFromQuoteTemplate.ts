@@ -516,7 +516,7 @@ function getDailyUnitPriceAndRow_(
         }
       } else {
         const [splitFormula1, splitFormula2] =
-          extractLastTwoNumbersFromFormula_(formula);
+          extractLastTwoNumbersFromFormula_(formula, tiai.toString());
         dailyUnitPriceArray.push(splitFormula1);
         dailyUnitPriceArray.push(splitFormula2);
       }
@@ -587,8 +587,10 @@ function getNumberOfDaysAndRow_(
  * @returns [secondLast: number, last: number]
  * @throws Error if the extracted values are not numbers.
  */
-function extractLastTwoNumbersFromFormula_(formula: string): [number, number] {
-  const removeText = `*${tiai_formula}`;
+function extractLastTwoNumbersFromFormula_(
+  formula: string,
+  tiai = ''
+): [number, number] {
   const parts = formula.split(',');
   if (parts.length < 2) {
     throw new Error('Formula does not contain enough comma-separated values.');
@@ -597,14 +599,22 @@ function extractLastTwoNumbersFromFormula_(formula: string): [number, number] {
   const lastRaw = parts[parts.length - 1]
     .replace(/\)/g, '')
     .trim()
-    .replace(removeText, '')
+    .replace(tiai_formula, tiai)
     .trim();
   const secondLastRaw = parts[parts.length - 2]
     .trim()
-    .replace(removeText, '')
+    .replace(tiai_formula, tiai)
     .trim();
-  const last = Number(lastRaw);
-  const secondLast = Number(secondLastRaw);
+  const lastSplit = lastRaw.split('*');
+  const last: number =
+    lastSplit.length === 2
+      ? Number(lastSplit[0]) * Number(lastSplit[1])
+      : Number(lastRaw);
+  const secondLastSplit = secondLastRaw.split('*');
+  const secondLast: number =
+    secondLastSplit.length === 2
+      ? Number(secondLastSplit[0]) * Number(secondLastSplit[1])
+      : Number(secondLastRaw);
   if (isNaN(secondLast) || isNaN(last)) {
     throw new Error('Extracted values are not valid numbers.');
   }
