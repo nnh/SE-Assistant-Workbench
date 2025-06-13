@@ -174,9 +174,9 @@ export class checkTemplateFormulas2015 extends checkTemplateFormulas {
 export class checkTemplateFormulas2025 extends checkTemplateFormulas {
   constructor() {
     super(
-      'INPUT_SPREADSHEET_2025',
+      'INPUT_SPREADSHEET_2025_BEFORE',
       '2025',
-      'FOR_CHECK_FORMULAS_2025',
+      'FOR_CHECK_FORMULAS_2025_BEFORE',
       [variable3_2025_10, variable3_2025_15],
       'C43',
       'C44'

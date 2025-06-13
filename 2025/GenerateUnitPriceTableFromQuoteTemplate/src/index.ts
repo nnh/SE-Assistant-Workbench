@@ -24,6 +24,13 @@ import {
   checkTemplateFormulas2025,
   checkTemplateFormulas2025_AfterMonitoringUnitPriceFix,
 } from './execCheckTemplateFormulas';
+import { compareBeforeAfter_ } from './compareBeforeAfter';
+function execCompareBeforeAfterMonitoringUnitPriceFix(): void {
+  compareBeforeAfter_(
+    'OUTPUT_SPREADSHEET_2025_BEFORE',
+    'OUTPUT_SPREADSHEET_2025_AFTER'
+  );
+}
 // 2025年度版
 function createSheet2025_AfterMonitoringUnitPriceFix(): void {
   const generator =

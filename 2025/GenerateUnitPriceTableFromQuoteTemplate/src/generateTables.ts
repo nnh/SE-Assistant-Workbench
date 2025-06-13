@@ -183,7 +183,11 @@ export class UnitPriceTableGenerator2015 extends UnitPriceTableGenerator {
 
 export class UnitPriceTableGenerator2025 extends UnitPriceTableGenerator {
   constructor() {
-    super('INPUT_SPREADSHEET_2025', 'OUTPUT_SPREADSHEET_2025', '2025');
+    super(
+      'INPUT_SPREADSHEET_2025_BEFORE',
+      'OUTPUT_SPREADSHEET_2025_BEFORE',
+      '2025'
+    );
   }
   createSheet(): void {
     const coefficient2025Map: Map<string, string[][]> =
