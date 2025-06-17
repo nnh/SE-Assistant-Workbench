@@ -13,9 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-//import { copyTemplateSpreadsheetAndSaveId } from './test';
-import { checkItemsSheet_ } from './test';
-function main(): void {
-  checkItemsSheet_();
+import {
+  getSpreadsheetById_,
+  copyTemplateSpreadsheetAndSaveId_,
+} from './commonForTest';
+export function copyTemplateSpreadsheetAndSaveId(): void {
+  const spreadsheetId: string = copyTemplateSpreadsheetAndSaveId_();
+  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet | null =
+    getSpreadsheetById_(spreadsheetId);
+  if (!spreadsheet) {
+    throw new Error('Spreadsheet not found after copying.');
+  }
 }

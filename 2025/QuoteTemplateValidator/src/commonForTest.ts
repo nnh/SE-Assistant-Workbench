@@ -13,6 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+export const trialTypeAndValueMap: Map<string, number> = new Map();
+trialTypeAndValueMap.set('観察研究・レジストリ', 1);
+trialTypeAndValueMap.set('医師主導治験', 5);
+trialTypeAndValueMap.set('介入研究（特定臨床研究以外）', 2);
+trialTypeAndValueMap.set('特定臨床研究', 3);
+trialTypeAndValueMap.set('先進', 5);
 export const spreadSheetIdScriptPropertyKey = 'TEST_SPREADSHEET_ID';
 export function getSheetBySheetName_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
