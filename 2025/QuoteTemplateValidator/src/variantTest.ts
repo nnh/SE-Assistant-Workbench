@@ -62,6 +62,7 @@ export function variantTest_(): void {
       caseCount.forEach(caseCount => {
         coefficient.forEach(coef => {
           const variant3: number = calcVariant3_(value, caseCount, crf, coef);
+          const variant4: number = calcVariant4_(value, caseCount, crf, coef);
           trialCoefficientRange.setValue(coef);
           trialCrfRange.setValue(crf);
           trialTrialTypeKeyRange.setValue(key);
@@ -75,11 +76,19 @@ export function variantTest_(): void {
               `Variant 3 price for "${itemNames[2]}" is incorrect. Expected: ${variant3}, Actual: ${itemsVariant3Price}`
             );
           }
+          const itemsVariant4Price = itemsSheet
+            .getRange(itemNameAndRowMap.get(itemNames[3])!, 3, 1, 1)
+            .getValue();
+          if (itemsVariant4Price !== variant4) {
+            throw new Error(
+              `Variant 4 price for "${itemNames[3]}" is incorrect. Expected: ${variant4}, Actual: ${itemsVariant4Price}`
+            );
+          }
         });
       });
     });
   });
-  console.log('変動3のテストが成功しました。');
+  console.log('変動3、4のテストが成功しました。');
   const trialTypes: string[] = Array.from(trialTypeAndValueMap.keys());
   const variant1_1 = [
     [1.5, 0, 161000, 0],
@@ -121,6 +130,20 @@ export function variantTest_(): void {
     }
   });
   console.log('変動1、2のテストが成功しました。');
+}
+function calcVariant4_(
+  trialTypeValue: number,
+  caseCount: number,
+  crf: number,
+  coefficient: number
+): number {
+  const part1 =
+    logBase_(caseCount, 10) * logBase_(crf, 10) * trialTypeValue * 75000;
+  const roundedPart1 = roundToThousands_(part1); // 内側のROUND(..., -3)
+  const part2 = roundedPart1 * 1.07; // 外側のROUND(..., -3)
+  const result = roundToThousands_(part2);
+  const coefficientResult = roundToThousands_(result * coefficient); // 最終的な係数を掛ける
+  return coefficientResult;
 }
 function calcVariant3_(
   trialTypeValue: number,
