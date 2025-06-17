@@ -48,13 +48,39 @@ export function variantTest_(): void {
     const row: number = getTargetItemRow_(itemsSheet, itemName);
     itemNameAndRowMap.set(itemName, row);
   });
-  const trialTypes = [
-    '観察研究・レジストリ',
-    '医師主導治験',
-    '介入研究（特定臨床研究以外）',
-    '特定臨床研究',
-    '先進',
-  ];
+  const trialTypeAndValueMap: Map<string, number> = new Map();
+  trialTypeAndValueMap.set('観察研究・レジストリ', 1);
+  trialTypeAndValueMap.set('医師主導治験', 5);
+  trialTypeAndValueMap.set('介入研究（特定臨床研究以外）', 2);
+  trialTypeAndValueMap.set('特定臨床研究', 3);
+  trialTypeAndValueMap.set('先進', 5);
+  trialTypeAndValueMap.forEach((value, key) => {
+    const crfList = [100, 1000, 2000, 3000];
+    const caseCount = [10, 50, 100, 1000];
+    const coefficient = [1, 1.5];
+    crfList.forEach(crf => {
+      caseCount.forEach(caseCount => {
+        coefficient.forEach(coef => {
+          const variant3: number = calcVariant3_(value, caseCount, crf, coef);
+          trialCoefficientRange.setValue(coef);
+          trialCrfRange.setValue(crf);
+          trialTrialTypeKeyRange.setValue(key);
+          trialCaseRange.setValue(caseCount);
+          SpreadsheetApp.flush();
+          const itemsVariant3Price = itemsSheet
+            .getRange(itemNameAndRowMap.get(itemNames[2])!, 3, 1, 1)
+            .getValue();
+          if (itemsVariant3Price !== variant3) {
+            throw new Error(
+              `Variant 3 price for "${itemNames[2]}" is incorrect. Expected: ${variant3}, Actual: ${itemsVariant3Price}`
+            );
+          }
+        });
+      });
+    });
+  });
+  console.log('変動3のテストが成功しました。');
+  const trialTypes: string[] = Array.from(trialTypeAndValueMap.keys());
   const variant1_1 = [
     [1.5, 0, 161000, 0],
     [1.5, 100, 884000, 41000],
@@ -96,6 +122,21 @@ export function variantTest_(): void {
   });
   console.log('変動1、2のテストが成功しました。');
 }
+function calcVariant3_(
+  trialTypeValue: number,
+  caseCount: number,
+  crf: number,
+  coefficient: number
+): number {
+  const temp1 = Math.log(caseCount) / Math.LN2;
+  const part1 = logBase_(caseCount, 10 + temp1); // LOG(B28,10) + LOG(B28,2)
+  const part2 = Math.log10(crf); // LOG(B30,10)
+  const intermediate = part1 * part2 * trialTypeValue * 25000;
+  const roundedIntermediate = roundToThousands_(intermediate); // 内側のROUND(..., -3)
+  const result = roundToThousands_(roundedIntermediate * 1.07); // 外側のROUND(..., -3)
+  const coffiientResult = roundToThousands_(result * coefficient); // 最終的な係数を掛ける
+  return coffiientResult;
+}
 function getTargetItemRow_(
   itemsSheet: GoogleAppsScript.Spreadsheet.Sheet,
   itemName: string
@@ -108,4 +149,11 @@ function getTargetItemRow_(
     }
   }
   throw new Error(`Item "${itemName}" not found in the sheet.`);
+}
+function logBase_(x: number, base: number) {
+  return Math.log(x) / Math.log(base);
+}
+
+function roundToThousands_(num: number): number {
+  return Math.round(num / 1000) * 1000;
 }
