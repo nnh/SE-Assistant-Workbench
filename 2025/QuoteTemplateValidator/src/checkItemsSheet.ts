@@ -18,6 +18,8 @@ import {
   getSpreadsheetById_,
   copyTemplateSpreadsheetAndSaveId_,
   trialTypeAndValueMap,
+  getItemsSheetItems_,
+  roundToThousands_,
 } from './commonForTest';
 import {
   coefficient_10_2025,
@@ -35,8 +37,6 @@ export function checkItemsSheet_(): void {
   const [trialSheet, itemsSheet] = getTrialsAndItemsSheets_(spreadsheet);
   const trialTrialTypeKeyRange: GoogleAppsScript.Spreadsheet.Range =
     trialSheet.getRange('B27');
-  const trialTrialTypeValueRange: GoogleAppsScript.Spreadsheet.Range =
-    trialSheet.getRange('C27');
   const trialCaseRange: GoogleAppsScript.Spreadsheet.Range =
     trialSheet.getRange('B28');
   const trialCrfRange: GoogleAppsScript.Spreadsheet.Range =
@@ -49,22 +49,13 @@ export function checkItemsSheet_(): void {
     'ロジカルチェック、マニュアルチェック、クエリ対応',
     'データクリーニング',
   ];
+
   const itemNameAndRowMap: Map<string, number> = new Map();
   itemNames.forEach(itemName => {
     const row: number = getTargetItemRow_(itemsSheet, itemName);
     itemNameAndRowMap.set(itemName, row);
   });
-  const lastRow: number = itemsSheet.getLastRow();
-  const tempItemsValue: string[][] = itemsSheet
-    .getRange(`A3:U${lastRow}`)
-    .getValues();
-  const totalRowIndex: number = tempItemsValue.findIndex(
-    row => row[0] === '合計'
-  );
-  const itemsValue: string[][] =
-    totalRowIndex !== -1
-      ? tempItemsValue.slice(0, totalRowIndex)
-      : tempItemsValue;
+  const itemsValue: string[][] = getItemsSheetItems_(itemsSheet);
 
   trialTypeAndValueMap.forEach((value, key) => {
     const crfList = [100, 1000, 2000, 3000];
@@ -262,8 +253,4 @@ function getTargetItemRow_(
 }
 function logBase_(x: number, base: number) {
   return Math.log(x) / Math.log(base);
-}
-
-function roundToThousands_(num: number): number {
-  return Math.round(num / 1000) * 1000;
 }

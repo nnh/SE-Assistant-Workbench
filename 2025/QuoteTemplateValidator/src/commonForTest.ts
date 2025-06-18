@@ -95,3 +95,21 @@ export function getTrialsAndItemsSheets_(
   );
   return [trialsSheet, itemsSheet];
 }
+
+export function getItemsSheetItems_(
+  itemsSheet: GoogleAppsScript.Spreadsheet.Sheet
+): string[][] {
+  const lastRow: number = itemsSheet.getLastRow();
+  const tempItemsValue: string[][] = itemsSheet
+    .getRange(`A3:U${lastRow}`)
+    .getValues();
+  const itemsValue: string[][] = getRowsUntilTotal_(tempItemsValue);
+  return itemsValue;
+}
+export function getRowsUntilTotal_(values: string[][]): string[][] {
+  const totalRowIndex: number = values.findIndex(row => row[0] === '合計');
+  return totalRowIndex !== -1 ? values.slice(0, totalRowIndex) : values;
+}
+export function roundToThousands_(num: number): number {
+  return Math.round(num / 1000) * 1000;
+}

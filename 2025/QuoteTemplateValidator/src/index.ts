@@ -15,7 +15,11 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 //import { copyTemplateSpreadsheetAndSaveId } from './test';
-import { checkItemsSheet_ } from './test';
-function main(): void {
+import { checkItemsSheet_ } from './checkItemsSheet';
+import { validateItemsAndSummaryMatch_ } from './checkSetupToClosingSheet';
+function validateItemsAndSummaryMatch(): void {
+  const test = validateItemsAndSummaryMatch_();
+}
+function checkItemsSheet(): void {
   checkItemsSheet_();
 }
