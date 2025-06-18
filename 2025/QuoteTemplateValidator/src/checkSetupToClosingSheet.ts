@@ -35,9 +35,19 @@ export function validateItemsAndSummaryMatch_(): void {
   if (!ss) {
     throw new Error('Spreadsheet not found after copying.');
   }
-  const itemsSheetItems = getItemsSheetItems_(
-    ss.getSheetByName('Items') as GoogleAppsScript.Spreadsheet.Sheet
-  );
+  const [trialSheet, itemsSheet] = getTrialsAndItemsSheets_(ss);
+  trialSheet.getRange('D32:E40').setValues([
+    ['2020/4/1', '2021/3/31'],
+    ['2021/4/1', '2022/3/31'],
+    ['2022/4/1', '2023/3/31'],
+    ['2023/4/1', '2024/3/31'],
+    ['2024/4/1', '2025/3/31'],
+    ['2025/4/1', '2026/3/31'],
+    ['2026/4/1', '2027/3/31'],
+    ['2027/4/1', '2028/3/31'],
+    ['2020/4/1', '2028/3/31'],
+  ]);
+  const itemsSheetItems: string[][] = getItemsSheetItems_(itemsSheet);
   const setupToClosingSheetNames = [
     'Setup',
     'Registration_1',
