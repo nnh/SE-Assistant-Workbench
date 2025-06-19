@@ -17,10 +17,9 @@ import {
   getTrialsAndItemsSheets_,
   getSpreadsheetById_,
   copyTemplateSpreadsheetAndSaveId_,
-  trialTypeAndValueMap,
   getItemsSheetItems_,
   getRowsUntilTotal_,
-  roundToThousands_,
+  getSheetBySheetName_,
 } from './commonForTest';
 /**
  * Checks if the "項目" and "摘要" columns in the Items sheet match those in the Setup and Closing sheets.
@@ -28,6 +27,7 @@ import {
  * @returns An array of mismatch messages, or an empty array if all match.
  */
 export function validateItemsAndSummaryMatch_(): void {
+  const tax = 1.1;
   const spreadsheetId: string = copyTemplateSpreadsheetAndSaveId_();
   console.log('Setup～Closingシートのチェックを開始します。');
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet | null =
@@ -58,7 +58,7 @@ export function validateItemsAndSummaryMatch_(): void {
     'Observation_2',
     'Closing',
   ];
-  setupToClosingSheetNames.forEach(sheetName => {
+  setupToClosingSheetNames.forEach((sheetName, index) => {
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
       throw new Error(`Sheet "${sheetName}" does not exist.`);
@@ -101,9 +101,9 @@ export function validateItemsAndSummaryMatch_(): void {
     sheet.getRange('F:F').clearContent(); // Clear the F column before setting values
     for (let i = 0; i < sheetItems.length; i++) {
       if (sheet.getRange(5 + i, 7).getValue() !== '') {
-        sheet.getRange(5 + i, 6).setValue(3);
+        sheet.getRange(5 + i, 6).setValue(index + 2);
         if (sheet.getRange(5 + i, 3).getValue() !== 'プロジェクト管理') {
-          totalPrice += parseFloat(sheetItems[i][2]) * 3;
+          totalPrice += sheet.getRange(5 + i, 4).getValue() * (index + 2);
         } else {
           projectManagementRow = i + 5; // Store the row index for "プロジェクト管理"
           sheet.getRange(5 + i, 6).setValue(1);
@@ -121,8 +121,72 @@ export function validateItemsAndSummaryMatch_(): void {
         `Total price mismatch in ${sheetName} sheet: Expected ${totalPrice}, but found ${sheet.getRange('H96').getValue()}.`
       );
     }
+    // 消費税の確認
+    if (
+      Math.floor(sheet.getRange('H96').getValue() * tax) !==
+      Math.floor(sheet.getRange('H98').getValue())
+    ) {
+      throw new Error(
+        `消費税の計算が正しくありません。${sheetName}シートの合計価格は ${sheet.getRange('H96').getValue()} で、消費税を加えた価格は ${sheet.getRange('H98').getValue()} です。`
+      );
+    }
     console.log(
       `Total price in ${sheetName} sheet matches with Items sheet: ${totalPrice}.`
     );
   });
+  // Totalシートの合計とTotal2シートの合計とSetup～Closingシートの合計が一致するか確認
+  const total1Sheet = getSheetBySheetName_(ss, 'Total');
+  const total2Sheet = getSheetBySheetName_(ss, 'Total2');
+  const total1Value = total1Sheet.getRange('H96').getValue();
+  const total2Value = total2Sheet.getRange('L96').getValue();
+  if (total1Value !== total2Value) {
+    throw new Error(
+      `Total1 and Total2 sheets do not match: Total1 = ${total1Value}, Total2 = ${total2Value}.`
+    );
+  }
+  const totalH96Sum = setupToClosingSheetNames.reduce((sum, sheetName) => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      throw new Error(`Sheet "${sheetName}" does not exist.`);
+    }
+    const value = sheet.getRange('H96').getValue();
+    return sum + (typeof value === 'number' ? value : 0);
+  }, 0);
+  if (totalH96Sum !== total1Value) {
+    throw new Error(
+      `Total H96 sum does not match Total1 value: Total H96 sum = ${totalH96Sum}, Total1 = ${total1Value}.`
+    );
+  }
+  const quoteSheet = getSheetBySheetName_(ss, 'Quote');
+  const quoteTotalValue = quoteSheet.getRange('D30').getValue();
+  if (quoteTotalValue !== total1Value) {
+    throw new Error(
+      `Quote sheet total does not match Total1 value: Quote total = ${quoteTotalValue}, Total1 = ${total1Value}.`
+    );
+  }
+  // 消費税が正しくかかっているか確認
+  if (
+    quoteSheet.getRange('D30').getValue() * tax !==
+    quoteSheet.getRange('D34').getValue()
+  ) {
+    throw new Error(
+      `消費税の計算が正しくありません。Quoteシートの合計価格は ${quoteSheet.getRange('D30').getValue()} で、消費税を加えた価格は ${quoteSheet.getRange('D34').getValue()} です。`
+    );
+  }
+  if (
+    total1Sheet.getRange('H96').getValue() * tax !==
+    total1Sheet.getRange('H98').getValue()
+  ) {
+    throw new Error(
+      `消費税の計算が正しくありません。Total1シートの合計価格は ${total1Sheet.getRange('H96').getValue()} で、消費税を加えた価格は ${total1Sheet.getRange('H98').getValue()} です。`
+    );
+  }
+  if (
+    total2Sheet.getRange('L96').getValue() * tax !==
+    total2Sheet.getRange('L98').getValue()
+  ) {
+    throw new Error(
+      `消費税の計算が正しくありません。Total2シートの合計価格は ${total2Sheet.getRange('L96').getValue()} で、消費税を加えた価格は ${total2Sheet.getRange('L98').getValue()} です。`
+    );
+  }
 }
