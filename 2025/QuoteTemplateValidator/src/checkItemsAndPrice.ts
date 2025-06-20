@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { check } from 'prettier';
 import {
   getSpreadsheetById_,
   copyTemplateSpreadsheetAndSaveId_,
@@ -21,6 +22,13 @@ import {
 } from './commonForTest';
 const itemValueStartRow = 3;
 const itemValueEndRow = 92;
+const variantRowAndTextMap: Map<number, string> = new Map([
+  [34, '(変動 ※1)'],
+  [35, '(変動 ※2)'],
+  [39, '(変動 ※3)'],
+  [40, '(変動 ※4)'],
+]);
+const priceBydayRowAndTextMap: Map<number, string> = new Map([[34, '図1参照']]);
 function getItemsValues_(
   itemsSheet: GoogleAppsScript.Spreadsheet.Sheet
 ): string[][] {
@@ -67,73 +75,120 @@ export function checkItemsAndPriceLogic_(): void {
   const itemsPriceByDayAndDayAndPersonValue: string[][] = itemsSheet
     .getRange(`S${itemValueStartRow}:U${itemValueEndRow}`)
     .getValues();
-  const variantRowAndTextMap: Map<number, string> = new Map([
-    [34, '(変動 ※1)'],
-    [35, '(変動 ※2)'],
-    [39, '(変動 ※3)'],
-    [40, '(変動 ※4)'],
-  ]);
-  const priceBydayRowAndTextMap: Map<number, string> = new Map([
-    [34, '図1参照'],
-  ]);
   for (let i = 0; i < itemsCoef10Data.length; i++) {
     const [priceByday, day, person] = itemsPriceByDayAndDayAndPersonValue[i];
     const itemCoef10 = extractItemData_(itemsCoef10Data[i]);
-    const itemCoef15 = extractItemData_(itemsCoef15Data[i]);
-    // priceLogicData, priceLogicCompanyData の i 行目を比較
+    // priceLogic
     const priceLogicRow = priceLogicData[i];
+    const itemCoef10WithExtras = {
+      ...itemCoef10,
+      priceByday: priceByday ?? '',
+      day: day ?? '',
+      person: person ?? '',
+    };
+    varidatePriceLogicRow_(i, priceLogicRow, itemCoef10WithExtras);
+    // PriceLogicCompany
+    const itemCoef15 = extractItemData_(itemsCoef15Data[i]);
     const priceLogicCompanyRow = priceLogicCompanyData[i];
-    if (itemCoef10.major !== priceLogicRow[0]) {
-      throw new Error(
-        `PriceLogic major mismatch at row ${i + itemValueStartRow}: ` +
-          `Expected ${itemCoef10.major}, but got ${priceLogicRow[0]}.`
-      );
-    }
-    if (itemCoef10.minor !== priceLogicRow[1]) {
-      throw new Error(
-        `PriceLogic minor mismatch at row ${i + itemValueStartRow}: ` +
-          `Expected ${itemCoef10.minor}, but got ${priceLogicRow[1]}.`
-      );
-    }
-    if (itemCoef10.baseprice !== priceLogicRow[2]) {
-      if (priceLogicRow[2] !== variantRowAndTextMap.get(i)) {
-        throw new Error(
-          `PriceLogic baseprice mismatch at row ${i + itemValueStartRow}: ` +
-            `Expected ${itemCoef10.baseprice}, but got ${priceLogicRow[2]}.`
-        );
-      }
-    }
-    if (itemCoef10.unit !== priceLogicRow[3]) {
-      throw new Error(
-        `PriceLogic unit mismatch at row ${i + itemValueStartRow}: ` +
-          `Expected ${itemCoef10.unit}, but got ${priceLogicRow[3]}.`
-      );
-    }
-    if (priceByday !== priceLogicRow[4]) {
-      if (priceLogicRow[4] !== priceBydayRowAndTextMap.get(i)) {
-        throw new Error(
-          `PriceLogic priceByday mismatch at row ${i + itemValueStartRow}: ` +
-            `Expected ${priceByday}, but got ${priceLogicRow[4]}.`
-        );
-      }
-    }
-    if (day !== priceLogicRow[5]) {
-      throw new Error(
-        `PriceLogic day mismatch at row ${i + itemValueStartRow}: ` +
-          `Expected ${day}, but got ${priceLogicRow[5]}.`
-      );
-    }
-    if (person !== priceLogicRow[6]) {
-      throw new Error(
-        `PriceLogic person mismatch at row ${i + itemValueStartRow}: ` +
-          `Expected ${person}, but got ${priceLogicRow[6]}.`
-      );
-    }
-    // PriceLogicCompanyのチェック
+    const itemCoef15WithExtras = {
+      ...itemCoef15,
+      priceByday: priceByday ?? '',
+      day: day ?? '',
+      person: person ?? '',
+    };
+    varidatePriceLogicRow_(i, priceLogicCompanyRow, itemCoef15WithExtras);
   }
+  // 93行目以降は固定値
+  const staticItemMap: Map<GoogleAppsScript.Spreadsheet.Sheet, string[][]> =
+    new Map([
+      [priceLogicCompanySheet, priceLogicCompanyStaticTextArray],
+      [priceLogicSheet, priceLogicStaticTextArray],
+    ]);
+  const checkTiaiSheet: GoogleAppsScript.Spreadsheet.Sheet[] = Array.from(
+    staticItemMap.keys()
+  );
+  checkTiaiSheet.forEach(sheet => {
+    checkTiaiText_(sheet);
+  });
+  const staticTextStartRow = 96;
+  staticItemMap.forEach((staticTextArray, sheet) => {
+    sheet
+      .getRange(`A${staticTextStartRow}:F126`)
+      .getValues()
+      .forEach((row, index) => {
+        row.forEach((cell, cellIndex) => {
+          if (String(cell) !== String(staticTextArray[index][cellIndex])) {
+            throw new Error(
+              `PriceLogicCompany static text mismatch at row ${index + staticTextStartRow}, column ${cellIndex + 1}: ` +
+                `Expected "${String(staticTextArray[index][cellIndex])}", but got "${String(cell)}".`
+            );
+          }
+        });
+      });
+  });
   console.log(
     'Items, PriceLogic, PriceLogicCompany sheets match successfully.'
   );
+}
+function varidatePriceLogicRow_(
+  i: number,
+  priceLogicRow: string[],
+  itemCoef: {
+    major: string;
+    minor: string;
+    baseprice: string;
+    unit: string;
+    priceByday: string;
+    day: string;
+    person: string;
+  }
+): void {
+  if (itemCoef.major !== priceLogicRow[0]) {
+    throw new Error(
+      `PriceLogic major mismatch at row ${i + itemValueStartRow}: ` +
+        `Expected ${itemCoef.major}, but got ${priceLogicRow[0]}.`
+    );
+  }
+  if (itemCoef.minor !== priceLogicRow[1]) {
+    throw new Error(
+      `PriceLogic minor mismatch at row ${i + itemValueStartRow}: ` +
+        `Expected ${itemCoef.minor}, but got ${priceLogicRow[1]}.`
+    );
+  }
+  if (itemCoef.baseprice !== priceLogicRow[2]) {
+    if (priceLogicRow[2] !== variantRowAndTextMap.get(i)) {
+      throw new Error(
+        `PriceLogic baseprice mismatch at row ${i + itemValueStartRow}: ` +
+          `Expected ${itemCoef.baseprice}, but got ${priceLogicRow[2]}.`
+      );
+    }
+  }
+  if (itemCoef.unit !== priceLogicRow[3]) {
+    throw new Error(
+      `PriceLogic unit mismatch at row ${i + itemValueStartRow}: ` +
+        `Expected ${itemCoef.unit}, but got ${priceLogicRow[3]}.`
+    );
+  }
+  if (itemCoef.priceByday !== priceLogicRow[4]) {
+    if (priceLogicRow[4] !== priceBydayRowAndTextMap.get(i)) {
+      throw new Error(
+        `PriceLogic priceByday mismatch at row ${i + itemValueStartRow}: ` +
+          `Expected ${itemCoef.priceByday}, but got ${priceLogicRow[4]}.`
+      );
+    }
+  }
+  if (itemCoef.day !== priceLogicRow[5]) {
+    throw new Error(
+      `PriceLogic day mismatch at row ${i + itemValueStartRow}: ` +
+        `Expected ${itemCoef.day}, but got ${priceLogicRow[5]}.`
+    );
+  }
+  if (itemCoef.person !== priceLogicRow[6]) {
+    throw new Error(
+      `PriceLogic person mismatch at row ${i + itemValueStartRow}: ` +
+        `Expected ${itemCoef.person}, but got ${priceLogicRow[6]}.`
+    );
+  }
 }
 function extractItemData_(itemData: string[]): {
   major: string;
@@ -213,5 +268,157 @@ export function checkItemsAndPrice_(): void {
       );
     }
   }
+  checkTiaiText_(priceSheet);
   console.log('All items and prices match successfully.');
 }
+function checkTiaiText_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  rangeAddress = 'A93:A95'
+): void {
+  const tiaiTextArray = [
+    ['*2015年の第3次産業活動指数を基準に単価を調整'],
+    ['*1 2015年の第3次産業活動指数：100'],
+    ['*2 2025年の第3次産業活動指数：107'],
+  ];
+  const tiaiText = sheet
+    .getRange(rangeAddress)
+    .getValues()
+    .map(row => row[0]);
+  tiaiText.forEach((text, index) => {
+    if (text !== tiaiTextArray[index][0]) {
+      throw new Error(
+        `Tiai text mismatch at row ${index + 93}: Expected "${tiaiTextArray[index][0]}", but got "${text}".`
+      );
+    }
+  });
+}
+const priceLogicStaticTextArray = [
+  ['', '', '', '', '', '', ''],
+  ['※1:', '', '表1 試験種類に対する係数（※2, ※3のみに適用）', '', '', '', ''],
+  ['', '', '試験種類', '', '', '係数', ''],
+  ['項目数', '価格', '観察研究・レジストリ', '', '', '1', ''],
+  ['0', '107000', '介入研究', '', '', '2', ''],
+  ['100', '589000', '特定臨床研究', '', '', '3', ''],
+  ['1000', '2755000', '医師主導治験', '', '', '5', ''],
+  ['2000', '3932000', '表2 単価(1人日)基準', '', '', '', ''],
+  ['3000', '5109000', '単価(1人日)', '基準', '', '', ''],
+  ['', '', '53500', 'DM・試験事務局担当が従事', '', '', ''],
+  ['', '', '69550', 'シニアDM・シニア試験事務局担当が従事', '', '', ''],
+  ['', '', '85600', 'STAT・エンジニアが従事', '', '', ''],
+  ['', '', '107000', '医師が従事', '', '', ''],
+  [
+    '※2: (CRF項目数)×250*1.07',
+    '',
+    '但し、プロトコル等作成支援と研究結果報告業務は従事者平均単価',
+    '',
+    '',
+    '',
+    '',
+  ],
+  [
+    '※3: log(10+ log2(症例数))(症例数)×log10(CRF項目数)×(係数(表1参照))×25000*1.07',
+    '',
+    '人単価には間接経費が含まれています',
+    '',
+    '',
+    '',
+    '',
+  ],
+  [
+    '※4: log10(症例数)×log10(CRF項目数)×(係数(表1参照))×75000*1.07',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ],
+  ['※5: 下記項目の金額合計の10%', '', '', '', '', '', ''],
+  ['・プロトコル等作成支援', '', '', '', '', '', ''],
+  ['・薬事戦略相談支援', '', '', '', '', '', ''],
+  ['・競争的資金獲得支援', '', '', '', '', '', ''],
+  ['・プロジェクト管理', '', '', '', '', '', ''],
+  ['・試験事務局業務', '', '', '', '', '', ''],
+  ['・モニタリング業務', '', '', '', '', '', ''],
+  ['・データベース管理', '', '', '', '', '', ''],
+  ['・データマネジメント業務', '', '', '', '', '', ''],
+  ['・安全性管理業務', '', '', '', '', '', ''],
+  ['・統計解析業務', '', '', '', '', '', ''],
+  ['・研究結果報告書業務', '', '', '', '', '', ''],
+  ['・監査業務', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', ''],
+  [
+    '基準単価の設定根拠は 単価(1人日) ×日数×人数 としているが、試験毎に変動するものではない。',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ],
+];
+const priceLogicCompanyStaticTextArray = [
+  ['', '', '', '', '', '', ''],
+  ['※1:', '', '表1 試験種類に対する係数（※2, ※3のみに適用）', '', '', '', ''],
+  ['', '', '試験種類', '', '', '係数', ''],
+  ['項目数', '価格', '観察研究・レジストリ', '', '', '1', ''],
+  ['0', '161000', '介入研究', '', '', '2', ''],
+  ['100', '884000', '特定臨床研究', '', '', '3', ''],
+  ['1000', '4133000', '医師主導治験・先進', '', '', '5', ''],
+  ['2000', '5898000', '表2 主担当者単価(1人日)基準', '', '', '', ''],
+  ['3000', '7664000', '単価(1人日)', '基準', '', '', ''],
+  ['', '', '80250', 'DM・試験事務局担当が従事', '', '', ''],
+  ['', '', '104325', 'シニアDM・シニア試験事務局担当が従事', '', '', ''],
+  ['', '', '128400', 'STAT・エンジニアが従事', '', '', ''],
+  ['', '', '160500', '医師が従事', '', '', ''],
+  [
+    '※2: (CRF項目数)×375*1.07',
+    '',
+    '但し、プロトコル等作成支援と研究結果報告業務は従事者平均単価',
+    '',
+    '',
+    '',
+    '',
+  ],
+  [
+    '※3: log(10+ log2(症例数))(症例数)×log10(CRF項目数)×(係数(表1参照))×37,500*1.07',
+    '',
+    '主担当者単価には間接経費が含まれています',
+    '',
+    '',
+    '',
+    '',
+  ],
+  [
+    '※4: log10(症例数)×log10(CRF項目数)×(係数(表1参照))×112,500*1.07',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ],
+  ['※5: 下記項目の金額合計の10%', '', '', '', '', '', ''],
+  ['・プロトコル等作成支援', '', '', '', '', '', ''],
+  ['・薬事戦略相談支援', '', '係数', '1.5', '', '', ''],
+  ['・競争的資金獲得支援', '', '', '', '', '', ''],
+  ['・プロジェクト管理', '', '', '', '', '', ''],
+  ['・試験事務局業務', '', '', '', '', '', ''],
+  ['・モニタリング業務', '', '', '', '', '', ''],
+  ['・データベース管理', '', '', '', '', '', ''],
+  ['・データマネジメント業務', '', '', '', '', '', ''],
+  ['・安全性管理業務', '', '', '', '', '', ''],
+  ['・統計解析業務', '', '', '', '', '', ''],
+  ['・研究結果報告書業務', '', '', '', '', '', ''],
+  ['・監査業務', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', ''],
+  [
+    '基準単価の設定根拠は 単価(1人日) ×日数×人数 としているが、試験毎に変動するものではない。',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ],
+];
