@@ -14,9 +14,20 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-//import { copyTemplateSpreadsheetAndSaveId } from './test';
+import { checkFilterSettings_ } from './checkFilterSetting';
 import { checkItemsSheet_ } from './checkItemsSheet';
 import { validateItemsAndSummaryMatch_ } from './checkSetupToClosingSheet';
+import {
+  checkItemsAndPrice_,
+  checkItemsAndPriceLogic_,
+} from './checkItemsAndPrice';
+function checkItemsAndPrice(): void {
+  checkItemsAndPrice_();
+  checkItemsAndPriceLogic_();
+}
+function checkFilterSettings(): void {
+  checkFilterSettings_();
+}
 function validateItemsAndSummaryMatch(): void {
   const test = validateItemsAndSummaryMatch_();
 }

@@ -13,6 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+export const trialCoefficientRangeAddress = 'B44';
+export const setupToClosingSheetNames = [
+  'Setup',
+  'Registration_1',
+  'Registration_2',
+  'Interim_1',
+  'Observation_1',
+  'Interim_2',
+  'Observation_2',
+  'Closing',
+];
 export const trialTypeAndValueMap: Map<string, number> = new Map();
 trialTypeAndValueMap.set('観察研究・レジストリ', 1);
 trialTypeAndValueMap.set('医師主導治験', 5);
@@ -112,4 +123,21 @@ export function getRowsUntilTotal_(values: string[][]): string[][] {
 }
 export function roundToThousands_(num: number): number {
   return Math.round(num / 1000) * 1000;
+}
+export function setTrialTerms_(
+  trialSheet: GoogleAppsScript.Spreadsheet.Sheet,
+  inputTerms: string[][] | null = null
+): void {
+  const terms: string[][] = inputTerms || [
+    ['2020/4/1', '2021/3/31'],
+    ['2021/4/1', '2022/3/31'],
+    ['2022/4/1', '2023/3/31'],
+    ['2023/4/1', '2024/3/31'],
+    ['2024/4/1', '2025/3/31'],
+    ['2025/4/1', '2026/3/31'],
+    ['2026/4/1', '2027/3/31'],
+    ['2027/4/1', '2028/3/31'],
+    ['2020/4/1', '2028/3/31'],
+  ];
+  trialSheet.getRange('D32:E40').setValues(terms);
 }

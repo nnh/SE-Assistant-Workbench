@@ -20,6 +20,7 @@ import {
   trialTypeAndValueMap,
   getItemsSheetItems_,
   roundToThousands_,
+  trialCoefficientRangeAddress,
 } from './commonForTest';
 import {
   coefficient_10_2025,
@@ -42,7 +43,7 @@ export function checkItemsSheet_(): void {
   const trialCrfRange: GoogleAppsScript.Spreadsheet.Range =
     trialSheet.getRange('B30');
   const trialCoefficientRange: GoogleAppsScript.Spreadsheet.Range =
-    trialSheet.getRange('B44');
+    trialSheet.getRange(trialCoefficientRangeAddress);
   const itemNames: string[] = [
     'DB作成・eCRF作成・バリデーション',
     'バリデーション報告書',
