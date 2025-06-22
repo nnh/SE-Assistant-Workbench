@@ -21,16 +21,32 @@ import {
   checkItemsAndPrice_,
   checkItemsAndPriceLogic_,
 } from './checkItemsAndPrice';
-function checkItemsAndPrice(): void {
-  checkItemsAndPrice_();
-  checkItemsAndPriceLogic_();
-}
-function checkFilterSettings(): void {
-  checkFilterSettings_();
+import { setupToClosingSheetNames } from './commonForTest';
+function checkItemsSheet(): void {
+  checkItemsSheet_();
 }
 function validateItemsAndSummaryMatch(): void {
   const test = validateItemsAndSummaryMatch_();
 }
-function checkItemsSheet(): void {
-  checkItemsSheet_();
+function checkItemsAndPrice(): void {
+  checkItemsAndPrice_();
+  checkItemsAndPriceLogic_();
+}
+function checkFilterSettings1(): void {
+  const target = setupToClosingSheetNames.slice(0, 3);
+  target.forEach(sheetName => {
+    checkFilterSettings_(sheetName);
+  });
+}
+function checkFilterSettings2(): void {
+  const target = setupToClosingSheetNames.slice(3, 6);
+  target.forEach(sheetName => {
+    checkFilterSettings_(sheetName);
+  });
+}
+function checkFilterSettings3(): void {
+  const target = setupToClosingSheetNames.slice(6);
+  target.forEach(sheetName => {
+    checkFilterSettings_(sheetName);
+  });
 }

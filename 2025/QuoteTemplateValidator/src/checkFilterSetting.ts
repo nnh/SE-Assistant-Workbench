@@ -16,7 +16,6 @@
 import {
   getSpreadsheetById_,
   copyTemplateSpreadsheetAndSaveId_,
-  setupToClosingSheetNames,
   getSheetBySheetName_,
   setTrialTerms_,
 } from './commonForTest';
@@ -56,8 +55,7 @@ function getFilterSettingsMajorArray_(): [number, number[]][] {
   return filterSettingsMajorArray;
 }
 
-export function checkFilterSettings_(): void {
-  console.log('各シートのフィルタ設定を確認します。');
+export function checkFilterSettings_(sheetName: string): void {
   const spreadsheetId: string = copyTemplateSpreadsheetAndSaveId_();
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet | null =
     getSpreadsheetById_(spreadsheetId);
@@ -67,100 +65,12 @@ export function checkFilterSettings_(): void {
   const trialSheet = getSheetBySheetName_(ss, 'Trial');
   setTrialTerms_(trialSheet);
   trialSheet.getRange('B28:B30').setValues([[100], [100], [100]]);
-  const total1Sheet = getSheetBySheetName_(ss, 'Total');
-  const total2Sheet = getSheetBySheetName_(ss, 'Total2');
-  const quoteSheet = getSheetBySheetName_(ss, 'Quote');
-  const total3Sheet = getSheetBySheetName_(ss, 'Total3');
-  const countColumn = 'F';
-  const setupToClosingFilterColumn = 'L';
-  const total2SheetSumColumn = 'L';
-  const total2FilterColumn = 'N';
-  const quoteFilterColumn = 'F';
-  const filterSettingsMajorArray = getFilterSettingsMajorArray_();
-  setupToClosingSheetNames.forEach(sheetName => {
-    const sheet = getSheetBySheetName_(ss, sheetName);
-    filterSettingsMajorArray.forEach(([filterRow, valueRows], majorIndex) => {
-      valueRows.forEach(valueRow => {
-        sheet.getRange(`${countColumn}:${countColumn}`).clearContent();
-        // フィルタ設定がクリアされていることをチェック
-        const filterRanges: GoogleAppsScript.Spreadsheet.Range[] = [
-          sheet.getRange(`${setupToClosingFilterColumn}${filterRow}`),
-          sheet.getRange(`${setupToClosingFilterColumn}${valueRow}`),
-          total1Sheet.getRange(`${setupToClosingFilterColumn}${filterRow}`),
-          total1Sheet.getRange(`${setupToClosingFilterColumn}${valueRow}`),
-          total2Sheet.getRange(`${total2FilterColumn}${filterRow}`),
-          total2Sheet.getRange(`${total2FilterColumn}${valueRow}`),
-          quoteSheet.getRange(`${quoteFilterColumn}${majorIndex + 12}`),
-          total3Sheet.getRange(`${total2FilterColumn}${majorIndex + 5}`),
-        ];
-        filterRanges.forEach(range => {
-          if (filterRow !== projectManagementMajorRow) {
-            throwIfNotZero_(range);
-          }
-        });
-        if (filterRow === projectManagementMajorRow) {
-          sheet
-            .getRange(`${countColumn}${filterSettingsMajorArray[0][1][0]}`)
-            .setValue(1);
-        } else {
-          sheet
-            .getRange(`${countColumn}${filterSettingsMajorArray[0][1][0]}`)
-            .clearContent();
-        }
-        sheet.getRange(`${countColumn}${valueRow}`).setValue(1);
-        SpreadsheetApp.flush();
-        // フィルタ設定が適用されていることをチェック
-        filterRanges.forEach((range, idx) => {
-          // Setup~Closingシートで大項目がその他の場合、価格が0であればフィルタは非表示
-          if (
-            range.getRow() === othersMajorFilterRow &&
-            idx === 0 &&
-            range.offset(0, -3).getValue() === 0
-          ) {
-            throwIfNotZero_(range);
-          } else if (idx === 2 && range.offset(0, -3).getValue() === 0) {
-            // Totalシートの場合、価格が0であればフィルタ非表示
-            throwIfNotZero_(range);
-          } else if (idx === 3 && range.offset(0, -4).getValue() === 0) {
-            // Totalシートの場合、価格が0であればフィルタ非表示
-            throwIfNotZero_(range);
-          } else if (idx === 4) {
-            // Total2シートの場合、価格が空白であればフィルタ非表示
-            const minorRowArray = filterSettingsMajorArray.find(
-              setting => setting[0] === filterRow
-            )?.[1];
-            let filterValue = 0;
-            for (let i = 0; i < minorRowArray!.length; i++) {
-              const minorRow = minorRowArray![i];
-              const cellValue = total2Sheet
-                .getRange(`${total2SheetSumColumn}${minorRow}`)
-                .getValue();
-              filterValue += cellValue === '' ? 0 : cellValue;
-            }
-            if (filterValue === 0) {
-              throwIfNotZero_(range);
-            } else {
-              throwIfZero_(range);
-            }
-          } else if (idx === 5 && range.offset(0, -2).getValue() === '') {
-            // Total2シートの場合、価格が空白であればフィルタ非表示
-            throwIfNotZero_(range);
-          } else if (
-            (idx === 6 || idx === 7) &&
-            range.offset(0, -2).getValue() === 0
-          ) {
-            // Quote, Total3シートの場合、価格が0であればフィルタ非表示
-            throwIfNotZero_(range);
-          } else {
-            throwIfZero_(range);
-          }
-        });
-      });
-    });
-  });
-  console.log(
-    'Quote, Total～Total3, Setup～Closingシートのフィルタ設定チェックが完了しました。'
+  const sheet: GoogleAppsScript.Spreadsheet.Sheet = getSheetBySheetName_(
+    ss,
+    sheetName
   );
+  checkFilterSettingsBySheet_(sheet);
+  console.log(`${sheetName}シートのフィルタ設定チェックが完了しました。`);
 }
 function throwIfZero_(range: GoogleAppsScript.Spreadsheet.Range): void {
   if (range.getValue() === 0) {
@@ -176,4 +86,100 @@ function throwIfNotZero_(range: GoogleAppsScript.Spreadsheet.Range): void {
       `Filter setting should be cleared in ${range.getSheet().getName()} at row ${range.getRow()}.`
     );
   }
+}
+function checkFilterSettingsBySheet_(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet
+): void {
+  const ss: GoogleAppsScript.Spreadsheet.Spreadsheet | null = sheet.getParent();
+  if (!ss) {
+    throw new Error('Spreadsheet not found.');
+  }
+  const total1Sheet = getSheetBySheetName_(ss, 'Total');
+  const total2Sheet = getSheetBySheetName_(ss, 'Total2');
+  const quoteSheet = getSheetBySheetName_(ss, 'Quote');
+  const total3Sheet = getSheetBySheetName_(ss, 'Total3');
+  const countColumn = 'F';
+  const setupToClosingFilterColumn = 'L';
+  const total2SheetSumColumn = 'L';
+  const total2FilterColumn = 'N';
+  const quoteFilterColumn = 'F';
+  const filterSettingsMajorArray = getFilterSettingsMajorArray_();
+  filterSettingsMajorArray.forEach(([filterRow, valueRows], majorIndex) => {
+    valueRows.forEach(valueRow => {
+      sheet.getRange(`${countColumn}:${countColumn}`).clearContent();
+      // フィルタ設定がクリアされていることをチェック
+      const filterRanges: GoogleAppsScript.Spreadsheet.Range[] = [
+        sheet.getRange(`${setupToClosingFilterColumn}${filterRow}`),
+        sheet.getRange(`${setupToClosingFilterColumn}${valueRow}`),
+        total1Sheet.getRange(`${setupToClosingFilterColumn}${filterRow}`),
+        total1Sheet.getRange(`${setupToClosingFilterColumn}${valueRow}`),
+        total2Sheet.getRange(`${total2FilterColumn}${filterRow}`),
+        total2Sheet.getRange(`${total2FilterColumn}${valueRow}`),
+        quoteSheet.getRange(`${quoteFilterColumn}${majorIndex + 12}`),
+        total3Sheet.getRange(`${total2FilterColumn}${majorIndex + 5}`),
+      ];
+      filterRanges.forEach(range => {
+        if (filterRow !== projectManagementMajorRow) {
+          throwIfNotZero_(range);
+        }
+      });
+      if (filterRow === projectManagementMajorRow) {
+        sheet
+          .getRange(`${countColumn}${filterSettingsMajorArray[0][1][0]}`)
+          .setValue(1);
+      } else {
+        sheet
+          .getRange(`${countColumn}${filterSettingsMajorArray[0][1][0]}`)
+          .clearContent();
+      }
+      sheet.getRange(`${countColumn}${valueRow}`).setValue(1);
+      SpreadsheetApp.flush();
+      // フィルタ設定が適用されていることをチェック
+      filterRanges.forEach((range, idx) => {
+        // Setup~Closingシートで大項目がその他の場合、価格が0であればフィルタは非表示
+        if (
+          range.getRow() === othersMajorFilterRow &&
+          idx === 0 &&
+          range.offset(0, -3).getValue() === 0
+        ) {
+          throwIfNotZero_(range);
+        } else if (idx === 2 && range.offset(0, -3).getValue() === 0) {
+          // Totalシートの場合、価格が0であればフィルタ非表示
+          throwIfNotZero_(range);
+        } else if (idx === 3 && range.offset(0, -4).getValue() === 0) {
+          // Totalシートの場合、価格が0であればフィルタ非表示
+          throwIfNotZero_(range);
+        } else if (idx === 4) {
+          // Total2シートの場合、価格が空白であればフィルタ非表示
+          const minorRowArray = filterSettingsMajorArray.find(
+            setting => setting[0] === filterRow
+          )?.[1];
+          let filterValue = 0;
+          for (let i = 0; i < minorRowArray!.length; i++) {
+            const minorRow = minorRowArray![i];
+            const cellValue = total2Sheet
+              .getRange(`${total2SheetSumColumn}${minorRow}`)
+              .getValue();
+            filterValue += cellValue === '' ? 0 : cellValue;
+          }
+          if (filterValue === 0) {
+            throwIfNotZero_(range);
+          } else {
+            throwIfZero_(range);
+          }
+        } else if (idx === 5 && range.offset(0, -2).getValue() === '') {
+          // Total2シートの場合、価格が空白であればフィルタ非表示
+          throwIfNotZero_(range);
+        } else if (
+          (idx === 6 || idx === 7) &&
+          range.offset(0, -2).getValue() === 0
+        ) {
+          // Quote, Total3シートの場合、価格が0であればフィルタ非表示
+          throwIfNotZero_(range);
+        } else {
+          throwIfZero_(range);
+        }
+      });
+    });
+  });
 }
