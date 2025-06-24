@@ -36,10 +36,11 @@ export function execCopyTemplateSpreadsheetAndSaveId_(): GoogleAppsScript.Spread
     spreadsheet,
     'Trial'
   );
-  trialSheet.getRange('B2:B4').clearContent();
+  trialSheet.getRange('B2').clearContent();
+  trialSheet.getRange('B4').clearContent();
   trialSheet.getRange('B6:B10').clearContent();
   trialSheet.getRange('B18:B26').clearContent();
-  trialSheet.getRange('D32:F40').clearContent();
+  trialSheet.getRange('D32:E40').clearContent();
   trialSheet.getRange('B44').setValue('1.0');
   trialSheet.getRange('B45').setValue('0.1');
   trialSheet.getRange('B46').clearContent();

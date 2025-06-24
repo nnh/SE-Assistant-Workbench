@@ -19,38 +19,46 @@ import {
   getTargetTestPattern_,
   setQuotationRequestSheetValues_,
 } from './testPattern';
-import {
-  execCopyTemplateSpreadsheetAndSaveId_,
-  getSpreadsheet_,
-} from './copyTemplateSpreadsheetAndSaveId';
-import { checkTest1_, checkTest2_ } from './checkBaseTest';
+import { getSpreadsheet_ } from './copyTemplateSpreadsheetAndSaveId';
+import { checkTestMain_ } from './checkBaseTest';
 import { testPatternKeys } from './commonForTest';
 const baseTestPattern: Map<
   string,
   Map<string, string>
 > = createBaseTestPattern_();
-
+function checkTest3() {
+  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
+    getSpreadsheet_();
+  checkTestMain_(spreadsheet, 2);
+}
 function checkTest2() {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheet_();
-  checkTest2_(spreadsheet);
+  checkTestMain_(spreadsheet, 1);
 }
 function checkTest1() {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheet_();
-  checkTest1_(spreadsheet);
+  checkTestMain_(spreadsheet, 0);
+}
+function setTest3() {
+  const test: Map<string, string> = getTargetTestPattern_(
+    baseTestPattern,
+    testPatternKeys.get(2)
+  );
+  setQuotationRequestSheetValues_(test);
 }
 function setTest2() {
-  const test2: Map<string, string> = getTargetTestPattern_(
+  const test: Map<string, string> = getTargetTestPattern_(
     baseTestPattern,
     testPatternKeys.get(1)
   );
-  setQuotationRequestSheetValues_(test2);
+  setQuotationRequestSheetValues_(test);
 }
 function setTest1() {
-  const test1: Map<string, string> = getTargetTestPattern_(
+  const test: Map<string, string> = getTargetTestPattern_(
     baseTestPattern,
     testPatternKeys.get(0)
   );
-  setQuotationRequestSheetValues_(test1);
+  setQuotationRequestSheetValues_(test);
 }

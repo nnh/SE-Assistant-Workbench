@@ -18,6 +18,7 @@ import {
   getSheetBySheetName_,
   quotationRequestSheetName,
   trialSheetName,
+  coefficients15,
 } from './commonForTest';
 export function checkTrialSheet_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet
@@ -119,8 +120,7 @@ export function checkTrialSheet_(
   const coefficients: string =
     quotationRequestSheet.getRange('AN2').getValue() === '公的資金（税金由来）'
       ? '1'
-      : quotationRequestSheet.getRange('AN2').getValue() ===
-          '営利企業原資（製薬企業等）'
+      : quotationRequestSheet.getRange('AN2').getValue() === coefficients15
         ? '1.5'
         : '-1';
   if (coefficients === '-1') {

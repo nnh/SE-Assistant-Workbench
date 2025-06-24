@@ -30,6 +30,9 @@ export const setupToClosingSheetNames = [
 ];
 export const quotationRequestSheetName = 'Quotation Request';
 export const trialSheetName = 'Trial';
+export const coefficients15 = '営利企業原資（製薬企業等）';
+export const observationalStudy = '観察研究・レジストリ';
+
 export const spreadSheetIdScriptPropertyKey = 'TEST_SPREADSHEET_ID';
 export function getSheetBySheetName_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,

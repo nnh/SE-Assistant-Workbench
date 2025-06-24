@@ -17,8 +17,10 @@ import { execCopyTemplateSpreadsheetAndSaveId_ } from './copyTemplateSpreadsheet
 import {
   getSheetBySheetName_,
   quotationRequestSheetName,
+  coefficients15,
+  testPatternKeys,
+  observationalStudy,
 } from './commonForTest';
-import { testPatternKeys } from './commonForTest';
 
 export function createBaseTestPattern_(): Map<string, Map<string, string>> {
   // 要素が1つのもの
@@ -48,7 +50,7 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
     ['その他会議（のべ回数）', ['0', '4']],
     ['調整事務局設置の有無', ['あり', 'なし']],
     ['中間解析業務の依頼', ['あり', 'なし']],
-    ['原資', ['公的資金（税金由来）', '営利企業原資（製薬企業等）']],
+    ['原資', ['公的資金（税金由来）', coefficients15]],
     ['CDISC対応', ['あり', 'なし']],
     ['研究協力費、負担軽減費配分管理', ['あり', 'なし']],
   ];
@@ -96,7 +98,6 @@ function createArrayFromTwoItems_(
   return [pattern1, pattern2];
 }
 
-const observationalStudy = '観察研究・レジストリ';
 const investigatorInitiatedClinicalTrial = '医師主導治験';
 const specificClinicalResearch = '特定臨床研究';
 const interventionalStudy = '介入研究（特定臨床研究以外）';
