@@ -15,17 +15,23 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
-  createBaseTestPattern_,
   getTargetTestPattern_,
   setQuotationRequestSheetValues_,
-} from './testPattern';
+} from './setTestData';
 import { getSpreadsheet_ } from './copyTemplateSpreadsheetAndSaveId';
 import { checkTestMain_ } from './checkBaseTest';
 import { testPatternKeys } from './commonForTest';
+import { createBaseTestPattern_ } from './createTestPatternCommon';
+import { createTestDataSpecificClinicalResearch_ } from './createTestDataSpecificClinicalResearch';
 const baseTestPattern: Map<
   string,
   Map<string, string>
 > = createBaseTestPattern_();
+function checkTest4() {
+  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
+    getSpreadsheet_();
+  checkTestMain_(spreadsheet, 3);
+}
 function checkTest3() {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheet_();
@@ -40,6 +46,16 @@ function checkTest1() {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheet_();
   checkTestMain_(spreadsheet, 0);
+}
+function setTest5() {
+  const testPattern = createTestDataSpecificClinicalResearch_();
+  const test: Map<string, string> = testPattern.get(testPatternKeys.get(4)!)!;
+  setQuotationRequestSheetValues_(test);
+}
+function setTest4() {
+  const testPattern = createTestDataSpecificClinicalResearch_();
+  const test: Map<string, string> = testPattern.get(testPatternKeys.get(3)!)!;
+  setQuotationRequestSheetValues_(test);
 }
 function setTest3() {
   const test: Map<string, string> = getTargetTestPattern_(

@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 export const testPatternKeys: Map<number, string> = new Map([
-  [0, '基本パターン・なし'],
-  [1, '基本パターン・あり１'],
-  [2, '基本パターン・あり２'],
+  [0, '基本パターン・観察研究・なし'],
+  [1, '基本パターン・観察研究・あり１'],
+  [2, '基本パターン・観察研究・あり２'],
+  [3, '特定臨床研究・なし'],
+  [4, '特定臨床研究・あり'],
 ]);
 export const setupToClosingSheetNames = [
   'Setup',
@@ -32,6 +34,10 @@ export const quotationRequestSheetName = 'Quotation Request';
 export const trialSheetName = 'Trial';
 export const coefficients15 = '営利企業原資（製薬企業等）';
 export const observationalStudy = '観察研究・レジストリ';
+export const investigatorInitiatedClinicalTrial = '医師主導治験';
+export const specificClinicalResearch = '特定臨床研究';
+export const interventionalStudy = '介入研究（特定臨床研究以外）';
+export const trialTypeName = '試験種別';
 
 export const spreadSheetIdScriptPropertyKey = 'TEST_SPREADSHEET_ID';
 export function getSheetBySheetName_(
