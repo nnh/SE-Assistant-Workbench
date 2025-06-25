@@ -18,6 +18,7 @@ import {
   testPatternKeys,
   observationalStudy,
   trialTypeName,
+  interventionalStudy,
 } from './commonForTest';
 /*
 export function getBasePatternIndex0_(): Map<string, string> {
@@ -84,11 +85,8 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
   const finalAnalysis: [string, string[]][] = [
     ['統計解析に必要な図表数', ['49', '100']],
   ];
-  const [finalAnalysis1, finalAnalysis2] = createArrayFromTwoItems_(
-    finalAnalysis,
-    interim1,
-    interim1
-  );
+  const [finalAnalysis1, finalAnalysis2]: [string, string][][] =
+    createArrayFromTwoItems_(finalAnalysis, interim1, interim1);
   // 研究協力費、負担軽減費配分管理ありの場合のテストをテストパターン2に追加
   const researchGrant = [
     ['研究協力費、負担軽減費', '40000000'],
@@ -99,10 +97,19 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
   researchGrant.forEach(([key, value]) => {
     finalAnalysis1.push([key, value]);
   });
+  // index0, 1を観察研究、2を介入研究にする
+  const interventionalStudyPattern: [string, string][] = finalAnalysis2.map(
+    ([key, value]) => {
+      if (key === trialTypeName) {
+        return [key, interventionalStudy];
+      }
+      return [key, value];
+    }
+  );
   const baseTestPattern: Map<string, Map<string, string>> = new Map([
     [testPatternKeys.get(0)!, new Map(pattern_nashi)],
     [testPatternKeys.get(1)!, new Map(finalAnalysis1)],
-    [testPatternKeys.get(2)!, new Map(finalAnalysis2)],
+    [testPatternKeys.get(2)!, new Map(interventionalStudyPattern)],
   ]);
 
   return baseTestPattern;

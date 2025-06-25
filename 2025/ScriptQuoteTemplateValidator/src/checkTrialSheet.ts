@@ -28,6 +28,11 @@ export function checkTrialSheet_(
   );
   const quotationRequestSheet: GoogleAppsScript.Spreadsheet.Sheet =
     getSheetBySheetName_(spreadsheet, quotationRequestSheetName);
+  if (trialSheet.getRange('B2').getValue() === '') {
+    throw new Error(
+      '見積項目設定のスクリプトを実行して再度チェックを実行してください'
+    );
+  }
   const quoteType =
     quotationRequestSheet.getRange('B2').getValue() === '参考見積'
       ? '御参考見積書'
