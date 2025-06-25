@@ -33,7 +33,7 @@ const investigatorInitiatedClinicalTrialItems = [
 const finalAnalysis = [['統計解析に必要な図表数', ['49', '100']]];
 export function setQuotationRequestSheetValues_(
   targetTest: Map<string, string>,
-  index = -1
+  index: number
 ) {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     execCopyTemplateSpreadsheetAndSaveId_();

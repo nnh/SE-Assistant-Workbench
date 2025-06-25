@@ -17,7 +17,10 @@
 import { setQuotationRequestSheetValues_ } from './setTestData';
 import { getSpreadsheet_ } from './copyTemplateSpreadsheetAndSaveId';
 import { checkTestMain_ } from './checkBaseTest';
-import { getIndexFromScriptProperties_ } from './commonForTest';
+import {
+  getIndexFromScriptProperties_,
+  testPatternKeys,
+} from './commonForTest';
 import { createTestPattern_ } from './createTestPattern';
 
 function checkTest() {
@@ -28,11 +31,17 @@ function checkTest() {
   checkTestMain_(spreadsheet, index);
 }
 function setTest() {
-  const index = getIndexFromScriptProperties_() + 1;
-  console.log(`Setting test pattern for index: ${index}`);
+  const tempTestPattern: boolean = testPatternKeys.has(
+    getIndexFromScriptProperties_() + 1
+  );
+  if (!tempTestPattern) {
+    console.log('resetting test pattern index to 0');
+  }
+  const index = tempTestPattern ? getIndexFromScriptProperties_() + 1 : 0;
   const test: Map<string, string> | undefined = createTestPattern_(index);
   if (!test) {
-    throw new Error(`Test pattern for index ${index} not found`);
+    console.log('No test pattern found for index:', index);
+    return;
   }
   setQuotationRequestSheetValues_(test, index);
 }
