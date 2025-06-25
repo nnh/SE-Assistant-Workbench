@@ -23,7 +23,10 @@ export function createTestPattern_(testPatternIndex: number) {
   if (!testPatternKeys.has(testPatternIndex)) {
     throw new Error(`Test pattern key not found for index ${testPatternIndex}`);
   }
-  if (testPatternIndex >= 0 && testPatternIndex <= 2) {
+  if (
+    (testPatternIndex >= 0 && testPatternIndex <= 2) ||
+    testPatternIndex === 8
+  ) {
     const baseTestPattern: Map<
       string,
       Map<string, string>

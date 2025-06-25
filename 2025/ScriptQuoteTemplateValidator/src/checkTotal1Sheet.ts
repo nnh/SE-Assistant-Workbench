@@ -17,9 +17,7 @@ import {
   getSheetBySheetName_,
   trialSheetName,
   coefficients15,
-  observationalStudy,
   specificClinicalResearch,
-  interventionalStudy,
   investigatorInitiatedClinicalTrial,
 } from './commonForTest';
 export function checkTotal1Sheet_(
@@ -33,10 +31,23 @@ export function checkTotal1Sheet_(
     spreadsheet,
     trialSheetName
   );
+  const quotationRequestSheet: GoogleAppsScript.Spreadsheet.Sheet =
+    getSheetBySheetName_(spreadsheet, 'Quotation Request');
+  const reportOfResearchResults: boolean =
+    quotationRequestSheet.getRange('M2').getValue() === 'あり';
   const setupMonth: number =
-    trialSheet.getRange('B27').getValue() === observationalStudy ? 3 : 6;
+    trialSheet.getRange('B27').getValue() ===
+      investigatorInitiatedClinicalTrial ||
+    trialSheet.getRange('B27').getValue() === specificClinicalResearch
+      ? 6
+      : 3;
   const closingMonth: number =
-    trialSheet.getRange('B27').getValue() === observationalStudy ? 3 : 6;
+    trialSheet.getRange('B27').getValue() ===
+      investigatorInitiatedClinicalTrial ||
+    trialSheet.getRange('B27').getValue() === specificClinicalResearch ||
+    reportOfResearchResults
+      ? 6
+      : 3;
   const totalMonth: number = trialSheet.getRange('F40').getValue();
   const registrationMonth: number = totalMonth - setupMonth - closingMonth;
   const caseCount: number = trialSheet.getRange('B28').getValue();
@@ -46,8 +57,6 @@ export function checkTotal1Sheet_(
     investigatorInitiatedClinicalTrial;
   const specificClinicalResearchFlag: boolean =
     trialSheet.getRange('B27').getValue() === specificClinicalResearch;
-  const quotationRequestSheet: GoogleAppsScript.Spreadsheet.Sheet =
-    getSheetBySheetName_(spreadsheet, 'Quotation Request');
   const caseConference: boolean =
     quotationRequestSheet.getRange('I2').getValue() === 'あり';
   const officeSupport: boolean =
@@ -133,10 +142,7 @@ export function checkTotal1Sheet_(
     ['F57', finalAnalysis ? 1 : 0],
     [
       'F59',
-      quotationRequestSheet.getRange('M2').getValue() === 'あり' ||
-      investigatorInitiatedClinicalTrialFlag
-        ? 1
-        : 0,
+      reportOfResearchResults || investigatorInitiatedClinicalTrialFlag ? 1 : 0,
     ],
     ['F61', 0],
     ['F62', 0],

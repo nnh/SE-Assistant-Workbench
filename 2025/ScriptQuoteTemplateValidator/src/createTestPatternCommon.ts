@@ -20,19 +20,7 @@ import {
   trialTypeName,
   interventionalStudy,
 } from './commonForTest';
-/*
-export function getBasePatternIndex0_(): Map<string, string> {
-  const basePattern = createBaseTestPattern_();
-  const key = testPatternKeys.get(0);
-  if (!key) {
-    throw new Error(`Test pattern key for index 0 not found`);
-  }
-  const res = basePattern.get(key);
-  if (!res) {
-    throw new Error(`Base pattern for index 0 not found`);
-  }
-  return res;
-}*/
+
 export function createBaseTestPattern_(): Map<string, Map<string, string>> {
   // 要素が1つのもの
   const singleValueItems: [string, string][] = [
@@ -106,10 +94,20 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
       return [key, value];
     }
   );
+  // index8は中間解析あり、最終解析なしにする
+  const pattern_nashi_interim2: [string, string][] = interim2.map(
+    ([key, value]) => {
+      if (key === '最終解析業務の依頼') {
+        return [key, 'なし'];
+      }
+      return [key, value];
+    }
+  );
   const baseTestPattern: Map<string, Map<string, string>> = new Map([
     [testPatternKeys.get(0)!, new Map(pattern_nashi)],
     [testPatternKeys.get(1)!, new Map(finalAnalysis1)],
     [testPatternKeys.get(2)!, new Map(interventionalStudyPattern)],
+    [testPatternKeys.get(8)!, new Map(pattern_nashi_interim2)],
   ]);
 
   return baseTestPattern;

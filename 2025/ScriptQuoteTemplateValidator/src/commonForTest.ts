@@ -22,6 +22,7 @@ export const testPatternKeys: Map<number, string> = new Map([
   [5, '医師主導治験・なし'],
   [6, '医師主導治験・あり・最終解析図表数49'],
   [7, '医師主導治験・あり・最終解析図表数100'],
+  [8, '観察研究・あり・中間解析図表数100'],
 ]);
 export const setupToClosingSheetNames = [
   'Setup',
