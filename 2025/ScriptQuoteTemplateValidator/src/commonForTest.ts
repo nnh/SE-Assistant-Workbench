@@ -40,6 +40,7 @@ export const interventionalStudy = '介入研究（特定臨床研究以外）';
 export const trialTypeName = '試験種別';
 
 export const spreadSheetIdScriptPropertyKey = 'TEST_SPREADSHEET_ID';
+export const testPatternIndexPropertyKey = 'TEST_PATTERN_INDEX';
 export function getSheetBySheetName_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
   sheetName: string
@@ -98,4 +99,22 @@ export function copyTemplateSpreadsheetAndSaveId_(): string {
     newFileId
   );
   return newFileId;
+}
+export function getIndexFromScriptProperties_(): number {
+  const testPatternIndex: string | null =
+    PropertiesService.getScriptProperties().getProperty(
+      testPatternIndexPropertyKey
+    );
+  if (testPatternIndex === null) {
+    return -1;
+  }
+  const maxIndex = Math.max(...Array.from(testPatternKeys.keys()));
+  const index = Number(testPatternIndex);
+  if (index > maxIndex) {
+    console.log(
+      `Index ${index} exceeds maximum index ${maxIndex}. Resetting to -1.`
+    );
+    return -1;
+  }
+  return index;
 }

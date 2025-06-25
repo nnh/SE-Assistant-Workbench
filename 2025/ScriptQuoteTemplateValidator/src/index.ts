@@ -14,67 +14,25 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  getTargetTestPattern_,
-  setQuotationRequestSheetValues_,
-} from './setTestData';
+import { setQuotationRequestSheetValues_ } from './setTestData';
 import { getSpreadsheet_ } from './copyTemplateSpreadsheetAndSaveId';
 import { checkTestMain_ } from './checkBaseTest';
-import { testPatternKeys } from './commonForTest';
-import { createBaseTestPattern_ } from './createTestPatternCommon';
-import { createTestDataSpecificClinicalResearch_ } from './createTestDataSpecificClinicalResearch';
-const baseTestPattern: Map<
-  string,
-  Map<string, string>
-> = createBaseTestPattern_();
-function checkTest4() {
+import { getIndexFromScriptProperties_ } from './commonForTest';
+import { createTestPattern_ } from './createTestPattern';
+
+function checkTest() {
+  const index = getIndexFromScriptProperties_();
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     getSpreadsheet_();
-  checkTestMain_(spreadsheet, 3);
+  console.log(`Checking test pattern for index: ${index}`);
+  checkTestMain_(spreadsheet, index);
 }
-function checkTest3() {
-  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    getSpreadsheet_();
-  checkTestMain_(spreadsheet, 2);
-}
-function checkTest2() {
-  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    getSpreadsheet_();
-  checkTestMain_(spreadsheet, 1);
-}
-function checkTest1() {
-  const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
-    getSpreadsheet_();
-  checkTestMain_(spreadsheet, 0);
-}
-function setTest5() {
-  const testPattern = createTestDataSpecificClinicalResearch_();
-  const test: Map<string, string> = testPattern.get(testPatternKeys.get(4)!)!;
-  setQuotationRequestSheetValues_(test);
-}
-function setTest4() {
-  const testPattern = createTestDataSpecificClinicalResearch_();
-  const test: Map<string, string> = testPattern.get(testPatternKeys.get(3)!)!;
-  setQuotationRequestSheetValues_(test);
-}
-function setTest3() {
-  const test: Map<string, string> = getTargetTestPattern_(
-    baseTestPattern,
-    testPatternKeys.get(2)
-  );
-  setQuotationRequestSheetValues_(test);
-}
-function setTest2() {
-  const test: Map<string, string> = getTargetTestPattern_(
-    baseTestPattern,
-    testPatternKeys.get(1)
-  );
-  setQuotationRequestSheetValues_(test);
-}
-function setTest1() {
-  const test: Map<string, string> = getTargetTestPattern_(
-    baseTestPattern,
-    testPatternKeys.get(0)
-  );
-  setQuotationRequestSheetValues_(test);
+function setTest() {
+  const index = getIndexFromScriptProperties_() + 1;
+  console.log(`Setting test pattern for index: ${index}`);
+  const test: Map<string, string> | undefined = createTestPattern_(index);
+  if (!test) {
+    throw new Error(`Test pattern for index ${index} not found`);
+  }
+  setQuotationRequestSheetValues_(test, index);
 }

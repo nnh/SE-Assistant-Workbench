@@ -63,16 +63,17 @@ export function checkTotal1Sheet_(
     ['F47', 1],
     [
       'F50',
-      quotationRequestSheet.getRange('S2').getValue() === 'あり'
+      quotationRequestSheet.getRange('S2').getValue() === '設置・委託する'
         ? registrationMonth
         : 0,
     ],
     [
       'F51',
-      quotationRequestSheet.getRange('T2').getValue() === 'あり'
+      quotationRequestSheet.getRange('T2').getValue() === '設置・委託する'
         ? registrationMonth
         : 0,
     ],
+    ['F59', quotationRequestSheet.getRange('M2').getValue() === 'あり' ? 1 : 0],
     ['F61', 0],
     ['F62', 0],
     ['F63', 0],
@@ -97,7 +98,13 @@ export function checkTotal1Sheet_(
     ['F69', 0],
     ['F70', 0],
     ['F71', 0],
-    ['F79', quotationRequestSheet.getRange('R2').getValue() !== '' ? 1 : 0],
+    [
+      'F79',
+      quotationRequestSheet.getRange('R2').getValue() !== '' &&
+      quotationRequestSheet.getRange('R2').getValue() > 0
+        ? 1
+        : 0,
+    ],
     ['F81', 0],
     ['F82', 0],
     ['F83', 0],
@@ -144,10 +151,15 @@ export function checkTotal1Sheet_(
   total1CheckMap.set('F55', 0);
   total1CheckMap.set('F56', 0);
   total1CheckMap.set('F57', 0);
-  total1CheckMap.set('F59', 0);
-  total1CheckMap.set('F73', 0);
-  total1CheckMap.set('F74', 0);
-  const audit = quotationRequestSheet.getRange('Q2').getValue() !== '';
+  const crb: boolean =
+    quotationRequestSheet.getRange('L2').getValue() === 'あり';
+  total1CheckMap.set('F73', crb ? 1 : 0);
+  const crbYears =
+    crb && registrationMonth > 12 ? Math.ceil(registrationMonth / 12) : 0;
+  total1CheckMap.set('F74', crbYears);
+  const audit =
+    quotationRequestSheet.getRange('Q2').getValue() !== '' &&
+    quotationRequestSheet.getRange('Q2').getValue() > 0;
   total1CheckMap.set('F76', audit ? 2 : 0);
   total1CheckMap.set(
     'F77',

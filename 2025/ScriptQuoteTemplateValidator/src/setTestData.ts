@@ -17,6 +17,7 @@ import { execCopyTemplateSpreadsheetAndSaveId_ } from './copyTemplateSpreadsheet
 import {
   getSheetBySheetName_,
   quotationRequestSheetName,
+  testPatternIndexPropertyKey,
 } from './commonForTest';
 
 // 医師主導治験のみの項目
@@ -31,7 +32,8 @@ const investigatorInitiatedClinicalTrialItems = [
 
 const finalAnalysis = [['統計解析に必要な図表数', ['49', '100']]];
 export function setQuotationRequestSheetValues_(
-  targetTest: Map<string, string>
+  targetTest: Map<string, string>,
+  index = -1
 ) {
   const spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet =
     execCopyTemplateSpreadsheetAndSaveId_();
@@ -48,6 +50,10 @@ export function setQuotationRequestSheetValues_(
       quotationRequestSheet.getRange(2, col + 1).setValue(value);
     }
   }
+  PropertiesService.getScriptProperties().setProperty(
+    testPatternIndexPropertyKey,
+    index.toString()
+  );
 }
 export function getTargetTestPattern_(
   testPatternMap: Map<string, Map<string, string>>,
@@ -58,6 +64,5 @@ export function getTargetTestPattern_(
     throw new Error(`Key "${keyString}" not found in testPatternMap.`);
   }
   const targetTest: Map<string, string> = testPatternMap.get(keyString)!;
-
   return targetTest;
 }

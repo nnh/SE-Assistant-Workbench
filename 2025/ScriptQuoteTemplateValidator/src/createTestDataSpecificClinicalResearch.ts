@@ -15,20 +15,30 @@
  */
 import {
   exceptForObservationalStudyItems,
-  getBasePatternIndex0_,
+  createBaseTestPattern_,
   createArrayFromTwoItems_,
 } from './createTestPatternCommon';
 import {
-  testPatternKeys,
   trialTypeName,
   specificClinicalResearch,
+  testPatternKeys,
 } from './commonForTest';
-function getBasePatternIndex0SpecificClinicalResearch_(): Map<string, string> {
-  const basePattern = getBasePatternIndex0_();
+function getBasePatternIndex0SpecificClinicalResearch_(
+  index: number
+): Map<string, string> {
+  const basePatternMap = createBaseTestPattern_();
+  const baseIndex = index - 3;
+  const baseKey = testPatternKeys.get(baseIndex);
+  if (!baseKey) {
+    throw new Error(`Base pattern key not found for index ${baseIndex}`);
+  }
+  const basePattern = basePatternMap.get(baseKey)!;
   basePattern.set(trialTypeName, specificClinicalResearch);
   return basePattern;
 }
-export function createTestDataSpecificClinicalResearch_() {
+export function createTestDataSpecificClinicalResearch_(
+  index: number
+): Map<string, string> {
   // 特定臨床研究のみの項目
   const specificClinicalResearchItems: [string, string[]][] = [
     ['CRB申請', ['あり', 'なし']],
@@ -43,21 +53,15 @@ export function createTestDataSpecificClinicalResearch_() {
     [],
     []
   );
-  const pattern1: Map<string, string> =
-    getBasePatternIndex0SpecificClinicalResearch_();
-  pattern_ari.forEach(([key, value]) => {
-    pattern1.set(key, value);
+  const pattern =
+    index === 3 ? pattern_ari : index === 4 ? pattern_nashi : null;
+  if (!pattern) {
+    throw new Error(`Invalid index for specific clinical research: ${index}`);
+  }
+  const basePattern: Map<string, string> =
+    getBasePatternIndex0SpecificClinicalResearch_(index);
+  pattern.forEach(([key, value]) => {
+    basePattern.set(key, value);
   });
-  const pattern2: Map<string, string> =
-    getBasePatternIndex0SpecificClinicalResearch_();
-  pattern_nashi.forEach(([key, value]) => {
-    pattern2.set(key, value);
-  });
-  const keyNashi: string = testPatternKeys.get(3)!;
-  const keyAri: string = testPatternKeys.get(4)!;
-  const testPattern: Map<string, Map<string, string>> = new Map([
-    [keyAri, pattern1],
-    [keyNashi, pattern2],
-  ]);
-  return testPattern;
+  return basePattern;
 }

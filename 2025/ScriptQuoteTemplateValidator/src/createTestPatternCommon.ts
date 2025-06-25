@@ -19,6 +19,7 @@ import {
   observationalStudy,
   trialTypeName,
 } from './commonForTest';
+/*
 export function getBasePatternIndex0_(): Map<string, string> {
   const basePattern = createBaseTestPattern_();
   const key = testPatternKeys.get(0);
@@ -30,7 +31,7 @@ export function getBasePatternIndex0_(): Map<string, string> {
     throw new Error(`Base pattern for index 0 not found`);
   }
   return res;
-}
+}*/
 export function createBaseTestPattern_(): Map<string, Map<string, string>> {
   // 要素が1つのもの
   const singleValueItems: [string, string][] = [
