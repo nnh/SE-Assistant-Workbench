@@ -20,14 +20,6 @@ import {
   testPatternIndexPropertyKey,
 } from './commonForTest';
 
-// 医師主導治験のみの項目
-const investigatorInitiatedClinicalTrialItems = [
-  ['PMDA相談資料作成支援', ['あり', 'なし']],
-  ['症例検討会', ['あり', 'なし']],
-  ['治験薬管理', ['あり', 'なし']],
-  ['治験薬運搬', ['あり', 'なし']],
-];
-
 export function setQuotationRequestSheetValues_(
   targetTest: Map<string, string>,
   index: number

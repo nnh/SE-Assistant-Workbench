@@ -54,7 +54,7 @@ export function createTestDataSpecificClinicalResearch_(
     []
   );
   const pattern =
-    index === 3 ? pattern_ari : index === 4 ? pattern_nashi : null;
+    index === 4 ? pattern_nashi : index === 3 ? pattern_ari : null;
   if (!pattern) {
     throw new Error(`Invalid index for specific clinical research: ${index}`);
   }

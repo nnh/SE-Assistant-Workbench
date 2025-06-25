@@ -17,6 +17,7 @@ import { createBaseTestPattern_ } from './createTestPatternCommon';
 import { getTargetTestPattern_ } from './setTestData';
 import { testPatternKeys } from './commonForTest';
 import { createTestDataSpecificClinicalResearch_ } from './createTestDataSpecificClinicalResearch';
+import { createTestInvestigatorInitiatedClinicalTrial_ } from './createTestInvestigatorInitiatedClinicalTrial';
 
 export function createTestPattern_(testPatternIndex: number) {
   if (!testPatternKeys.has(testPatternIndex)) {
@@ -34,5 +35,9 @@ export function createTestPattern_(testPatternIndex: number) {
   } else if (testPatternIndex === 3 || testPatternIndex === 4) {
     // 特定臨床研究
     return createTestDataSpecificClinicalResearch_(testPatternIndex);
+  } else if (testPatternIndex >= 5 && testPatternIndex <= 7) {
+    // 医師主導治験
+    return createTestInvestigatorInitiatedClinicalTrial_(testPatternIndex);
   }
+  throw new Error(`Invalid test pattern index: ${testPatternIndex}`);
 }
