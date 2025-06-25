@@ -63,6 +63,7 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
     ['原資', ['公的資金（税金由来）', coefficients15]],
     ['CDISC対応', ['あり', 'なし']],
     ['研究協力費、負担軽減費配分管理', ['あり', 'なし']],
+    ['最終解析業務の依頼', ['あり', 'なし']],
   ];
   const [pattern_ari, pattern_nashi] = createArrayFromTwoItems_(
     multiValueItems,
@@ -79,6 +80,15 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
     pattern_ari,
     pattern_ari
   );
+  // 最終解析業務の依頼ありの場合図表数を追加する
+  const finalAnalysis: [string, string[]][] = [
+    ['統計解析に必要な図表数', ['49', '100']],
+  ];
+  const [finalAnalysis1, finalAnalysis2] = createArrayFromTwoItems_(
+    finalAnalysis,
+    interim1,
+    interim1
+  );
   // 研究協力費、負担軽減費配分管理ありの場合のテストをテストパターン2に追加
   const researchGrant = [
     ['研究協力費、負担軽減費', '40000000'],
@@ -87,12 +97,12 @@ export function createBaseTestPattern_(): Map<string, Map<string, string>> {
     ['症例最終報告書提出毎の支払', 'あり'],
   ];
   researchGrant.forEach(([key, value]) => {
-    interim1.push([key, value]);
+    finalAnalysis1.push([key, value]);
   });
   const baseTestPattern: Map<string, Map<string, string>> = new Map([
     [testPatternKeys.get(0)!, new Map(pattern_nashi)],
-    [testPatternKeys.get(1)!, new Map(interim1)],
-    [testPatternKeys.get(2)!, new Map(interim2)],
+    [testPatternKeys.get(1)!, new Map(finalAnalysis1)],
+    [testPatternKeys.get(2)!, new Map(finalAnalysis2)],
   ]);
 
   return baseTestPattern;

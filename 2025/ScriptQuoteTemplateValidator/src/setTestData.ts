@@ -26,11 +26,8 @@ const investigatorInitiatedClinicalTrialItems = [
   ['症例検討会', ['あり', 'なし']],
   ['治験薬管理', ['あり', 'なし']],
   ['治験薬運搬', ['あり', 'なし']],
-  // 医師主導治験の場合のみ特別な処理をしているのでここで対応
-  ['最終解析業務の依頼', ['あり', 'なし']],
 ];
 
-const finalAnalysis = [['統計解析に必要な図表数', ['49', '100']]];
 export function setQuotationRequestSheetValues_(
   targetTest: Map<string, string>,
   index: number

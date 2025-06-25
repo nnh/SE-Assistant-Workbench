@@ -19,6 +19,8 @@ import {
   coefficients15,
   observationalStudy,
   specificClinicalResearch,
+  interventionalStudy,
+  investigatorInitiatedClinicalTrial,
 } from './commonForTest';
 export function checkTotal1Sheet_(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet
@@ -125,6 +127,9 @@ export function checkTotal1Sheet_(
     quotationRequestSheet.getRange('AN2').getValue() === coefficients15;
   const specificClinicalResearchFlag: boolean =
     trialSheet.getRange('B27').getValue() === specificClinicalResearch;
+  const investigatorInitiatedClinicalTrialFlag: boolean =
+    trialSheet.getRange('B27').getValue() ===
+    investigatorInitiatedClinicalTrial;
   total1CheckMap.set('F15', officeSupport ? setupMonth : 0);
   total1CheckMap.set('F17', 0);
   total1CheckMap.set('F18', 0);
@@ -146,11 +151,23 @@ export function checkTotal1Sheet_(
   total1CheckMap.set('F31', 0);
   total1CheckMap.set('F45', 1);
   total1CheckMap.set('F48', 0);
-  total1CheckMap.set('F53', 0);
+  const finalAnalysis: boolean =
+    quotationRequestSheet.getRange('AP2').getValue() === 'あり';
+  total1CheckMap.set('F53', finalAnalysis ? 1 : 0);
   total1CheckMap.set('F54', 0);
+  const inputFinalAnalysisTables = quotationRequestSheet
+    .getRange('AF2')
+    .getValue();
   total1CheckMap.set('F55', 0);
-  total1CheckMap.set('F56', 0);
-  total1CheckMap.set('F57', 0);
+  const finalAnalysisTables: number = finalAnalysis
+    ? investigatorInitiatedClinicalTrialFlag
+      ? inputFinalAnalysisTables < 50
+        ? 50
+        : inputFinalAnalysisTables
+      : inputFinalAnalysisTables
+    : 0;
+  total1CheckMap.set('F56', finalAnalysisTables);
+  total1CheckMap.set('F57', finalAnalysis ? 1 : 0);
   const crb: boolean =
     quotationRequestSheet.getRange('L2').getValue() === 'あり';
   total1CheckMap.set('F73', crb ? 1 : 0);
