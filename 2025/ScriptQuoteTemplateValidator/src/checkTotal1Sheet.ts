@@ -50,6 +50,7 @@ export function checkTotal1Sheet_(
       : 3;
   const totalMonth: number = trialSheet.getRange('F40').getValue();
   const registrationMonth: number = totalMonth - setupMonth - closingMonth;
+  const registrationYears: number = Math.ceil(registrationMonth / 12);
   const caseCount: number = trialSheet.getRange('B28').getValue();
   const facilityCount: number = trialSheet.getRange('B29').getValue();
   const investigatorInitiatedClinicalTrialFlag: boolean =
@@ -70,8 +71,7 @@ export function checkTotal1Sheet_(
       quotationRequestSheet.getRange('P2').getValue() > 0);
   const crb: boolean =
     quotationRequestSheet.getRange('L2').getValue() === 'あり';
-  const crbYears =
-    crb && registrationMonth > 12 ? Math.ceil(registrationMonth / 12) : 0;
+  const crbYears: number = crb && registrationYears > 1 ? registrationYears : 0;
   const audit =
     quotationRequestSheet.getRange('Q2').getValue() !== '' &&
     quotationRequestSheet.getRange('Q2').getValue() > 0;
@@ -183,7 +183,7 @@ export function checkTotal1Sheet_(
     [
       'F82',
       quotationRequestSheet.getRange('K2').getValue() === 'あり'
-        ? facilityCount
+        ? facilityCount * registrationYears
         : 0,
     ],
     ['F83', quotationRequestSheet.getRange('J2').getValue() === 'あり' ? 1 : 0],
