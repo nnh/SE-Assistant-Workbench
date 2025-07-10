@@ -209,83 +209,9 @@ CompareXmlAndExcel <- function(xml_table, excel_table, domain) {
             ))
         }
         if (xml_table[row, "Label"] != excel_table[row, "Variable.Label"]) {
-            if ((domain == "CM" && row == 9) ||
-                (domain == "CE" && row == 6) ||
-                (domain == "CE" && row == 8)) {
-                if (tolower(xml_table[row, "Label"]) == tolower(excel_table[row, "Variable.Label"])) {
-                    next
-                }
-            }
-            if (domain == "LB" && row == 6) {
-                xml_label <- xml_table[row, "Label"] %>% as.character()
-                excel_label <- excel_table[row, "Variable.Label"] %>% as.character()
-                excel_label_trimmed <- substr(excel_label, 1, nchar(excel_label) - 1)
-                if (xml_label == excel_label_trimmed) {
-                    next
-                }
-            }
-            if (domain == "RS" && row == 6 && xml_table[row, "Label"] == "Link Group" && excel_table[row, "Variable.Label"] == "Link Group ID") {
-                message("RSデータセットの6行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "RS" && row == 7 && xml_table[row, "Label"] == "Response Assessment Short Name" && excel_table[row, "Variable.Label"] == "Assessment Short Name") {
-                message("RSデータセットの7行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "RS" && row == 8 && xml_table[row, "Label"] == "Response Assessment Name" && excel_table[row, "Variable.Label"] == "Assessment Name") {
-                message("RSデータセットの8行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "RS" && row == 9 && xml_table[row, "Label"] == "Category for Response Assessment" && excel_table[row, "Variable.Label"] == "Category for Assessment") {
-                message("RSデータセットの9行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "RS" && row == 10 && xml_table[row, "Label"] == "Response Assessment Original Result" && excel_table[row, "Variable.Label"] == "Result or Finding in Original Units") {
-                message("RSデータセットの10行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "RS" && row == 18 && xml_table[row, "Label"] == "Date/Time of Response Assessment" && excel_table[row, "Variable.Label"] == "Date/Time of Assessment") {
-                message("RSデータセットの18行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TU" && row == 7 && xml_table[row, "Label"] == "Tumor Identification Short Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Short Name") {
-                message("TUデータセットの7行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TU" && row == 8 && xml_table[row, "Label"] == "Tumor Identification Test Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Test Name") {
-                message("TUデータセットの8行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TU" && row == 9 && xml_table[row, "Label"] == "Tumor Identification Result" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Result") {
-                message("TUデータセットの9行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TU" && row == 11 && xml_table[row, "Label"] == "Location of the Tumor" && excel_table[row, "Variable.Label"] == "Location of the Tumor/Lesion") {
-                message("TUデータセットの11行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TU" && row == 20 && xml_table[row, "Label"] == "Date/Time of Tumor Identification" && excel_table[row, "Variable.Label"] == "Date/Time of Tumor/Lesion Identification") {
-                message("TUデータセットの20行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TR" && row == 9 && xml_table[row, "Label"] == "Tumor Assessment Short Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion Assessment Short Name") {
-                message("TRデータセットの9行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TR" && row == 10 && xml_table[row, "Label"] == "Tumor Assessment Test Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion Assessment Test Name") {
-                message("TRデータセットの10行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TR" && row == 17 && xml_table[row, "Label"] == "Method used to Identify the Tumor" && excel_table[row, "Variable.Label"] == "Method Used to Identify the Tumor/Lesion") {
-                message("TRデータセットの17行目のラベルは異なっています。")
-                next
-            }
-            if (domain == "TR" && row == 23 && xml_table[row, "Label"] == "Date/Time of Tumor Measurement" && excel_table[row, "Variable.Label"] == "Date/Time of Tumor/Lesion Measurement") {
-                message("TRデータセットの17行目のラベルは異なっています。")
-                next
-            }
             stop(paste0(
                 "XMLとExcelの", domain, "データセットの変数ラベルが一致しません: 行", row, "\n",
+                "変数名: ", xml_table[row, "Variable"], "\n",
                 "XML  : '", xml_table[row, "Label"], "'\n",
                 "Excel: '", excel_table[row, "Variable.Label"], "'"
             ))
@@ -349,6 +275,14 @@ CompareXmlAndExcel <- function(xml_table, excel_table, domain) {
                     message("RSデータセットの4行目は目視確認が必要です。")
                     next
                 }
+                if (domain == "RS" && row == 10 && xml_derivation == "" && excel_spec == "RS.RSORRES, QS.QSORRES") {
+                    message("RSデータセットの10行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "RS" && row == 18 && xml_derivation == "" && excel_spec == "RS.RSDTC, QS.QSDTC") {
+                    message("RSデータセットの18行目は目視確認が必要です。")
+                    next
+                }
                 if (domain == "TR" && row == 4 && xml_derivation == "Sequential number identifying records within each STUDYID in the domain." && excel_spec == "Renumbering by USUBJID") {
                     message("TRデータセットの4行目は目視確認が必要です。")
                     next
@@ -367,12 +301,6 @@ CompareXmlAndExcel <- function(xml_table, excel_table, domain) {
     }
     message(paste0("XMLとExcelの", domain, "データセットは一致しています。"))
 }
-dummy <- domain_names %>% map(~ {
-    domain <- .x
-    xml_table <- tables_list[[domain]]$XML
-    excel_table <- tables_list[[domain]]$Excel
-    CompareXmlAndExcel(xml_table, excel_table, domain)
-})
 
 
 # --- ステップ2: DatasetとKeysを抽出する新し い関数 ---
@@ -457,29 +385,40 @@ correct_dataset_keys <- tibble::tribble(
     "TU",     "STUDYID, USUBJID, TUTESTCD, TULNKID, TUEVAL, VISITNUM",
     "VS",     "STUDYID, USUBJID, VSTESTCD, VISITNUM, VSTPTNUM"
 )
+#' @title 2つのキー定義データフレームを比較し、結果を報告する関数
+#' @param correct_df 正解データとなるデータフレーム
+#' @param extracted_df 比較対象となるデータフレーム
+#' @return コンソールに比較結果を出力する
+compare_and_report_keys <- function(correct_df, extracted_df) {
+    cat("### 正解データとXML抽出結果の比較\n\n")
+
+    # 比較前にDataset名でソート
+    correct_sorted <- correct_df %>% arrange(Dataset)
+    extracted_sorted <- extracted_df %>% arrange(Dataset)
+
+    # waldo::compare を使って比較
+    comparison_result <- waldo::compare(
+        correct_sorted,
+        extracted_sorted,
+        x_arg = "正解データ",
+        y_arg = "XML抽出データ"
+    )
+
+    # 比較結果を表示
+    if (length(comparison_result) == 0) {
+        cat("✅ 比較の結果、2つのテーブルは完全に一致しました。\n")
+    } else {
+        cat("⚠️ 比較の結果、差異が見つかりました:\n\n")
+        print(comparison_result)
+    }
+}
+dummy <- domain_names %>% map(~ {
+    domain <- .x
+    xml_table <- tables_list[[domain]]$XML
+    excel_table <- tables_list[[domain]]$Excel
+    CompareXmlAndExcel(xml_table, excel_table, domain)
+})
+
 sdtm_datasets_table <- extract_dataset_keys(define_xml, ns)
 
-# ステップ3: 2つのデータフレームの比較
-# ---------------------------------------------------
-cat("### 正解データとXML抽出結果の比較\n\n")
-
-# 比較前に、行の順序が異なっていても正しく比較できるよう、Dataset名でソートします
-correct_sorted <- correct_dataset_keys %>% arrange(Dataset)
-extracted_sorted <- sdtm_datasets_table %>% arrange(Dataset)
-
-# waldo::compare を使って比較
-comparison_result <- waldo::compare(
-    correct_sorted,
-    extracted_sorted,
-    # xとyのオブジェクト名を指定すると、出力が分かりやすくなります
-    x_arg = "正解データ",
-    y_arg = "XML抽出データ"
-)
-
-# 比較結果を表示
-if (length(comparison_result) == 0) {
-    cat("✅ 比較の結果、2つのテーブルは完全に一致しました。\n")
-} else {
-    cat("⚠️ 比較の結果、差異が見つかりました:\n\n")
-    print(comparison_result)
-}
+compare_and_report_keys(correct_dataset_keys, sdtm_datasets_table)
