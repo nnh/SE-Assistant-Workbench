@@ -1,7 +1,8 @@
 library(xml2)
 library(tidyverse)
 library(openxlsx)
-
+# install.packages("waldo")
+library(waldo)
 # ステップ2: XMLファイルの読み込みと名前空間の設定
 # ---------------------------------------------------
 # ファイル名を指定してください
@@ -372,3 +373,113 @@ dummy <- domain_names %>% map(~ {
     excel_table <- tables_list[[domain]]$Excel
     CompareXmlAndExcel(xml_table, excel_table, domain)
 })
+
+
+# --- ステップ2: DatasetとKeysを抽出する新し い関数 ---
+
+#' @title データセットとそのキー変数を抽出する関数
+#' @param xml_doc パース済みのXMLオブジェクト
+#' @param namespaces XMLの名前空間リスト
+#' @return DatasetとKeysを含むデータフレーム
+extract_dataset_keys <- function(xml_doc, namespaces) {
+    # 効率化のため、すべてのItemDef（変数定義）をOIDをキーとしてマップ化
+    item_def_map <- xml_find_all(xml_doc, ".//odm:ItemDef", namespaces) %>%
+        set_names(xml_attr(., "OID"))
+
+    # すべてのデータセット定義 (ItemGroupDef) を取得
+    item_group_nodes <- xml_find_all(xml_doc, ".//odm:ItemGroupDef", namespaces)
+
+    # 各データセットから情報を抽出し、データフレームに変換
+    keys_df <- item_group_nodes %>%
+        map_dfr(~ {
+            dataset_node <- .x
+
+            # データセット名を取得
+            dataset_name <- xml_attr(dataset_node, "Name")
+
+            # KeySequence属性を持つすべてのItemRef（キー変数）を検索
+            key_refs <- xml_find_all(dataset_node, "./odm:ItemRef[@KeySequence]", ns = namespaces)
+
+            # キーが見つかった場合の処理
+            if (length(key_refs) > 0) {
+                # KeySequenceの順序で並べ替えるために、一時的なデータフレームを作成
+                keys_info <- key_refs %>%
+                    map_dfr(~ tibble(
+                        Sequence = as.integer(xml_attr(.x, "KeySequence")),
+                        ItemOID = xml_attr(.x, "ItemOID")
+                    )) %>%
+                    arrange(Sequence)
+
+                # マップを使ってItemOIDから変数名を取得
+                key_variable_names <- map_chr(keys_info$ItemOID, ~ {
+                    if (.x %in% names(item_def_map)) {
+                        xml_attr(item_def_map[[.x]], "Name")
+                    } else {
+                        NA_character_ # マップにない場合 (通常は発生しない)
+                    }
+                })
+
+                # 変数名をカンマ区切りの文字列に結合
+                keys_string <- paste(key_variable_names, collapse = ", ")
+            } else {
+                # キーが見つからなかった場合
+                keys_string <- NA_character_
+            }
+
+            # このデータセットの結果を1行のtibbleとして返す
+            tibble(
+                Dataset = dataset_name,
+                Keys = keys_string
+            )
+        })
+
+    return(keys_df)
+}
+# keyの確認
+# XMLから抽出したデータセットとキー情報を定数として定義
+correct_dataset_keys <- tibble::tribble(
+    ~Dataset, ~Keys,
+    "DM",     "STUDYID, USUBJID",
+    "CM",     "STUDYID, USUBJID, CMTRT, CMSTDTC",
+    "EC",     "STUDYID, USUBJID, ECTRT, ECMOOD, ECSTDTC",
+    "PR",     "STUDYID, USUBJID, PRTRT, PRSTDTC",
+    "AE",     "STUDYID, USUBJID, AEDECOD, AESTDTC",
+    "CE",     "STUDYID, USUBJID, CETERM",
+    "DS",     "STUDYID, USUBJID, DSSTDTC",
+    "MH",     "STUDYID, USUBJID, MHDECOD",
+    "EG",     "STUDYID, USUBJID, EGTESTCD, VISITNUM",
+    "IE",     "STUDYID, USUBJID, IETESTCD",
+    "LB",     "STUDYID, USUBJID, LBTESTCD, LBSPEC, VISITNUM",
+    "MI",     "STUDYID, USUBJID, MITESTCD, VISITNUM, MIDTC",
+    "QS",     "STUDYID, USUBJID, QSCAT, QSTESTCD, VISITNUM",
+    "RS",     "STUDYID, USUBJID, RSTESTCD, RSCAT, RSEVAL, VISITNUM",
+    "TR",     "STUDYID, USUBJID, TRTESTCD, TRLNKID, TREVAL, VISITNUM",
+    "TU",     "STUDYID, USUBJID, TUTESTCD, TULNKID, TUEVAL, VISITNUM",
+    "VS",     "STUDYID, USUBJID, VSTESTCD, VISITNUM, VSTPTNUM"
+)
+sdtm_datasets_table <- extract_dataset_keys(define_xml, ns)
+
+# ステップ3: 2つのデータフレームの比較
+# ---------------------------------------------------
+cat("### 正解データとXML抽出結果の比較\n\n")
+
+# 比較前に、行の順序が異なっていても正しく比較できるよう、Dataset名でソートします
+correct_sorted <- correct_dataset_keys %>% arrange(Dataset)
+extracted_sorted <- sdtm_datasets_table %>% arrange(Dataset)
+
+# waldo::compare を使って比較
+comparison_result <- waldo::compare(
+    correct_sorted,
+    extracted_sorted,
+    # xとyのオブジェクト名を指定すると、出力が分かりやすくなります
+    x_arg = "正解データ",
+    y_arg = "XML抽出データ"
+)
+
+# 比較結果を表示
+if (length(comparison_result) == 0) {
+    cat("✅ 比較の結果、2つのテーブルは完全に一致しました。\n")
+} else {
+    cat("⚠️ 比較の結果、差異が見つかりました:\n\n")
+    print(comparison_result)
+}
