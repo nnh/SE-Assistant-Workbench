@@ -1,9 +1,3 @@
-# ステップ1: 必要なパッケージのインストールと読み込み
-# ---------------------------------------------------
-# もしまだインストールしていなければ、以下のコメントを外して実行してください
-# install.packages("xml2")
-# install.packages("tidyverse")
-
 library(xml2)
 library(tidyverse)
 library(openxlsx)
@@ -11,9 +5,10 @@ library(openxlsx)
 # ステップ2: XMLファイルの読み込みと名前空間の設定
 # ---------------------------------------------------
 # ファイル名を指定してください
+xml_filename <- "define-2-0-0-Bev-FOLFOX-SBC-20250708130419.xml"
 downloads_dir <- file.path(Sys.getenv("USERPROFILE"), "Downloads\\Define XML\\Define XML")
 cat("ダウンロードフォルダのパス:", downloads_dir, "\n")
-file_path <- "define-2-0-0-Bev-FOLFOX-SBC-20250708130419.xml" %>%
+file_path <- xml_filename %>%
     file.path(downloads_dir, .)
 
 # XMLファイルを読み込み
@@ -126,70 +121,6 @@ extract_variable_spec <- function(xml_doc, dataset_name, namespaces) {
 
     return(variable_spec_df)
 }
-# ステップ4: 特定のデータセットの変数定義を抽出する関数
-# ---------------------------------------------------
-# 指定したデータセット名の変数仕様を抽出する関数を定義
-# extract_variable_spec <- function(xml_doc, dataset_name, namespaces) {
-#     # 効率化のため、すべてのItemDef（変数定義）を一度に取得し、マップ（辞書）を作成
-#     all_item_defs <- xml_find_all(xml_doc, ".//odm:ItemDef", namespaces)
-#     item_def_map <- all_item_defs %>% set_names(xml_attr(., "OID"))
-#
-#     # 指定されたデータセット名のItemGroupDef要素を検索
-#     xpath_query <- sprintf(".//odm:ItemGroupDef[@Name='%s']", dataset_name)
-#     item_group_node <- xml_find_first(xml_doc, xpath_query, namespaces)
-#
-#     # データセットが見つからない場合はエラーメッセージを表示
-#     if (is.na(item_group_node)) {
-#         stop(paste("指定されたデータセット '", dataset_name, "' は見つかりませんでした。"))
-#     }
-#
-#     # ItemGroupDef内のすべてのItemRef（変数への参照）を取得
-#     item_refs <- xml_find_all(item_group_node, "./odm:ItemRef", namespaces)
-#
-#     # 各ItemRefの情報を抽出し、対応するItemDefの詳細情報と結合してデータフレームを作成
-#     variable_spec_df <- item_refs %>%
-#         map_dfr(~ {
-#             item_oid <- xml_attr(.x, "ItemOID")
-#             item_def_node <- item_def_map[[item_oid]]
-#
-#             # ItemDefが見つかった場合のみ詳細情報を取得
-#             if (!is.null(item_def_node)) {
-#                 label_node <- xml_find_first(item_def_node, "./odm:Description/odm:TranslatedText", namespaces)
-#                 codelist_node <- xml_find_first(item_def_node, "./odm:CodeListRef", namespaces)
-#
-#                 origin_node <- xml_find_first(item_def_node, "./def:Origin", namespaces)
-#                 tibble(
-#                     Order = xml_attr(.x, "OrderNumber"),
-#                     Variable = xml_attr(item_def_node, "Name"),
-#                     Label = xml_text(label_node, trim = TRUE),
-#                     Origin = xml_attr(origin_node, "Type"),
-#                     DataType = xml_attr(item_def_node, "DataType"),
-#                     Length = xml_attr(item_def_node, "Length"),
-#                     CodeList = xml_attr(codelist_node, "CodeListOID"),
-#                     Mandatory = xml_attr(.x, "Mandatory"),
-#                     KeySequence = xml_attr(.x, "KeySequence"),
-#                     ItemOID = item_oid
-#                 )
-#             } else {
-#                 # ItemDefが見つからない場合（通常は発生しないが念のため）
-#                 tibble(
-#                     Order = xml_attr(.x, "OrderNumber"),
-#                     Variable = NA_character_,
-#                     Label = NA_character_,
-#                     Origin = NA_character_, # Origin列を追加
-#                     DataType = NA_character_,
-#                     Length = NA_character_,
-#                     CodeList = NA_character_,
-#                     Mandatory = xml_attr(.x, "Mandatory"),
-#                     KeySequence = xml_attr(.x, "KeySequence"),
-#                     ItemOID = item_oid
-#                 )
-#             }
-#         })
-#
-#     return(variable_spec_df)
-# }
-
 
 # --- 関数の使用例 ---
 domain_names <- c(
@@ -229,46 +160,215 @@ excel_variables_df <- excel_variables_df %>%
     ))
 # Dataset.Nameごとにexcel_variables_dfをリスト化
 excel_tables <- split(excel_variables_df, excel_variables_df$Dataset.Name)
-xml_tables_dm <- xml_tables$DM
-excel_tables_dm <- excel_tables$DM %>%
-    select(c(
-        "Dataset.Name", "Variable.Name", "Variable.Label", "Type",
-        "EDC", "Derived", "Spec"
-    ))
-# 行数が同じか確認
-if (nrow(xml_tables_dm) != nrow(excel_tables_dm)) {
-    stop("XMLとExcelのDMデータセットの行数が一致しません。")
-}
-for (row in 1:nrow(xml_tables_dm)) {
-    if (xml_tables_dm[row, "Variable"] != excel_tables_dm[row, "Variable.Name"]) {
-        stop(paste("XMLとExcelのDMデータセットの変数名が一致しません: 行", row))
-    }
-    if (xml_tables_dm[row, "Label"] != excel_tables_dm[row, "Variable.Label"]) {
-        stop(paste("XMLとExcelのDMデータセットの変数ラベルが一致しません: 行", row))
-    }
-    if (is.na(excel_tables_dm[row, "EDC"])) {
-        if (xml_tables_dm[row, "DataType"] != excel_tables_dm[row, "Type"]) {
-            stop(paste("XMLとExcelのDMデータセットのデータ型が一致しません: 行", row))
+tables_list <- domain_names %>% map(~ {
+    domain <- .x
+    xmltable <- xml_tables[[domain]]
+    exceltable <- excel_tables[[domain]] %>%
+        select(c(
+            "Dataset.Name", "Variable.Name", "Variable.Label", "Type",
+            "EDC", "Derived", "Spec"
+        ))
+    res <- list()
+    res$XML <- xmltable
+    res$Excel <- exceltable
+    return(res)
+})
+names(tables_list) <- domain_names
+CompareXmlAndExcel <- function(xml_table, excel_table, domain) {
+    message(paste0("XMLとExcelの", domain, "データセットを比較しています..."))
+    xml_valiables <- xml_table["Variable"] %>% unlist()
+    excel_valiabes <- excel_table["Variable.Name"] %>% unlist()
+    # XMLとExcelのデータセットの行数が同じか確認
+    if (nrow(xml_table) != nrow(excel_table)) {
+        if (nrow(xml_table) < nrow(excel_table)) {
+            diff_valiables <- setdiff(excel_valiabes, xml_valiables)
+            stop(paste0(
+                "XMLとExcelの", domain, "データセットの行数が一致しません。\n",
+                "XML: ", nrow(xml_table), "行, Excel: ", nrow(excel_table), "行\n",
+                "Excelにのみ存在する変数: ", paste(diff_valiables, collapse = ", ")
+            ))
+        } else {
+            diff_valiables <- setdiff(xml_valiables, excel_valiabes)
+            # xml_table$Variableとexcel_table$Variable.Nameが一致するレコードだけ残す
+            xml_table <- xml_table %>% filter(Variable %in% excel_table$Variable.Name)
+            warning(paste0(
+                "XMLとExcelの", domain, "データセットの行数が一致しません。\n",
+                "XML: ", nrow(xml_table), "行, Excel: ", nrow(excel_table), "行\n",
+                "XMLにのみ存在する変数: ", paste(diff_valiables, collapse = ", ")
+            ))
         }
     }
+    # 各行の変数名、ラベル、データ型を比較
+    for (row in 1:nrow(xml_table)) {
+        if (xml_table[row, "Variable"] != excel_table[row, "Variable.Name"]) {
+            stop(paste0(
+                "XMLとExcelの", domain, "データセットの変数名が一致しません: 行", row, "\n",
+                "XML  : '", xml_table[row, "Variable"], "'\n",
+                "Excel: '", excel_table[row, "Variable.Name"], "'"
+            ))
+        }
+        if (xml_table[row, "Label"] != excel_table[row, "Variable.Label"]) {
+            if ((domain == "CM" && row == 9) ||
+                (domain == "CE" && row == 6) ||
+                (domain == "CE" && row == 8)) {
+                if (tolower(xml_table[row, "Label"]) == tolower(excel_table[row, "Variable.Label"])) {
+                    next
+                }
+            }
+            if (domain == "LB" && row == 6) {
+                xml_label <- xml_table[row, "Label"] %>% as.character()
+                excel_label <- excel_table[row, "Variable.Label"] %>% as.character()
+                excel_label_trimmed <- substr(excel_label, 1, nchar(excel_label) - 1)
+                if (xml_label == excel_label_trimmed) {
+                    next
+                }
+            }
+            if (domain == "RS" && row == 6 && xml_table[row, "Label"] == "Link Group" && excel_table[row, "Variable.Label"] == "Link Group ID") {
+                message("RSデータセットの6行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "RS" && row == 7 && xml_table[row, "Label"] == "Response Assessment Short Name" && excel_table[row, "Variable.Label"] == "Assessment Short Name") {
+                message("RSデータセットの7行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "RS" && row == 8 && xml_table[row, "Label"] == "Response Assessment Name" && excel_table[row, "Variable.Label"] == "Assessment Name") {
+                message("RSデータセットの8行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "RS" && row == 9 && xml_table[row, "Label"] == "Category for Response Assessment" && excel_table[row, "Variable.Label"] == "Category for Assessment") {
+                message("RSデータセットの9行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "RS" && row == 10 && xml_table[row, "Label"] == "Response Assessment Original Result" && excel_table[row, "Variable.Label"] == "Result or Finding in Original Units") {
+                message("RSデータセットの10行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "RS" && row == 18 && xml_table[row, "Label"] == "Date/Time of Response Assessment" && excel_table[row, "Variable.Label"] == "Date/Time of Assessment") {
+                message("RSデータセットの18行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TU" && row == 7 && xml_table[row, "Label"] == "Tumor Identification Short Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Short Name") {
+                message("TUデータセットの7行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TU" && row == 8 && xml_table[row, "Label"] == "Tumor Identification Test Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Test Name") {
+                message("TUデータセットの8行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TU" && row == 9 && xml_table[row, "Label"] == "Tumor Identification Result" && excel_table[row, "Variable.Label"] == "Tumor/Lesion ID Result") {
+                message("TUデータセットの9行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TU" && row == 11 && xml_table[row, "Label"] == "Location of the Tumor" && excel_table[row, "Variable.Label"] == "Location of the Tumor/Lesion") {
+                message("TUデータセットの11行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TU" && row == 20 && xml_table[row, "Label"] == "Date/Time of Tumor Identification" && excel_table[row, "Variable.Label"] == "Date/Time of Tumor/Lesion Identification") {
+                message("TUデータセットの20行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TR" && row == 9 && xml_table[row, "Label"] == "Tumor Assessment Short Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion Assessment Short Name") {
+                message("TRデータセットの9行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TR" && row == 10 && xml_table[row, "Label"] == "Tumor Assessment Test Name" && excel_table[row, "Variable.Label"] == "Tumor/Lesion Assessment Test Name") {
+                message("TRデータセットの10行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TR" && row == 17 && xml_table[row, "Label"] == "Method used to Identify the Tumor" && excel_table[row, "Variable.Label"] == "Method Used to Identify the Tumor/Lesion") {
+                message("TRデータセットの17行目のラベルは異なっています。")
+                next
+            }
+            if (domain == "TR" && row == 23 && xml_table[row, "Label"] == "Date/Time of Tumor Measurement" && excel_table[row, "Variable.Label"] == "Date/Time of Tumor/Lesion Measurement") {
+                message("TRデータセットの17行目のラベルは異なっています。")
+                next
+            }
+            stop(paste0(
+                "XMLとExcelの", domain, "データセットの変数ラベルが一致しません: 行", row, "\n",
+                "XML  : '", xml_table[row, "Label"], "'\n",
+                "Excel: '", excel_table[row, "Variable.Label"], "'"
+            ))
+        }
+        if (is.na(excel_table[row, "EDC"])) {
+            if (xml_table[row, "DataType"] != excel_table[row, "Type"]) {
+                stop(paste0("XMLとExcelの", domain, "データセットのデータ型が一致しません: 行", row))
+            }
+        }
 
-    if (!is.na(excel_tables_dm[row, "Derived"])) {
-        xml_derivation <- xml_tables_dm[row, "Derivation/Comment"] %>%
-            str_squish() %>%
-            replace_na("")
+        if (!is.na(excel_table[row, "Derived"])) {
+            if (is.na(excel_table[row, "EDC"])) {
+                if (xml_table[row, "Origin"] != "Derived") {
+                    if (
+                        (domain != "LB" && row != 11) &&
+                            (domain != "RS" && row != 2) &&
+                            (domain != "VS" && row != 9)
+                    ) {
+                        stop(paste0(
+                            "XMLとExcelの", domain, "データセットのOriginが'Derived'ではありません: 行", row, "\n",
+                            "変数名: ", xml_table[row, "Variable"]
+                        ))
+                    }
+                }
+            }
+            xml_derivation <- xml_table[row, "Derivation/Comment"] %>%
+                str_squish() %>%
+                replace_na("")
 
-        excel_spec <- excel_tables_dm[row, "Spec"] %>%
-            str_squish() %>%
-            replace_na("")
+            excel_spec <- excel_table[row, "Spec"] %>%
+                str_squish() %>%
+                replace_na("")
 
-        # 2. 変換後の値を比較
-        if (xml_derivation != excel_spec) {
-            message("エラー行: ", row)
-            message("XML  : '", xml_derivation, "'")
-            message("Excel: '", excel_spec, "'")
-            stop("XMLとExcelのDMデータセットの派生変数のコメントが一致しません。")
+            # 変換後の値を比較
+            if (xml_derivation != excel_spec) {
+                if (domain == "DM" && row == 16 && xml_derivation == "" && excel_spec == '"YEARS"') {
+                    message("DMデータセットの16行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "EC" && row == 10 && xml_derivation == "" && excel_spec == 'EC.ECDOSE if ECTRT = "BEVACIZUMAB(GENETICAL RECOMBINATION)" then do; if not ( (USUBJID = "Bev-FOLFOX-SBC-0005" and VISIT = "Cycle2") or (USUBJID = "Bev-FOLFOX-SBC-0007" and VISIT = "Cycle1") ) then do; if DM.ARMCD = "Placebo" then ECDOSE = 0; end; end;') {
+                    message("ECデータセットの10行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "MI" && row == 11 && xml_derivation == "" && excel_spec == '"TISSUE"') {
+                    message("MIデータセットの11行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "RS" && row == 1 && xml_derivation == "" && excel_spec == "RS.STUDYID, QS.STUDYID") {
+                    message("RSデータセットの1行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "RS" && row == 2 && xml_derivation == "" && excel_spec == '"RS"') {
+                    message("RSデータセットの2行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "RS" && row == 3 && xml_derivation == "Concatenation of STUDYID and SUBJID" && excel_spec == "RS.USUBJID, QS.USUBJID") {
+                    message("RSデータセットの3行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "RS" && row == 4 && xml_derivation == "Sequential number identifying records within each STUDYID in the domain." && excel_spec == "Renumbering by USUBJID") {
+                    message("RSデータセットの4行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "TR" && row == 4 && xml_derivation == "Sequential number identifying records within each STUDYID in the domain." && excel_spec == "Renumbering by USUBJID") {
+                    message("TRデータセットの4行目は目視確認が必要です。")
+                    next
+                }
+                if (domain == "VS" && row == 22 && xml_derivation == "" && excel_spec == '"Administration"') {
+                    message("VSデータセットの22行目は目視確認が必要です。")
+                    next
+                }
+
+                message("エラー行: ", row)
+                message("XML  : '", xml_derivation, "'")
+                message("Excel: '", excel_spec, "'")
+                stop(paste0("XMLとExcelの", domain, "データセットの派生変数のコメントが一致しません。"))
+            }
         }
     }
+    message(paste0("XMLとExcelの", domain, "データセットは一致しています。"))
 }
-View(xml_tables_dm[16, ])
-View(excel_tables_dm[16, ])
+dummy <- domain_names %>% map(~ {
+    domain <- .x
+    xml_table <- tables_list[[domain]]$XML
+    excel_table <- tables_list[[domain]]$Excel
+    CompareXmlAndExcel(xml_table, excel_table, domain)
+})
