@@ -29,7 +29,8 @@ function execGetParticipantList() {
   if (token === null) {
     return;
   }
-  const participantList = getParticipantList_(meetingId, token);
+  const participantList = getAllParticipants_(meetingId, token);
+//  const participantList = getParticipantList_(meetingId, token);
   if (participantList === null) {
     return;
   }
