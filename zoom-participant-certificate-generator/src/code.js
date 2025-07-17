@@ -30,7 +30,7 @@ function execGetParticipantList() {
     return;
   }
   const participantList = getAllParticipants_(meetingId, token);
-//  const participantList = getParticipantList_(meetingId, token);
+  //  const participantList = getParticipantList_(meetingId, token);
   if (participantList === null) {
     return;
   }
@@ -40,7 +40,8 @@ function execGetParticipantList() {
     'create_time',
     'custom_questions'
   );
-  const surveyList = getSurveyList_(meetingId, token);
+  //  const surveyList = getSurveyList_(meetingId, token);
+  const surveyList = getSurveyListAllInstances_(meetingId, token);
   const survey = getEmailAndDetails_(surveyList, 'date_time', 'answer_details');
   const userList = editParticipantList_(
     participantList,

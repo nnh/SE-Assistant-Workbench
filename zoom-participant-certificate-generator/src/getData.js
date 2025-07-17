@@ -109,7 +109,7 @@ function getRegistrationList_(meetingId, access_token) {
   return res;
 }*/
 
-function getSurveyList_(meetingId, access_token) {
+/*function getSurveyList_(meetingId, access_token) {
   const baseUrl = `https://api.zoom.us/v2/report/meetings/${meetingId}/survey?page_size=300`;
   const getZoomData = new GetZoomData(baseUrl, access_token);
   const res = getZoomData.getDataList(null, '', getZoomData, 'survey_answers');
@@ -118,3 +118,4 @@ function getSurveyList_(meetingId, access_token) {
   }
   return res;
 }
+*/
