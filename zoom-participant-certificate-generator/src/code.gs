@@ -29,7 +29,8 @@ function execGetParticipantList() {
   if (token === null) {
     return;
   }
-  const participantList = getParticipantList_(meetingId, token);
+  const participantList = getAllParticipants_(meetingId, token);
+//  const participantList = getParticipantList_(meetingId, token);
   if (participantList === null) {
     return;
   }
@@ -258,7 +259,7 @@ function editParticipantList_(
   const headers =
     surveyHeader !== null
       ? [...headers_base_reg, ...surveyHeader]
-      : baseHeaders;
+      : headers_base_reg;
   const outputData = [
     headers,
     ...temp_userList,
