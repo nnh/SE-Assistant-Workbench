@@ -86,23 +86,23 @@ for (sheetName in sheetNames) {
             next
         } else if (checkCell1 != checkCell2) {
             # OK
-            if (label == "投与開始日" && sheetName == "VEN/AZA 試験治療報告.." && checkCell1 == 8 && checkCell2 == 2) {
-                next
-            } else if (sheetName == "VEN/AZA 試験治療報告.." && checkCell1 == 4 && checkCell2 == 1) {
-                next
-            } else if (sheetName == "効果判定報告" && checkCell1 == 9 && checkCell2 == 1) {
-                next
-            } else if (sheetName == "寛解導入療法後 試験治療報告" && checkCell1 == 3 && checkCell2 == 1) {
-                next
-            } else if (sheetName == "有害事象報告" && checkCell1 == 11 && checkCell2 == 1) {
-                next
-            } else {
+            # if (label == "投与開始日" && sheetName == "VEN/AZA 試験治療報告.." && checkCell1 == 8 && checkCell2 == 2) {
+            #     next
+            # } else if (sheetName == "VEN/AZA 試験治療報告.." && checkCell1 == 4 && checkCell2 == 1) {
+            #     next
+            # } else if (sheetName == "効果判定報告" && checkCell1 == 9 && checkCell2 == 1) {
+            #     next
+            # } else if (sheetName == "寛解導入療法後 試験治療報告" && checkCell1 == 3 && checkCell2 == 1) {
+            #     next
+            # } else if (sheetName == "有害事象報告" && checkCell1 == 11 && checkCell2 == 1) {
+            #     next
+            # } else {
                 stop(paste(
                     "値が一致しません:", label, "シート:", sheetName,
                     "ptosh-json-to-excelの値:", checkCell1,
                     "ダウンロードした値:", checkCell2
                 ))
-            }
+            #}
         }
     }
 }
