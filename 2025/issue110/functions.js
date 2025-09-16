@@ -198,3 +198,46 @@ function extractFinalUrl_(text) {
   // それ以外は候補をそのまま返す
   return candidate;
 }
+function getEvents_(calendarId) {
+  // Advanced Google Services の Calendar API を使用
+  const calendar = Calendar.Calendars.get(calendarId); // カレンダーが存在するか確認
+  if (!calendar) {
+    throw new Error("カレンダーが見つかりません。");
+  }
+  let events = [];
+  let pageToken = null;
+  // 最大10ページまで取得（1ページあたり300件、合計3000件）
+  for (let i = 0; i < 10; i++) {
+    const options = {
+      timeMin: new Date().toISOString(),
+      maxResults: 300,
+    };
+    if (pageToken !== null) {
+      options.pageToken = pageToken;
+    }
+    const temp = Calendar.Events.list(calendarId, options);
+    events = events.concat(temp.items);
+    if (!temp.nextPageToken) {
+      break;
+    }
+    pageToken = temp.nextPageToken;
+  }
+  if (!events || events.length === 0) {
+    return [];
+  }
+  return events;
+}
+function getEventAttachments_(events, eventId) {
+  /**
+      // Advanced Google Services の Calendar API を使用
+  const calendar = Calendar.Calendars.get(calendarId); // カレンダーが存在するか確認
+  if (!calendar) {
+    throw new Error("カレンダーが見つかりません。");
+  }
+  const event = Calendar.Events.list(calendarId=calendarId, {
+    iCalUID: eventId
+  });
+  return event.items[0].attachments || []; // attachments[] を返す
+
+    *  */
+}

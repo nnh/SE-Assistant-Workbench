@@ -30,6 +30,7 @@ function exportCalendarEventsToIcal() {
   const events = getEventsAfterToday_();
   let uniqueCheck = new Set();
   outputSheet.clear();
+  const apiEventItems = getEvents_("primary");
 
   const eventsArray = events
     .map((event) => {
@@ -64,6 +65,8 @@ function exportCalendarEventsToIcal() {
       const id = event.getId();
       const series = uniqueCheck.has(id);
       uniqueCheck.add(id);
+      // 添付ファイル
+      const targetApiEvent = apiEventItems.find((e) => e.iCalUID === id);
       // ゲストを取得
       const guests = event
         .getGuestList(true)
@@ -83,14 +86,11 @@ function exportCalendarEventsToIcal() {
       // description内の全ての改行コードを\nに置換（複数連続も全て置換）
       const description = event.getDescription();
       const replaceAtagDescription = edit_a_URL_(description);
-      const safeDescription = replaceAtagDescription
-        ? replaceAtagDescription //.replace(/(\r\n|\r|\n)+/g, "\\n")
-        : "";
       const todayJST = getTodayJst_();
       const ical = !series
         ? createIcal_(
             title,
-            safeDescription,
+            replaceAtagDescription,
             id,
             startTimeJST,
             endTimeJST,
@@ -102,7 +102,7 @@ function exportCalendarEventsToIcal() {
       const res = [
         id,
         title,
-        safeDescription,
+        replaceAtagDescription,
         startTimeJST,
         endTimeJST,
         guests,
