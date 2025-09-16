@@ -1,32 +1,3 @@
-function createIcal_(
-  title,
-  description,
-  id,
-  startTime,
-  endTime,
-  isAllday,
-  todayJST
-) {
-  const icalData = {
-    BEGIN: "VEVENT",
-    DESCRIPTION: description,
-    UID: id,
-    SUMMARY: title,
-    "DTSTART;TZID=Tokyo Standard Time": startTime,
-    "DTEND;TZID=Tokyo Standard Time": endTime,
-    CLASS: "PUBLIC",
-    DTSTAMP: todayJST,
-    TRANSP: "OPAQUE",
-    "X-MICROSOFT-CDO-ALLDAYEVENT": isAllday ? "TRUE" : "FALSE",
-    "X-MICROSOFT-CDO-BUSYSTATUS": "BUSY",
-    END: "VEVENT",
-  };
-  const icalString = Object.entries(icalData)
-    .map(([key, value]) => `${key}:${value}`)
-    .join("\n");
-
-  return icalString;
-}
 function getMyCalendar_() {
   const calendarId = "primary"; // プライマリカレンダーのID
   const calendar = CalendarApp.getCalendarById(calendarId);
@@ -65,27 +36,6 @@ function getMailAddressFromUserList_(mailSs) {
   const specialMailMap = getMailMapFromSheet_(mailSs);
   const mailMap = new Map([...mailAddressMap, ...specialMailMap]);
   return mailMap;
-}
-function getEventsAfterToday_() {
-  const calendar = getMyCalendar_();
-  const today = new Date();
-  // 今日以降の全イベントを取得
-  const events = calendar.getEvents(
-    today,
-    new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())
-  );
-  return events;
-}
-function getTodayJst_() {
-  // 今日の日付を取得
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayJST = Utilities.formatDate(
-    today,
-    "Asia/Tokyo",
-    "yyyyMMdd'T'HHmmss"
-  );
-  return todayJST;
 }
 /**
  * スプレッドシートからメールアドレスの変換ルールを取得してMapを生成する
@@ -198,12 +148,17 @@ function extractFinalUrl_(text) {
   // それ以外は候補をそのまま返す
   return candidate;
 }
-function getEvents_(calendarId) {
-  // Advanced Google Services の Calendar API を使用
-  const calendar = Calendar.Calendars.get(calendarId); // カレンダーが存在するか確認
+function getMyCalendar_() {
+  const calendarId = "primary"; // プライマリカレンダーのID
+  const calendar = CalendarApp.getCalendarById(calendarId);
+
   if (!calendar) {
-    throw new Error("カレンダーが見つかりません。");
+    throw new Error("カレンダーが見つかりませんでした。");
   }
+  return calendar;
+}
+function getEvents_(calendar) {
+  // Advanced Google Services の Calendar API を使用
   let events = [];
   let pageToken = null;
   // 最大10ページまで取得（1ページあたり300件、合計3000件）
@@ -215,29 +170,21 @@ function getEvents_(calendarId) {
     if (pageToken !== null) {
       options.pageToken = pageToken;
     }
+    const calendarId = calendar.getId();
     const temp = Calendar.Events.list(calendarId, options);
     events = events.concat(temp.items);
     if (!temp.nextPageToken) {
       break;
     }
     pageToken = temp.nextPageToken;
+    if (i === 9 && temp.nextPageToken) {
+      console.warn(
+        "Warning: More pages exist beyond the maximum limit. Some events may not be retrieved."
+      );
+    }
   }
   if (!events || events.length === 0) {
     return [];
   }
   return events;
-}
-function getEventAttachments_(events, eventId) {
-  /**
-      // Advanced Google Services の Calendar API を使用
-  const calendar = Calendar.Calendars.get(calendarId); // カレンダーが存在するか確認
-  if (!calendar) {
-    throw new Error("カレンダーが見つかりません。");
-  }
-  const event = Calendar.Events.list(calendarId=calendarId, {
-    iCalUID: eventId
-  });
-  return event.items[0].attachments || []; // attachments[] を返す
-
-    *  */
 }
