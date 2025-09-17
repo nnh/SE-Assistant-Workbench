@@ -157,7 +157,14 @@ function getMyCalendar_() {
   }
   return calendar;
 }
-function getEvents_(calendar) {
+function getEvents_(calendar, eventId) {
+  const event = Calendar.Events.get(calendar.getId(), eventId);
+  if (!event) {
+    throw new Error(`イベントID「${eventId}」のイベントが見つかりません。`);
+  }
+  return event;
+}
+function getListEvents_(calendar, singleEvents = false, icalUID = null) {
   // Advanced Google Services の Calendar API を使用
   let events = [];
   let pageToken = null;
@@ -166,9 +173,13 @@ function getEvents_(calendar) {
     const options = {
       timeMin: new Date().toISOString(),
       maxResults: 300,
+      singleEvents: singleEvents,
     };
     if (pageToken !== null) {
       options.pageToken = pageToken;
+    }
+    if (icalUID !== null) {
+      options.iCalUID = icalUID;
     }
     const calendarId = calendar.getId();
     const temp = Calendar.Events.list(calendarId, options);
@@ -187,4 +198,81 @@ function getEvents_(calendar) {
     return [];
   }
   return events;
+}
+/**
+ * iCalendarのRRULEを日本語の文章に変換する
+ *
+ * @param {string} rrule RRULE文字列
+ * @return {string} 日本語の説明
+ */
+function rruleToJapanese_(rrule) {
+  if (!rrule || !rrule.startsWith("RRULE:")) {
+    return "RRULEではありません";
+  }
+
+  // "RRULE:" を外す
+  const body = rrule.replace(/^RRULE:/, "");
+  const parts = {};
+  body.split(";").forEach((p) => {
+    const [key, value] = p.split("=");
+    parts[key] = value;
+  });
+
+  // 曜日のマッピング
+  const dayMap = {
+    MO: "月曜",
+    TU: "火曜",
+    WE: "水曜",
+    TH: "木曜",
+    FR: "金曜",
+    SA: "土曜",
+    SU: "日曜",
+  };
+
+  let text = "";
+
+  // FREQに応じて
+  switch (parts.FREQ) {
+    case "DAILY":
+      text =
+        parts.INTERVAL && parts.INTERVAL !== "1"
+          ? `${parts.INTERVAL}日ごとに繰り返し`
+          : "毎日繰り返し";
+      break;
+
+    case "WEEKLY":
+      // BYDAYの曜日を翻訳
+      const days = parts.BYDAY
+        ? parts.BYDAY.split(",")
+            .map((d) => dayMap[d] || d)
+            .join("・")
+        : "（曜日指定なし）";
+
+      const interval =
+        parts.INTERVAL && parts.INTERVAL !== "1"
+          ? `${parts.INTERVAL}週ごと`
+          : "毎週";
+
+      text = `${days}${interval}に繰り返し`;
+      break;
+
+    case "MONTHLY":
+      text =
+        parts.INTERVAL && parts.INTERVAL !== "1"
+          ? `${parts.INTERVAL}か月ごとに繰り返し`
+          : "毎月繰り返し";
+      break;
+
+    case "YEARLY":
+      text =
+        parts.INTERVAL && parts.INTERVAL !== "1"
+          ? `${parts.INTERVAL}年ごとに繰り返し`
+          : "毎年繰り返し";
+      break;
+
+    default:
+      text = "対応していないFREQです";
+  }
+
+  return text;
 }
