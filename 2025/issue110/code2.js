@@ -1,14 +1,13 @@
-function editItems_(myCalendar, item, outputSs) {
-  const mailMap = getMailAddressFromUserList_(outputSs);
+let outputSs;
+let mailMap;
+function editItems_(myCalendar, item, recurrenceFlag = false) {
   const myMailAddress = myCalendar.getId();
   const organizer = item.organizer.email;
   if (organizer !== myMailAddress) {
     return null;
   }
-  const { startTime, endTime, allday, recurrence } = getStartEndDate_(
-    myCalendar,
-    item
-  );
+  const { startTime, endTime, allday, recurrence, recurrenceArray } =
+    getStartEndDate_(myCalendar, item, recurrenceFlag);
   if (new Date(startTime) < new Date()) {
     return null;
   }
@@ -48,7 +47,7 @@ function editItems_(myCalendar, item, outputSs) {
   const eventType = item.eventType;
   const title = item.summary;
   const visibility = item.visibility;
-  return [
+  const array = [
     title,
     guests,
     startTime,
@@ -61,19 +60,26 @@ function editItems_(myCalendar, item, outputSs) {
     visibility,
     organizer,
   ];
+  const res =
+    recurrence && recurrenceArray !== null
+      ? [array, ...recurrenceArray]
+      : [array];
+  return res;
 }
 
 function test() {
   // 自分のカレンダーを取得してイベント一覧シートに出力します
   const outputSpreadsheetId = getPropertyByKey_("outputSpreadsheetId");
-  const [outputSs, outputSheet] = getSpreadSheetSheet_(
+  let outputSheet;
+  [outputSs, outputSheet] = getSpreadSheetSheet_(
     outputSpreadsheetId,
     "イベント一覧"
   );
+  mailMap = getMailAddressFromUserList_(outputSs);
   const myCalendar = getMyCalendar_();
   const apiEventItems = getListEvents_((calendar = myCalendar));
   const editItemsArray = apiEventItems
-    .map((item) => editItems_(myCalendar, item, outputSs))
+    .map((item) => editItems_(myCalendar, item, false))
     .filter((x) => x !== null);
   const header = [
     "タイトル",
@@ -88,8 +94,12 @@ function test() {
     "可視性",
     "主催者",
   ];
-  const outputValues = [header, ...editItemsArray];
   outputSheet.clear();
+  if (editItemsArray.length === 0) {
+    outputSheet.getRange(1, 1, 1, header.length).setValues([header]);
+    return;
+  }
+  const outputValues = [header, ...editItemsArray.flat()];
   outputSheet
     .getRange(1, 1, outputValues.length, header.length)
     .setValues(outputValues);
@@ -123,9 +133,14 @@ function getRecurrence_(calendar, item) {
     res["description"] = item.description;
     res["startDateTime"] = startDateTime;
     res["endDateTime"] = endDateTime;
-    res["attendees"] = item.attendees.map((x) => x.email).join("; ");
-    res["attachments"] = item.attachments;
-    res["location"] = item.location;
+    res["attendees"] =
+      item.attendees !== undefined
+        ? item.attendees.map((x) => x.email).join("; ")
+        : "";
+    res["attachments"] =
+      item.attachments !== undefined
+        ? item.attachments.map((a) => a.fileUrl).join("; ")
+        : "";
     return res;
   });
   const filteredRecurrenceEventItems = [];
@@ -153,59 +168,23 @@ function getRecurrence_(calendar, item) {
       )}、終了日：${formatDate(maxDate)}`;
     }
     diffList = [Array(11).fill("")];
+    diffList[0][7] = startEndText;
   } else {
     diffList = filteredRecurrenceEventItems
       .map((x, idx) => {
         if (x === null) {
           return null;
         }
-        const res = recurrenceEventItems[idx];
-        res[7] = recurrenceText;
-        return res;
+        const res = editItems_(calendar, recurrenceEventItems[idx], true);
+        if (!res || res.length === 0) {
+          return null;
+        }
+        for (let j = 0; j < res.length; j++) {
+          res[j][7] = recurrenceText;
+        }
+        return res.flat();
       })
       .filter((x) => x !== null);
   }
-  return [startEndText, diffList];
-}
-function getStartEndDate_(calendar, item) {
-  let startTime;
-  let recurrence;
-  const originalStartTime = item.originalStartTime;
-  if (originalStartTime !== undefined) {
-    if (item.start.timezone === "UTC") {
-      startTime = new Date(
-        new Date(originalStartTime.dateTime).getTime() + 9 * 60 * 60 * 1000
-      ).toISOString();
-    } else {
-      startTime = originalStartTime.dateTime;
-    }
-    recurrence = true;
-    //    const aaa = getRecurrence_(calendar, item);
-  } else {
-    if (item.start.timezone === "UTC") {
-      startTime = new Date(
-        new Date(item.start.dateTime).getTime() + 9 * 60 * 60 * 1000
-      ).toISOString();
-    } else {
-      startTime = item.start.dateTime;
-    }
-    recurrence = false;
-  }
-  let allday;
-  let endTime;
-  if (startTime === undefined) {
-    allday = true;
-    startTime = new Date(item.start.date).toISOString();
-    endTime = new Date(item.end.date).toISOString();
-  } else {
-    allday = false;
-    if (item.end.timezone === "UTC") {
-      endTime = new Date(
-        new Date(item.end.dateTime).getTime() + 9 * 60 * 60 * 1000
-      ).toISOString();
-    } else {
-      endTime = item.end.dateTime;
-    }
-  }
-  return { startTime, endTime, allday, recurrence };
+  return diffList;
 }

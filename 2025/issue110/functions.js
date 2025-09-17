@@ -276,3 +276,48 @@ function rruleToJapanese_(rrule) {
 
   return text;
 }
+function getStartEndDate_(calendar, item, recurrenceFlag = false) {
+  let startTime;
+  let recurrence = false;
+  let recurrenceArray = null;
+  const originalStartTime = item.originalStartTime;
+  if (originalStartTime !== undefined) {
+    if (item.start.timezone === "UTC") {
+      startTime = new Date(
+        new Date(originalStartTime.dateTime).getTime() + 9 * 60 * 60 * 1000
+      ).toISOString();
+    } else {
+      startTime = originalStartTime.dateTime;
+    }
+    if (!recurrenceFlag) {
+      recurrence = true;
+      recurrenceArray = getRecurrence_(calendar, item);
+    }
+  } else {
+    if (item.start.timezone === "UTC") {
+      startTime = new Date(
+        new Date(item.start.dateTime).getTime() + 9 * 60 * 60 * 1000
+      ).toISOString();
+    } else {
+      startTime = item.start.dateTime;
+    }
+    recurrence = false;
+  }
+  let allday;
+  let endTime;
+  if (startTime === undefined) {
+    allday = true;
+    startTime = new Date(item.start.date).toISOString();
+    endTime = new Date(item.end.date).toISOString();
+  } else {
+    allday = false;
+    if (item.end.timezone === "UTC") {
+      endTime = new Date(
+        new Date(item.end.dateTime).getTime() + 9 * 60 * 60 * 1000
+      ).toISOString();
+    } else {
+      endTime = item.end.dateTime;
+    }
+  }
+  return { startTime, endTime, allday, recurrence, recurrenceArray };
+}
