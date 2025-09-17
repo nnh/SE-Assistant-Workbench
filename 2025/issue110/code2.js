@@ -1,3 +1,68 @@
+function editItems_(myCalendar, item, outputSs) {
+  const mailMap = getMailAddressFromUserList_(outputSs);
+  const myMailAddress = myCalendar.getId();
+  const organizer = item.organizer.email;
+  if (organizer !== myMailAddress) {
+    return null;
+  }
+  const { startTime, endTime, allday, recurrence } = getStartEndDate_(
+    myCalendar,
+    item
+  );
+  if (new Date(startTime) < new Date()) {
+    return null;
+  }
+  const id = item.iCalUID;
+  let attachments = "";
+  if (item.attachments !== undefined) {
+    attachments = item.attachments
+      .map((attachment) => [attachment.title, attachment.fileUrl].join("\n"))
+      .join("\n");
+  }
+  let guests;
+  if (item.attendees) {
+    guests = item.attendees
+      .map((x) => {
+        const mail1 = x.getEmail();
+        if (!mailMap.has(mail1)) {
+          return mail1;
+        }
+        const mail2 = mailMap.get(mail1);
+        const res = `${mail1}; ${mail2}`;
+        return res;
+      })
+      .join("; ");
+  } else {
+    guests = "";
+  }
+  const description = item.description || "";
+  const editDescription = edit_a_URL_(description);
+  let descriptionArray = [];
+  if (attachments !== "") {
+    descriptionArray.push(attachments);
+  }
+  if (editDescription !== "") {
+    descriptionArray.push(editDescription);
+  }
+  const outputDescription = descriptionArray.join("\n");
+  const eventType = item.eventType;
+  const title = item.summary;
+  const visibility = item.visibility;
+  return [
+    title,
+    guests,
+    startTime,
+    endTime,
+    allday,
+    outputDescription,
+    id,
+    recurrence,
+    eventType,
+    visibility,
+    organizer,
+  ];
+}
+
 function test() {
   // 自分のカレンダーを取得してイベント一覧シートに出力します
   const outputSpreadsheetId = getPropertyByKey_("outputSpreadsheetId");
@@ -5,75 +70,10 @@ function test() {
     outputSpreadsheetId,
     "イベント一覧"
   );
-  const mailMap = getMailAddressFromUserList_(outputSs);
   const myCalendar = getMyCalendar_();
-  const myMailAddress = myCalendar.getId();
   const apiEventItems = getListEvents_((calendar = myCalendar));
-  const test = apiEventItems
-    .map((item) => {
-      const organizer = item.organizer.email;
-      if (organizer !== myMailAddress) {
-        return null;
-      }
-      const { startTime, endTime, allday, recurrence } = getStartEndDate_(
-        myCalendar,
-        item
-      );
-      if (new Date(startTime) < new Date()) {
-        return null;
-      }
-      const id = item.iCalUID;
-      let attachments = "";
-      if (item.attachments !== undefined) {
-        attachments = item.attachments
-          .map((attachment) =>
-            [attachment.title, attachment.fileUrl].join("\n")
-          )
-          .join("\n");
-      }
-      let guests;
-      if (item.attendees) {
-        guests = item.attendees
-          .map((x) => {
-            const mail1 = x.getEmail();
-            if (!mailMap.has(mail1)) {
-              return mail1;
-            }
-            const mail2 = mailMap.get(mail1);
-            const res = `${mail1}; ${mail2}`;
-            return res;
-          })
-          .join("; ");
-      } else {
-        guests = "";
-      }
-      const description = item.description || "";
-      const editDescription = edit_a_URL_(description);
-      let descriptionArray = [];
-      if (attachments !== "") {
-        descriptionArray.push(attachments);
-      }
-      if (editDescription !== "") {
-        descriptionArray.push(editDescription);
-      }
-      const outputDescription = descriptionArray.join("\n");
-      const eventType = item.eventType;
-      const title = item.summary;
-      const visibility = item.visibility;
-      return [
-        title,
-        guests,
-        startTime,
-        endTime,
-        allday,
-        outputDescription,
-        id,
-        recurrence,
-        eventType,
-        visibility,
-        organizer,
-      ];
-    })
+  const editItemsArray = apiEventItems
+    .map((item) => editItems_(myCalendar, item, outputSs))
     .filter((x) => x !== null);
   const header = [
     "タイトル",
@@ -88,7 +88,7 @@ function test() {
     "可視性",
     "主催者",
   ];
-  const outputValues = [header, ...test];
+  const outputValues = [header, ...editItemsArray];
   outputSheet.clear();
   outputSheet
     .getRange(1, 1, outputValues.length, header.length)
@@ -180,7 +180,7 @@ function getStartEndDate_(calendar, item) {
       startTime = originalStartTime.dateTime;
     }
     recurrence = true;
-    const aaa = getRecurrence_(calendar, item);
+    //    const aaa = getRecurrence_(calendar, item);
   } else {
     if (item.start.timezone === "UTC") {
       startTime = new Date(
