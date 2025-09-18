@@ -280,6 +280,8 @@ function getStartEndDate_(calendar, item, recurrenceFlag = false) {
   let startTime;
   let recurrence = false;
   let recurrenceArray = null;
+  let minDate = null;
+  let maxDate = null;
   const originalStartTime = item.originalStartTime;
   if (originalStartTime !== undefined) {
     if (item.start.timezone === "UTC") {
@@ -291,7 +293,16 @@ function getStartEndDate_(calendar, item, recurrenceFlag = false) {
     }
     if (!recurrenceFlag) {
       recurrence = true;
-      recurrenceArray = getRecurrence_(calendar, item);
+      [recurrenceArray, minDate, maxDate] = getRecurrence_(calendar, item);
+      if (recurrenceArray === null) {
+        return {
+          startTime: null,
+          endTime: null,
+          allday: null,
+          recurrence: null,
+          recurrenceArray: null,
+        };
+      }
     }
   } else {
     if (item.start.timezone === "UTC") {
@@ -318,6 +329,20 @@ function getStartEndDate_(calendar, item, recurrenceFlag = false) {
     } else {
       endTime = item.end.dateTime;
     }
+  }
+  if (minDate !== null) {
+    startTime = Utilities.formatDate(
+      new Date(minDate),
+      "Asia/Tokyo",
+      "yyyy-MM-dd'T'HH:mm:ssXXX"
+    );
+  }
+  if (maxDate !== null) {
+    endTime = Utilities.formatDate(
+      new Date(maxDate),
+      "Asia/Tokyo",
+      "yyyy-MM-dd'T'HH:mm:ssXXX"
+    );
   }
   return { startTime, endTime, allday, recurrence, recurrenceArray };
 }

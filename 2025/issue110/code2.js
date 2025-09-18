@@ -1,13 +1,16 @@
 let outputSs;
 let mailMap;
+let myMailAddress;
 function editItems_(myCalendar, item, recurrenceFlag = false) {
-  const myMailAddress = myCalendar.getId();
   const organizer = item.organizer.email;
   if (organizer !== myMailAddress) {
     return null;
   }
   const { startTime, endTime, allday, recurrence, recurrenceArray } =
     getStartEndDate_(myCalendar, item, recurrenceFlag);
+  if (startTime === null || endTime === null) {
+    return null;
+  }
   if (new Date(startTime) < new Date()) {
     return null;
   }
@@ -77,6 +80,7 @@ function test() {
   );
   mailMap = getMailAddressFromUserList_(outputSs);
   const myCalendar = getMyCalendar_();
+  myMailAddress = myCalendar.getId();
   const apiEventItems = getListEvents_((calendar = myCalendar));
   const editItemsArray = apiEventItems
     .map((item) => editItems_(myCalendar, item, false))
@@ -118,7 +122,7 @@ function getRecurrence_(calendar, item) {
     recurrenceEventIcalUid
   );
   if (recurrenceEventItems.length === 0) {
-    return null;
+    return [null, null, null];
   }
   const startDateTimeList = recurrenceEventItems.map(
     (item) => new Date(item.start.dateTime)
@@ -155,10 +159,12 @@ function getRecurrence_(calendar, item) {
   }
   let startEndText = recurrenceText;
   let diffList = [];
+  let minDate;
+  let maxDate;
   if (filteredRecurrenceEventItems.filter((x) => x !== null).length === 1) {
     if (startDateTimeList.length > 0) {
-      const minDate = new Date(Math.min(...startDateTimeList));
-      const maxDate = new Date(Math.max(...startDateTimeList));
+      minDate = new Date(Math.min(...startDateTimeList));
+      maxDate = new Date(Math.max(...startDateTimeList));
       const formatDate = (date) =>
         `${date.getFullYear()}/${(date.getMonth() + 1)
           .toString()
@@ -186,5 +192,5 @@ function getRecurrence_(calendar, item) {
       })
       .filter((x) => x !== null);
   }
-  return diffList;
+  return [diffList, minDate, maxDate];
 }
