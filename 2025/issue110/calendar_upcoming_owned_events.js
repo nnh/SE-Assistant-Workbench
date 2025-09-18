@@ -2,9 +2,16 @@ let outputSs;
 let mailMap;
 let myMailAddress;
 
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu("カレンダー")
+    .addItem("自分のイベント一覧を出力", "exportUpcomingOwnedEventsToSheet")
+    .addToUi();
+}
+
 function exportUpcomingOwnedEventsToSheet() {
   // 自分のカレンダーを取得してイベント一覧シートに出力します
-  const outputSpreadsheetId = getPropertyByKey_("outputSpreadsheetId");
+  const outputSpreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
   let outputSheet;
   [outputSs, outputSheet] = getSpreadSheetSheet_(
     outputSpreadsheetId,
