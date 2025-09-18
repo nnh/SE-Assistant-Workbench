@@ -365,6 +365,9 @@ function getRecurrence_(calendar, item) {
   const startDateTimeList = recurrenceEventItems.map(
     (item) => new Date(item.start.dateTime)
   );
+  const endDateTimeList = recurrenceEventItems.map(
+    (item) => new Date(item.end.dateTime)
+  );
   const testRecurrenceEventItems = recurrenceEventItems.map((item) => {
     const startDateTime = new Date(item.start.dateTime)
       .toTimeString()
@@ -400,9 +403,9 @@ function getRecurrence_(calendar, item) {
   let minDate;
   let maxDate;
   if (filteredRecurrenceEventItems.filter((x) => x !== null).length === 1) {
-    if (startDateTimeList.length > 0) {
+    if (startDateTimeList.length > 0 && endDateTimeList.length > 0) {
       minDate = new Date(Math.min(...startDateTimeList));
-      maxDate = new Date(Math.max(...startDateTimeList));
+      maxDate = new Date(Math.max(...endDateTimeList));
       const formatDate = (date) =>
         `${date.getFullYear()}/${(date.getMonth() + 1)
           .toString()
