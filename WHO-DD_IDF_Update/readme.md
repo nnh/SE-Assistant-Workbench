@@ -56,3 +56,7 @@ Before running the scripts, set up the config.txt file in the ext folder with th
 
 1. Open `tools/test-main.R`.
 2. Run the Script: Click the source button to execute the script.
+
+## Document
+
+https://docs.google.com/document/d/1dTO-n-SESKSQu9P6SCXZdesxjYtidwTWgnHastHwYjs/edit?tab=t.0
