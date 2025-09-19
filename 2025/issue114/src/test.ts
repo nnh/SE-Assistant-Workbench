@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export function getDocByPropertyKey_(
+function getDocByPropertyKey_(
   propertyKey: string
 ): GoogleAppsScript.Document.Document {
   const targetProperty =
@@ -25,7 +25,7 @@ export function getDocByPropertyKey_(
   const doc = DocumentApp.openById(docId);
   return doc;
 }
-export function getTabsFromDoc_(doc: GoogleAppsScript.Document.Document) {
+function getTabsFromDoc_(doc: GoogleAppsScript.Document.Document) {
   const tabs = doc.getTabs();
   return tabs;
 }
@@ -49,6 +49,68 @@ function getInputBody_(): GoogleAppsScript.Document.Body {
     .getBody();
   return body;
 }
+// 目的及び評価項目の取得
+export function getPurposeAndEndpoints_(): Map<string, string[]> {
+  const body = getInputBody_();
+  const childCount = body.getNumChildren();
+  const purposeAndEndpoints = new Map<string, string[]>();
+  let targetFlag = false;
+  let table = null;
+  for (let i = 0; i < childCount; i++) {
+    const element = body.getChild(i);
+    if (element.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      if (element.asParagraph().getText().includes('目的および評価項目')) {
+        targetFlag = true;
+      }
+    }
+    if (element.getType() === DocumentApp.ElementType.TABLE) {
+      if (!targetFlag) {
+        continue;
+      }
+      table = element.asTable();
+      break;
+    }
+  }
+  if (table === null) {
+    console.warn("'目的および評価項目' table not found.");
+    return purposeAndEndpoints;
+  }
+  const primaryPurpose = getListItemsFromTableCell_(table.getCell(1, 0));
+  const primaryEndpoints = getListItemsFromTableCell_(table.getCell(1, 1));
+  purposeAndEndpoints.set('primaryPurpose', primaryPurpose);
+  purposeAndEndpoints.set('primaryEndpoints', primaryEndpoints);
+  if (table.getNumRows() > 2) {
+    const secondaryPurpose = getListItemsFromTableCell_(table.getCell(2, 0));
+    const secondaryEndpoints = getListItemsFromTableCell_(table.getCell(2, 1));
+    purposeAndEndpoints.set('secondaryPurpose', secondaryPurpose);
+    purposeAndEndpoints.set('secondaryEndpoints', secondaryEndpoints);
+  }
+  // exploratoryのセルが存在する場合のみ処理する
+  if (table.getNumRows() > 3) {
+    const exploratoryPurpose = getListItemsFromTableCell_(table.getCell(3, 0));
+    const exploratoryEndpoints = getListItemsFromTableCell_(
+      table.getCell(3, 1)
+    );
+    purposeAndEndpoints.set('exploratoryPurpose', exploratoryPurpose);
+    purposeAndEndpoints.set('exploratoryEndpoints', exploratoryEndpoints);
+  }
+  return purposeAndEndpoints;
+}
+
+function getListItemsFromTableCell_(
+  cell: GoogleAppsScript.Document.TableCell
+): string[] {
+  const items: string[] = [];
+  const numChildren = cell.getNumChildren();
+  for (let i = 0; i < numChildren; i++) {
+    const child = cell.getChild(i);
+    if (child.getType() === DocumentApp.ElementType.LIST_ITEM) {
+      items.push(child.asListItem().getText().trim());
+    }
+  }
+  return items;
+}
+
 export function getTargetTextArray_(): { text: string; heading: string }[] {
   const body = getInputBody_();
   const childCount = body.getNumChildren();

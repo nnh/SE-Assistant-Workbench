@@ -16,10 +16,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
 import {
-  getDocByPropertyKey_,
-  getTabsFromDoc_,
   arraySliceAndJoin_,
   getTargetTextArray_,
+  getPurposeAndEndpoints_,
 } from './test';
 
 const inputTextMap = new Map<string, string>();
@@ -29,6 +28,8 @@ function main() {
     text: string;
     heading: string;
   }[] = getTargetTextArray_();
+  // 目的及び評価項目の取得
+  const purposeAndEndpoints: Map<string, string[]> = getPurposeAndEndpoints_();
   for (let i = 0; i < targetTextArray.length; i++) {
     if (
       /^[\w\s\p{P}]+$/u.test(targetTextArray[i].text) &&
@@ -65,14 +66,73 @@ function main() {
       }
     }
     setCriteriaExcusion_(targetTextArray, i);
+    setAnalysis_(/^[\d\\. ]*解析対象集団$/, targetTextArray, i, '解析対象集団');
+    setAnalysis_(/^[\d\\. ]*統計解析$/, targetTextArray, i, '統計解析');
+    setAnalysis_(/^[\d\\. ]*主要評価項目$/, targetTextArray, i, '主要評価項目');
+    setAnalysis_(
+      /^[\d\\. ]*副次的評価項目$/,
+      targetTextArray,
+      i,
+      '副次的評価項目'
+    );
+    setAnalysis_(
+      /^[\d\\. ]*探索的評価項目$/,
+      targetTextArray,
+      i,
+      '探索的評価項目'
+    );
+    setAnalysis_(
+      /^[\d\\. ]*他の安全性解析$/,
+      targetTextArray,
+      i,
+      '他の安全性解析'
+    );
+    setAnalysis_(/^[\d\\. ]*その他の解析$/, targetTextArray, i, 'その他の解析');
+    setAnalysis_(/^[\d\\. ]*中間解析$/, targetTextArray, i, '中間解析');
   }
   console.log('inputTextMap:', inputTextMap);
+}
+function setAnalysis_(
+  targetHeading: RegExp,
+  targetTextArray: { text: string; heading: string }[],
+  i: number,
+  key: string
+): void {
+  if (inputTextMap.has(key)) {
+    return;
+  }
+  // 解析対象集団
+  let startIdx = -1;
+  let endIdx = -1;
+  let res = '';
+  if (
+    targetHeading.test(targetTextArray[i].text) &&
+    targetTextArray[i].heading !== 'NORMAL'
+  ) {
+    startIdx = i + 1;
+  }
+  for (let j = startIdx; j < targetTextArray.length; j++) {
+    if (targetTextArray[j].heading !== 'NORMAL') {
+      endIdx = j - 1;
+      break;
+    }
+  }
+  if (startIdx > -1 && endIdx === -1) {
+    endIdx = targetTextArray.length - 1;
+  }
+  if (startIdx > -1 && endIdx > -1) {
+    res = arraySliceAndJoin_(targetTextArray, startIdx, endIdx + 1);
+    inputTextMap.set(key, res);
+  }
 }
 // 選択基準、除外基準のセット
 function setCriteriaExcusion_(
   targetTextArray: { text: string; heading: string }[],
   i: number
-) {
+): void {
+  if (inputTextMap.has('選択基準') && inputTextMap.has('除外基準')) {
+    return;
+  }
   if (
     /^[\d\\. ]*選択基準$/.test(targetTextArray[i].text) &&
     targetTextArray[i].heading !== 'NORMAL'
@@ -124,7 +184,7 @@ function setNextText_(
     heading: string;
   }[],
   index: number
-) {
+): void {
   if (inputTextMap.has(key)) {
     return;
   }
@@ -138,8 +198,11 @@ function setValueIfStartsWith_(
     heading: string;
   }[],
   index: number
-) {
-  if (array[index].text.startsWith(prefix) && !inputTextMap.has(key)) {
+): void {
+  if (inputTextMap.has(key)) {
+    return;
+  }
+  if (array[index].text.startsWith(prefix)) {
     const value = array[index].text.replace(prefix, '').trim();
     inputTextMap.set(key, value);
   }
@@ -152,8 +215,11 @@ function setValueIfIncludes_(
     heading: string;
   }[],
   index: number
-) {
-  if (search.test(array[index].text) && !inputTextMap.has(key)) {
+): void {
+  if (inputTextMap.has(key)) {
+    return;
+  }
+  if (search.test(array[index].text)) {
     const value = array[index].text.replace(search, '').trim();
     inputTextMap.set(key, value);
   }
