@@ -53,3 +53,40 @@ section_page <- indexPages_merged %>%
     filter(!is.na(page_start)) %>%
     filter(!is.na(section_number)) %>%
     filter(!is.na(section_value))
+# セクション番号とタイトルのペアリストをリテラルで作成
+section_pairs <- list(
+    list("4. 略号及び用語の定義一覧", "略語・用語"),
+    list("5.1. 試験審査委員会（IRB）", "規制要件と倫理"),
+    list("5.2. 試験の倫理的実施", "試験管理"),
+    list("5.3. 被験者への情報および同意", "説明と同意"),
+    list("6. 研究責任医師等及び試験管理組織", "実施体制"),
+    list("7. 諸言", "実施の根拠"),
+    list("8. 試験の目的", "概要"),
+    list("9.1. 試験の全般的デザイン及び計画−記述", "根拠"),
+    list("9.2. 対照群の選択を含む試験デザインについての考察", "ベネフィット・リスク評価"),
+    list("9.2. 対照群の選択を含む試験デザインについての考察", "目的および評価項目"),
+    list("9.3.1 選択基準", "選択基準"),
+    list("9.3.2 除外基準", "除外基準"),
+    list("9.3.3. 患者の治療又は評価の打ち切り", "治療"),
+    list("9.4.1 治療法", "投与スケジュール"),
+    list("9.4.2. 試験薬の同定", "試験薬の同定"),
+    list("9.4.3. 試験群への患者の割り付け方法", "症例登録、層別化および割付"),
+    list("9.4.4. 試験における用量の選択", "試験薬"),
+    list("9.4.5. 各患者の用量の選択及び投与時期", "治療群及び治療期間")
+)
+# section_pairs の2番目の要素（タイトル）に一致する section_value を持つレコードを抽出し、存在しない場合は空のレコードを返す
+target_titles <- map_chr(section_pairs, 2)
+
+# section_pairsをデータフレーム化
+section_pairs_df <- tibble(
+    section_pair_title = map_chr(section_pairs, 2),
+    section_pair_number = map_chr(section_pairs, 1)
+)
+
+# section_pageから該当レコード抽出
+filtered_section_page <- section_page %>%
+    filter(section_value %in% target_titles)
+
+# section_pairs_dfとfiltered_section_pageを結合（left_joinで常にsection_pairsの情報を保持）
+result <- section_pairs_df %>%
+    left_join(filtered_section_page, by = c("section_pair_title" = "section_value"))
