@@ -80,33 +80,49 @@ extract_section_page <- function(textByPage, textList) {
         filter(!is.na(section_number)) %>%
         filter(!is.na(section_value) & section_value != "")
     for (i in 1:(nrow(section_page) - 1)) {
-        if (section_page[i, "page_start"] == section_page[i + 1, "page_start"]) {
-            section_page[i, "page_end"] <- section_page[i + 1, "page_start"]
-        } else {
-            search_regex <- make_pattern(section_page[i, "section_number"])
-            section_page[i, "page_end"] <- length(textList) %>% as.character()
-            target <- NULL
-            for (j in (i + 1):nrow(section_page)) {
-                if (str_detect(section_page[j, "section_number"], regex(paste0("^", search_regex), ignore_case = TRUE))) {
-                    target <- section_page[j, ]
-                    next_section_page_number <- target["page_start"] %>% as.integer()
-                    next_section_page <- textList[[next_section_page_number]]
-                    next_section_page_line_1 <- next_section_page[1, "text"]
-                    if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
-                        section_page[i, "page_end"] <-
-                            {
-                                next_section_page_number - 1
-                            } %>% as.character()
-                    } else {
-                        section_page[i, "page_end"] <- next_section_page_number %>% as.character()
-                    }
-                    break
+        search_regex <- make_pattern(section_page[i, "section_number"])
+        section_page[i, "page_end"] <- NA
+        target <- NULL
+        for (j in (i + 1):nrow(section_page)) {
+            if (str_detect(section_page[j, "section_number"], regex(paste0("^", search_regex), ignore_case = TRUE))) {
+                target <- section_page[j, ]
+                # next_section_page_number <- target["page_start"] %>% as.integer()
+                # next_section_page <- textList[[next_section_page_number]]
+                # next_section_page_line_1 <- next_section_page[1, "text"]
+                # if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
+                #     section_page[i, "page_end"] <-
+                #         {
+                #             next_section_page_number - 1
+                #         } %>% as.character()
+                # } else {
+                #     section_page[i, "page_end"] <- next_section_page_number %>% as.character()
+                # }
+                section_page[i, "page_end"] <- resolve_section_page_number(target)
+                break
+            } else {
+                if (j == nrow(section_page)) {
+                    target <- section_page[i + 1, ]
+                    section_page[i, "page_end"] <- resolve_section_page_number(target)
                 }
             }
         }
     }
 
     return(section_page)
+}
+resolve_section_page_number <- function(target) {
+    next_section_page_number <- target["page_start"] %>% as.integer()
+    next_section_page <- textList[[next_section_page_number]]
+    next_section_page_line_1 <- next_section_page[1, "text"]
+    if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
+        res <-
+            {
+                next_section_page_number - 1
+            } %>% as.character()
+    } else {
+        res <- next_section_page_number %>% as.character()
+    }
+    return(res)
 }
 # セクション番号とタイトルのペアリストをもとに、セクション番号、タイトル、開始ページを抽出する関数
 extract_section_pairs_info <- function(section_page) {
