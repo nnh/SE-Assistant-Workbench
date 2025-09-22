@@ -52,8 +52,8 @@ extract_pdf_info <- function(pdf_path) {
 }
 make_pattern <- function(section) {
     # 章番号の末尾に必ずピリオドが付いている前提
-    n <- str_count(section, "\\d\\.") # 「数字+ピリオド」の数を数える
-    paste0("^", paste0(rep("\\d\\.", n), collapse = ""), "$")
+    n <- str_count(section, "\\d+\\.") # 「数字+ピリオド」の数を数える
+    paste0("^", paste0(rep("\\d+\\.", n), collapse = ""), "$")
 }
 # 目次情報からセクション番号、タイトル、開始ページを抽出
 extract_section_page <- function(textByPage, textList) {
@@ -84,14 +84,12 @@ extract_section_page <- function(textByPage, textList) {
             section_page[i, "page_end"] <- section_page[i + 1, "page_start"]
         } else {
             search_regex <- make_pattern(section_page[i, "section_number"])
-            print(search_regex)
-            section_page[i, "page_end"] <- NA
+            section_page[i, "page_end"] <- length(textList) %>% as.character()
             target <- NULL
             for (j in (i + 1):nrow(section_page)) {
                 if (str_detect(section_page[j, "section_number"], regex(paste0("^", search_regex), ignore_case = TRUE))) {
                     target <- section_page[j, ]
                     next_section_page_number <- target["page_start"] %>% as.integer()
-                    print(next_section_page_number)
                     next_section_page <- textList[[next_section_page_number]]
                     next_section_page_line_1 <- next_section_page[1, "text"]
                     if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
@@ -105,18 +103,6 @@ extract_section_page <- function(textByPage, textList) {
                     break
                 }
             }
-            # next_header <- section_page[i + 1, "section_text"]
-            # next_section_page_number <<- section_page[i + 1, "page_start", drop = TRUE] %>% as.integer()
-            # next_section_page <<- textList[[next_section_page_number]]
-            # next_section_page_line_1 <- next_section_page[1, "text"]
-            # if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
-            #     section_page[i, "page_end"] <-
-            #         {
-            #             next_section_page_number - 1
-            #         } %>% as.character()
-            # } else {
-            #     section_page[i, "page_end"] <- next_section_page_number %>% as.character()
-            # }
         }
     }
 
