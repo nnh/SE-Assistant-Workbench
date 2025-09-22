@@ -1,0 +1,110 @@
+# 再帰的に title を集める関数
+extract_titles <- function(x) {
+    titles <- character(0)
+
+    if (is.list(x)) {
+        # title 要素があれば追加
+        if (!is.null(x$title)) {
+            titles <- c(titles, x$title)
+        }
+        # children があれば再帰呼び出し
+        if (!is.null(x$children) && is.list(x$children)) {
+            child_titles <- unlist(lapply(x$children, extract_titles))
+            titles <- c(titles, child_titles)
+        }
+    }
+
+    return(titles)
+}
+# ファイル名からプロトコル名とバージョン情報を取得
+extract_version_info <- function(pdf_path) {
+    version_info <- str_extract(basename(pdf_path), regex("v[0-9]+\\.[0-9]+", ignore_case = TRUE)) %>%
+        str_remove(regex("^v", ignore_case = TRUE))
+    protocol_name <- str_remove(basename(pdf_path), "\\.pdf$") %>%
+        str_remove(regex("v[0-9]+\\.[0-9]+$", ignore_case = TRUE)) %>%
+        str_remove("PRT$") %>%
+        str_trim()
+    list(
+        protocol_name = protocol_name,
+        version_info = version_info
+    )
+}
+# PDFファイルのパスから目次と本文情報を取得
+extract_pdf_info <- function(pdf_path) {
+    toc_info <- pdf_toc(pdf_path)
+    all_titles <- extract_titles(toc_info) %>% discard(~ .x == "")
+    textByPage <- pdf_text(pdf_path)
+    textList <- pdf_data(pdf_path)
+    for (i in seq_along(textList)) {
+        for (j in 1:2) {
+            if (str_detect(textList[[i]][j, "text"], fixed(protocol_name)) ||
+                str_detect(textList[[i]][j, "text"], fixed(version_info))) {
+                textList[[i]][j, "text"] <- NA
+            }
+        }
+        textList[[i]] <- textList[[i]] %>% filter(!is.na(text))
+    }
+    list(
+        all_titles = all_titles,
+        textByPage = textByPage,
+        textList = textList
+    )
+}
+# 目次情報からセクション番号、タイトル、開始ページを抽出
+extract_section_page <- function(textByPage, textList) {
+    # 目次開始ページ
+    index_toc_start <- which(str_detect(textByPage, "目次\\n"))[1] %>% as.integer()
+    index_toc_end <- which(str_detect(textByPage, "1\\. 研究計画書要旨\\n"))[1] %>% as.integer()
+    indexPages <- textList[index_toc_start:index_toc_end]
+    # 各ページごとにyごとにtextを結合
+    indexPages_merged <- lapply(indexPages, function(df) {
+        df %>%
+            group_by(y) %>%
+            summarise(text = paste(text, collapse = " "), .groups = "drop")
+    }) %>% bind_rows()
+    indexPages_merged <- indexPages_merged %>%
+        mutate(
+            section_number = str_extract(text, "^[0-9]+(?:\\.[0-9]+)*\\.?"),
+            section_value = str_remove(text, "^[0-9]+(?:\\.[0-9]+)*\\.?") %>% str_replace("\\s[0-9]+$", "") %>% str_trim(),
+            section_text = str_replace(text, "\\s[0-9]+$", ""),
+            page_start = str_extract(text, "[0-9]+$")
+        ) %>%
+        select("section_number", "section_value", "section_text", "page_start")
+    section_page <- indexPages_merged %>%
+        filter(!is.na(page_start)) %>%
+        filter(!is.na(section_number)) %>%
+        filter(!is.na(section_value) & section_value != "")
+    for (i in 1:(nrow(section_page) - 1)) {
+        if (section_page[i, "page_start"] == section_page[i + 1, "page_start"]) {
+            section_page[i, "page_end"] <- section_page[i + 1, "page_start"]
+        } else {
+            next_header <- section_page[i + 1, "section_text"]
+            next_section_page_number <<- section_page[i + 1, "page_start", drop = TRUE] %>% as.integer()
+            next_section_page <<- textList[[next_section_page_number]]
+            next_section_page_line_1 <- next_section_page[1, "text"]
+            if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
+                section_page[i, "page_end"] <-
+                    {
+                        next_section_page_number - 1
+                    } %>% as.character()
+            } else {
+                section_page[i, "page_end"] <- next_section_page_number %>% as.character()
+            }
+        }
+    }
+
+    return(section_page)
+}
+# セクション番号とタイトルのペアリストをもとに、セクション番号、タイトル、開始ページを抽出する関数
+extract_section_pairs_info <- function(section_page) {
+    target_titles <- map_chr(section_pairs, 2)
+    section_pairs_df <- tibble(
+        section_pair_title = map_chr(section_pairs, 2),
+        section_pair_number = map_chr(section_pairs, 1)
+    )
+    filtered_section_page <- section_page %>%
+        filter(section_value %in% target_titles)
+    result <- section_pairs_df %>%
+        left_join(filtered_section_page, by = c("section_pair_title" = "section_value"))
+    return(result)
+}
