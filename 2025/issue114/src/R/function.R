@@ -86,35 +86,28 @@ extract_section_page <- function(textByPage, textList) {
         for (j in (i + 1):nrow(section_page)) {
             if (str_detect(section_page[j, "section_number"], regex(paste0("^", search_regex), ignore_case = TRUE))) {
                 target <- section_page[j, ]
-                # next_section_page_number <- target["page_start"] %>% as.integer()
-                # next_section_page <- textList[[next_section_page_number]]
-                # next_section_page_line_1 <- next_section_page[1, "text"]
-                # if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
-                #     section_page[i, "page_end"] <-
-                #         {
-                #             next_section_page_number - 1
-                #         } %>% as.character()
-                # } else {
-                #     section_page[i, "page_end"] <- next_section_page_number %>% as.character()
-                # }
-                section_page[i, "page_end"] <- resolve_section_page_number(target)
+                if (section_page[j, "page_start"] == section_page[i, "page_start"]) {
+                  section_page[i, "page_end"] <- section_page[i, "page_start"]
+                  break
+                }
+                section_page[i, "page_end"] <- resolve_section_page_number(target, search_regex)
                 break
             } else {
                 if (j == nrow(section_page)) {
                     target <- section_page[i + 1, ]
-                    section_page[i, "page_end"] <- resolve_section_page_number(target)
+                    section_page[i, "page_end"] <- resolve_section_page_number(target, search_regex)
                 }
             }
         }
     }
-
     return(section_page)
 }
-resolve_section_page_number <- function(target) {
+resolve_section_page_number <- function(target, search_regex) {
     next_section_page_number <- target["page_start"] %>% as.integer()
     next_section_page <- textList[[next_section_page_number]]
+    search_regex_start <- search_regex %>% str_remove("\\$$")
     next_section_page_line_1 <- next_section_page[1, "text"]
-    if (str_detect(next_section_page_line_1, "^[0-9]+(?:\\.[0-9]+)*\\.?")) {
+    if (str_detect(next_section_page_line_1, search_regex_start)) {
         res <-
             {
                 next_section_page_number - 1
