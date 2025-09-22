@@ -8,7 +8,10 @@ source(here("src/R/function.R"), encoding = "UTF-8")
 ###  main section ###
 # PDFファイルのパスを指定
 pdf_path <- "/Users/mariko/Downloads/TORG-Osimertinib-NSCLC PRTv6.0.pdf"
-version_info <- extract_version_info(pdf_path)
+protocol_name_and_version <- extract_version_info(pdf_path)
+protocol_name <- protocol_name_and_version$protocol_name
+version_info <- protocol_name_and_version$version_info
+rm(protocol_name_and_version)
 # PDFファイルから目次と本文情報を取得
 pdf_info <- extract_pdf_info(pdf_path)
 all_titles <- pdf_info$all_titles
