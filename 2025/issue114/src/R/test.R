@@ -3,15 +3,36 @@ rm(list = ls())
 library(tidyverse)
 library(pdftools)
 library(here)
+library(jsonlite)
+library(googlesheets4)
+library(googledrive)
 source(here("src/R/const.R"), encoding = "UTF-8")
 source(here("src/R/function.R"), encoding = "UTF-8")
+kSheetName <- "プロトコル情報"
+config <- fromJSON(here("src/R/config.json"))
+if (!is.null(config$mailAddress) && config$mailAddress != "") {
+    gs4_auth(email = config$mailAddress)
+} else {
+    gs4_auth()
+}
+if (is.null(config$input_pdf_path) || config$input_pdf_path == "") {
+    stop("Please set 'input_pdf_path' in config.json")
+}
 ###  main section ###
 # PDFファイルのパスを指定
-pdf_path <- "/Users/mariko/Downloads/TORG-Osimertinib-NSCLC PRTv6.0.pdf"
+pdf_path <- config$input_pdf_path
+
 protocol_name_and_version <- extract_version_info(pdf_path)
 protocol_name <- protocol_name_and_version$protocol_name
 version_info <- protocol_name_and_version$version_info
 rm(protocol_name_and_version)
+if (is.null(config$output_spreadsheet_id) || config$output_spreadsheet_id == "") {
+  # 新規スプレッドシートを作成
+  sheet <- create_spreadsheet()
+} else {
+  # 既存のスプレッドシートを使用
+  sheet <- get_spreadsheet(config$output_spreadsheet_id)
+}
 # PDFファイルから目次と本文情報を取得
 pdf_info <- extract_pdf_info(pdf_path)
 all_titles <- pdf_info$all_titles
@@ -23,3 +44,13 @@ section_page <- extract_section_page(textByPage, textList)
 
 # セクション番号とタイトルのペアリストをもとに、セクション番号、タイトル、開始ページを抽出
 result <- extract_section_pairs_info(section_page)
+output_values <- result %>%
+    select(section_pair_number, output_text)
+colnames(output_values) <- c("セクション番号", "該当箇所")
+# スプレッドシートに書き込み
+if (!(kSheetName %in% sheet_names(sheet))) {
+    sheet_add(sheet, kSheetName)
+}
+range_clear(ss = sheet, sheet = kSheetName)
+sheet_write(output_values, ss = sheet, sheet = kSheetName)
+message("プロトコル情報をスプレッドシートに書き込みました: ", sheet$spreadsheet_id)

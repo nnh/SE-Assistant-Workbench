@@ -87,8 +87,8 @@ extract_section_page <- function(textByPage, textList) {
             if (str_detect(section_page[j, "section_number"], regex(paste0("^", search_regex), ignore_case = TRUE))) {
                 target <- section_page[j, ]
                 if (section_page[j, "page_start"] == section_page[i, "page_start"]) {
-                  section_page[i, "page_end"] <- section_page[i, "page_start"]
-                  break
+                    section_page[i, "page_end"] <- section_page[i, "page_start"]
+                    break
                 }
                 section_page[i, "page_end"] <- resolve_section_page_number(target, search_regex)
                 break
@@ -128,5 +128,36 @@ extract_section_pairs_info <- function(section_page) {
         filter(section_value %in% target_titles)
     result <- section_pairs_df %>%
         left_join(filtered_section_page, by = c("section_pair_title" = "section_value"))
+    result$page_start_end <- ifelse(result$page_start == result$page_end,
+        as.character(result$page_start),
+        paste0(result$page_start, "〜", result$page_end)
+    )
+    result$output_text <- ifelse(!is.na(result$page_start),
+        paste0(result$section_text, "(研究計画書 Version ", version_info, " p.", result$page_start_end, ")　参照"),
+        "該当なし"
+    )
     return(result)
+}
+get_spreadsheet <- function(spreadsheet_id) {
+    tryCatch(
+        {
+            sheet <- gs4_get(spreadsheet_id)
+        },
+        error = function(e) {
+            sheet <- create_spreadsheet()
+        }
+    )
+    return(sheet)
+}
+create_spreadsheet <- function() {
+    today_str <- format(Sys.Date(), "%Y%m%d_")
+    sheet_name <- paste0(today_str, protocol_name, "_プロトコル情報抽出")
+    sheet <- gs4_create(sheet_name)
+    # config.jsonにIDを書き込む
+    config$output_spreadsheet_id <- sheet %>%
+        gs4_get() %>%
+        .$spreadsheet_id
+    write_json(config, here("src/R/config.json"), auto_unbox = TRUE, pretty = TRUE)
+    message("新規スプレッドシートを作成し、config.jsonにIDを書き込みました: ", config$output_spreadsheet_id)
+    return(sheet)
 }
