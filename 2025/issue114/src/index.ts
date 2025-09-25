@@ -111,6 +111,9 @@ function setAnalysis_(
   ) {
     startIdx = i + 1;
   }
+  if (startIdx === -1) {
+    return;
+  }
   for (let j = startIdx; j < targetTextArray.length; j++) {
     if (targetTextArray[j].heading !== 'NORMAL') {
       endIdx = j - 1;
