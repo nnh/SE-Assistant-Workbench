@@ -25,13 +25,16 @@ pdf_path <- config$input_pdf_path
 protocol_name_and_version <- extract_version_info(pdf_path)
 protocol_name <- protocol_name_and_version$protocol_name
 version_info <- protocol_name_and_version$version_info
+if (config$protocol_name != protocol_name || config$version_info != version_info) {
+    config$output_spreadsheet_id <- ""
+}
 rm(protocol_name_and_version)
 if (is.null(config$output_spreadsheet_id) || config$output_spreadsheet_id == "") {
-  # 新規スプレッドシートを作成
-  sheet <- create_spreadsheet()
+    # 新規スプレッドシートを作成
+    sheet <- create_spreadsheet()
 } else {
-  # 既存のスプレッドシートを使用
-  sheet <- get_spreadsheet(config$output_spreadsheet_id)
+    # 既存のスプレッドシートを使用
+    sheet <- get_spreadsheet(config$output_spreadsheet_id)
 }
 # PDFファイルから目次と本文情報を取得
 pdf_info <- extract_pdf_info(pdf_path)
@@ -46,6 +49,11 @@ section_page <- extract_section_page(textByPage, textList)
 result <- extract_section_pairs_info(section_page)
 output_values <- result %>%
     select(section_pair_number, output_text)
+output_values <- output_values %>%
+    group_by(section_pair_number) %>%
+    filter(!(output_text == "該当なし" & any(output_text != "該当なし"))) %>%
+    ungroup()
+output_values <- output_values %>% distinct()
 colnames(output_values) <- c("セクション番号", "該当箇所")
 # スプレッドシートに書き込み
 if (!(kSheetName %in% sheet_names(sheet))) {
@@ -53,4 +61,10 @@ if (!(kSheetName %in% sheet_names(sheet))) {
 }
 range_clear(ss = sheet, sheet = kSheetName)
 sheet_write(output_values, ss = sheet, sheet = kSheetName)
-message("プロトコル情報をスプレッドシートに書き込みました: ", sheet$spreadsheet_id)
+sheet_id <- sheet %>%
+    gs4_get() %>%
+    .$spreadsheet_id
+message("プロトコル情報をスプレッドシートに書き込みました: ", sheet_id)
+config$protocol_name <- protocol_name
+config$version_info <- version_info
+write_json(config, here("src/R/config.json"), auto_unbox = TRUE, pretty = TRUE)

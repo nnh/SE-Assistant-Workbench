@@ -5,16 +5,21 @@ extract_titles <- function(x) {
     if (is.list(x)) {
         # title 要素があれば追加
         if (!is.null(x$title)) {
-            titles <- c(titles, x$title)
+            titles <- c(titles, cleaning_title(x$title))
         }
         # children があれば再帰呼び出し
         if (!is.null(x$children) && is.list(x$children)) {
             child_titles <- unlist(lapply(x$children, extract_titles))
-            titles <- c(titles, child_titles)
+            titles <- c(titles, cleaning_title(child_titles))
         }
     }
 
     return(titles)
+}
+cleaning_title <- function(text) {
+    text %>%
+        str_remove_all("…") %>%
+        str_remove_all("\\.{2,}")
 }
 # ファイル名からプロトコル名とバージョン情報を取得
 extract_version_info <- function(pdf_path) {
@@ -61,6 +66,11 @@ extract_section_page <- function(textByPage, textList) {
     index_toc_start <- which(str_detect(textByPage, "目次\\n"))[1] %>% as.integer()
     index_toc_end <- which(str_detect(textByPage, "1\\. 研究計画書要旨\\n"))[1] %>% as.integer()
     indexPages <- textList[index_toc_start:index_toc_end]
+    for (i in 1:length(indexPages)) {
+        for (j in 1:nrow(indexPages[[i]])) {
+            indexPages[[i]][j, "text"] <- indexPages[[i]][j, "text"] %>% cleaning_title()
+        }
+    }
     # 各ページごとにyごとにtextを結合
     indexPages_merged <- lapply(indexPages, function(df) {
         df %>%
@@ -151,8 +161,8 @@ get_spreadsheet <- function(spreadsheet_id) {
 }
 create_spreadsheet <- function() {
     today_str <- format(Sys.Date(), "%Y%m%d_")
-    sheet_name <- paste0(today_str, protocol_name, "_プロトコル情報抽出")
-    sheet <- gs4_create(sheet_name)
+    sheet_name <- paste0(today_str, protocol_name, "_", version_info, "_プロトコル情報抽出")
+    sheet <- gs4_create(sheet_name, sheets = kSheetName)
     # config.jsonにIDを書き込む
     config$output_spreadsheet_id <- sheet %>%
         gs4_get() %>%
