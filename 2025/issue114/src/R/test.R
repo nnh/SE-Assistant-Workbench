@@ -60,13 +60,15 @@ output_values <- output_values %>%
     ungroup()
 output_values_2 <- output_values %>% distinct()
 # 試験薬情報
-drug_info <- get_section_info(kDrugHeader, "試験薬情報")
+drug_info <- get_section_info(kDrugHeader, "試験薬情報", deleteNumber = TRUE)
 # 概要
-over_view_info <- get_section_info(kOverViewHeader, "概要")
+over_view_info <- get_section_info(kOverViewHeader, "概要", deleteNumber = TRUE)
 # 選択基準
-selection_criteria_info <- get_section_info(kSelectionCriteriaHeader, "選択基準")
+selection_criteria_info <- get_section_info(kSelectionCriteriaHeader, "選択基準", deleteNumber = FALSE)
 # 除外基準
-exclusion_criteria_info <- get_section_info(kExclusionCriteriaHeader, "除外基準")
+exclusion_criteria_info <- get_section_info(kExclusionCriteriaHeader, "除外基準", deleteNumber = FALSE)
+# 統計解析
+statistical_analysis_info <- get_section_info(kStatisticalAnalysisHeader, "統計解析", deleteNumber = TRUE)
 # 表紙情報の取得
 cover_info <- get_cover_info()
 # bind rows
@@ -75,7 +77,11 @@ output_values <- cover_info %>%
     bind_rows(over_view_info) %>%
     bind_rows(selection_criteria_info) %>%
     bind_rows(exclusion_criteria_info) %>%
+    bind_rows(statistical_analysis_info) %>%
     bind_rows(output_values_2)
+# output_textが数値と半角空白だけの行を削除
+output_values <- output_values %>%
+    filter(!str_detect(output_text, "^\\s*\\d+\\s*$"))
 colnames(output_values) <- c("セクション番号", "該当箇所")
 # スプレッドシートに書き込み
 if (!(kSheetName %in% sheet_names(sheet))) {

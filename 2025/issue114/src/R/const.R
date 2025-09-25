@@ -3,6 +3,7 @@ kDrugHeader <- "9.4.4. 試験における用量の選択"
 kOverViewHeader <- "8. 試験の目的"
 kSelectionCriteriaHeader <- "9.3.1 選択基準"
 kExclusionCriteriaHeader <- "9.3.2 除外基準"
+kStatisticalAnalysisHeader <- "x.x. 統計解析"
 # セクション番号とタイトルのペアリストをリテラルで作成
 section_pairs <- list(
     list("4. 略号及び用語の定義一覧", "略語・用語"),
@@ -35,5 +36,6 @@ section_pairs <- list(
     list("9.5.3. 有効性の主要評価項目", "主要評価項目"),
     list("9.5.4. 薬物濃度の測定", "薬物動態"),
     list("9.6. データの品質保証", "データの品質管理および品質保証"),
-    list("9.6. データの品質保証", "データの品質管理及び品質保証")
+    list("9.6. データの品質保証", "データの品質管理及び品質保証"),
+    list(kStatisticalAnalysisHeader, "統計")
 )

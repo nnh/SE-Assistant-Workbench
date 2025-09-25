@@ -167,14 +167,14 @@ create_spreadsheet <- function() {
 }
 # 表紙情報の取得
 get_cover_info <- function() {
-    cover_info <- split_page_text(textByPage[1], deleteBreak = TRUE)
+    cover_info <- split_page_text(textByPage[1], deleteBreak = FALSE, deleteNumber = FALSE)
     df <- tibble(
         section_pair_number = "表紙情報",
         output_text = cover_info
     )
     return(df)
 }
-get_section_info <- function(header_key, label) {
+get_section_info <- function(header_key, label, deleteNumber = TRUE) {
     pages <- result %>%
         filter(section_pair_number == header_key)
 
@@ -187,21 +187,28 @@ get_section_info <- function(header_key, label) {
     page_end <- pages[1, "page_end", drop = TRUE]
     pages_text <- textByPage[page_start:page_end] %>%
         paste(collapse = "\n")
+    header <- str_extract(pages_text, "^[^\n]+") %>% str_trim()
 
-    info <- split_page_text(pages_text, deleteBreak = FALSE)
+    info <- split_page_text(pages_text, deleteBreak = FALSE, deleteNumber = deleteNumber)
 
-    tibble(
+    res <- tibble(
         section_pair_number = label,
         output_text = info
     )
+    res <- res %>%
+        filter(output_text != header & output_text != "")
+    return(res)
 }
 
 # ページテキストを改行2つ以上で分割し、前後の空白を削除する関数
-split_page_text <- function(value, deleteBreak = TRUE) {
+split_page_text <- function(value, deleteBreak = TRUE, deleteNumber = TRUE) {
     res <- strsplit(value, "\n{2,}")[[1]]
     res <- gsub("\n +", "\n", res)
     if (deleteBreak) {
         res <- gsub("\n", "", res)
+    }
+    if (deleteNumber) {
+        res <- gsub("\\b(?:\\d{1,3}\\.)+\\s", "", res)
     }
     res <- trimws(res)
     return(res)
