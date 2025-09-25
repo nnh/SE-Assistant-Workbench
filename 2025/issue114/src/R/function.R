@@ -171,3 +171,15 @@ create_spreadsheet <- function() {
     message("新規スプレッドシートを作成し、config.jsonにIDを書き込みました: ", config$output_spreadsheet_id)
     return(sheet)
 }
+# 表紙情報の取得
+get_cover_info <- function() {
+    cover_info <- strsplit(textByPage[1], "\n{2,}")[[1]]
+    cover_info <- gsub("\n +", "\n", cover_info)
+    cover_info <- gsub("\n", "", cover_info)
+    cover_info <- trimws(cover_info)
+    df <- tibble(
+        section_pair_number = "表紙情報",
+        output_text = cover_info
+    )
+    return(df)
+}

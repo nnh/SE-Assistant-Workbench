@@ -53,7 +53,12 @@ output_values <- output_values %>%
     group_by(section_pair_number) %>%
     filter(!(output_text == "該当なし" & any(output_text != "該当なし"))) %>%
     ungroup()
-output_values <- output_values %>% distinct()
+output_values_2 <- output_values %>% distinct()
+# 表紙情報の取得
+cover_info <- get_cover_info()
+# bind rows
+output_values <- cover_info %>%
+    bind_rows(output_values_2)
 colnames(output_values) <- c("セクション番号", "該当箇所")
 # スプレッドシートに書き込み
 if (!(kSheetName %in% sheet_names(sheet))) {
