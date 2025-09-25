@@ -23,7 +23,12 @@ function getPropertyByKey_(key) {
   return value;
 }
 function getMailAddressFromUserList_(mailSs) {
-  const userlistSsId = getPropertyByKey_("userlistSpreadsheetId");
+  const propertiesSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName("properties");
+  if (propertiesSheet === null) {
+    throw new Error("プロパティシートが見つかりません。");
+  }
+  const userlistSsId = propertiesSheet.getRange("B1").getValue();
   const [userListSs, userListSheet] = getSpreadSheetSheet_(
     userlistSsId,
     "Google"
