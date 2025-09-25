@@ -163,23 +163,46 @@ create_spreadsheet <- function() {
     today_str <- format(Sys.Date(), "%Y%m%d_")
     sheet_name <- paste0(today_str, protocol_name, "_", version_info, "_プロトコル情報抽出")
     sheet <- gs4_create(sheet_name, sheets = kSheetName)
-    # config.jsonにIDを書き込む
-    config$output_spreadsheet_id <- sheet %>%
-        gs4_get() %>%
-        .$spreadsheet_id
-    write_json(config, here("src/R/config.json"), auto_unbox = TRUE, pretty = TRUE)
-    message("新規スプレッドシートを作成し、config.jsonにIDを書き込みました: ", config$output_spreadsheet_id)
     return(sheet)
 }
 # 表紙情報の取得
 get_cover_info <- function() {
-    cover_info <- strsplit(textByPage[1], "\n{2,}")[[1]]
-    cover_info <- gsub("\n +", "\n", cover_info)
-    cover_info <- gsub("\n", "", cover_info)
-    cover_info <- trimws(cover_info)
+    cover_info <- split_page_text(textByPage[1], deleteBreak = TRUE)
     df <- tibble(
         section_pair_number = "表紙情報",
         output_text = cover_info
     )
     return(df)
+}
+get_section_info <- function(header_key, label) {
+    pages <- result %>%
+        filter(section_pair_number == header_key)
+
+    if (nrow(pages) == 0) {
+        return(NULL)
+    }
+
+    # 最初を優先
+    page_start <- pages[1, "page_start", drop = TRUE]
+    page_end <- pages[1, "page_end", drop = TRUE]
+    pages_text <- textByPage[page_start:page_end] %>%
+        paste(collapse = "\n")
+
+    info <- split_page_text(pages_text, deleteBreak = FALSE)
+
+    tibble(
+        section_pair_number = label,
+        output_text = info
+    )
+}
+
+# ページテキストを改行2つ以上で分割し、前後の空白を削除する関数
+split_page_text <- function(value, deleteBreak = TRUE) {
+    res <- strsplit(value, "\n{2,}")[[1]]
+    res <- gsub("\n +", "\n", res)
+    if (deleteBreak) {
+        res <- gsub("\n", "", res)
+    }
+    res <- trimws(res)
+    return(res)
 }

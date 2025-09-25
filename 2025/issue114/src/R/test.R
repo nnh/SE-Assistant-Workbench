@@ -8,7 +8,6 @@ library(googlesheets4)
 library(googledrive)
 source(here("src/R/const.R"), encoding = "UTF-8")
 source(here("src/R/function.R"), encoding = "UTF-8")
-kSheetName <- "プロトコル情報"
 config <- fromJSON(here("src/R/config.json"))
 if (!is.null(config$mailAddress) && config$mailAddress != "") {
     gs4_auth(email = config$mailAddress)
@@ -36,6 +35,12 @@ if (is.null(config$output_spreadsheet_id) || config$output_spreadsheet_id == "")
     # 既存のスプレッドシートを使用
     sheet <- get_spreadsheet(config$output_spreadsheet_id)
 }
+# config.jsonにIDを書き込む
+config$output_spreadsheet_id <- sheet %>%
+    gs4_get() %>%
+    .$spreadsheet_id
+write_json(config, here("src/R/config.json"), auto_unbox = TRUE, pretty = TRUE)
+
 # PDFファイルから目次と本文情報を取得
 pdf_info <- extract_pdf_info(pdf_path)
 all_titles <- pdf_info$all_titles
@@ -54,10 +59,22 @@ output_values <- output_values %>%
     filter(!(output_text == "該当なし" & any(output_text != "該当なし"))) %>%
     ungroup()
 output_values_2 <- output_values %>% distinct()
+# 試験薬情報
+drug_info <- get_section_info(kDrugHeader, "試験薬情報")
+# 概要
+over_view_info <- get_section_info(kOverViewHeader, "概要")
+# 選択基準
+selection_criteria_info <- get_section_info(kSelectionCriteriaHeader, "選択基準")
+# 除外基準
+exclusion_criteria_info <- get_section_info(kExclusionCriteriaHeader, "除外基準")
 # 表紙情報の取得
 cover_info <- get_cover_info()
 # bind rows
 output_values <- cover_info %>%
+    bind_rows(drug_info) %>%
+    bind_rows(over_view_info) %>%
+    bind_rows(selection_criteria_info) %>%
+    bind_rows(exclusion_criteria_info) %>%
     bind_rows(output_values_2)
 colnames(output_values) <- c("セクション番号", "該当箇所")
 # スプレッドシートに書き込み

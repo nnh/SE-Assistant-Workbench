@@ -1,3 +1,8 @@
+kSheetName <- "プロトコル情報"
+kDrugHeader <- "9.4.4. 試験における用量の選択"
+kOverViewHeader <- "8. 試験の目的"
+kSelectionCriteriaHeader <- "9.3.1 選択基準"
+kExclusionCriteriaHeader <- "9.3.2 除外基準"
 # セクション番号とタイトルのペアリストをリテラルで作成
 section_pairs <- list(
     list("4. 略号及び用語の定義一覧", "略語・用語"),
@@ -6,12 +11,12 @@ section_pairs <- list(
     list("5.3. 被験者への情報および同意", "説明と同意"),
     list("6. 研究責任医師等及び試験管理組織", "実施体制"),
     list("7. 諸言", "実施の根拠"),
-    list("8. 試験の目的", "概要"),
+    list(kOverViewHeader, "概要"),
     list("9.1. 試験の全般的デザイン及び計画−記述", "根拠"),
     list("9.2. 対照群の選択を含む試験デザインについての考察", "ベネフィット・リスク評価"),
     list("9.2. 対照群の選択を含む試験デザインについての考察", "目的および評価項目"),
-    list("9.3.1 選択基準", "選択基準"),
-    list("9.3.2 除外基準", "除外基準"),
+    list(kSelectionCriteriaHeader, "選択基準"),
+    list(kExclusionCriteriaHeader, "除外基準"),
     list("9.3.3. 患者の治療又は評価の打ち切り", "治療"),
     list("9.4.1 治療法", "投与スケジュール"),
     list("9.4.2. 試験薬の同定", "試験薬の同定"),
