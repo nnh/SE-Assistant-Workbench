@@ -195,6 +195,24 @@ if (nrow(idMappingTxt) != idMappingRow | nrow(whoddsGenericNames) != whoddsGener
   cat("test5:OK\n")
 }
 cat(str_c(file.path(testDir, kTestOutputFolder), "配下のHTMLファイルの内容を確認してください"))
-# テスト６：バージョンの表示
+# テスト６：バージョン確認
 versionTxt <- file.path(testBoxWhoddDir2, kVersionFile) |> read_lines()
 print(versionTxt)
+idfVersionFromVersionTxt <- substr(versionTxt, nchar(versionTxt) - 7, nchar(versionTxt))
+if (!grepl("^[0-9]{8}$", idfVersionFromVersionTxt)) {
+  stop("error:test6 - idfVersionFromVersionTxt is not 8 digit half-width number")
+}
+idfVersionFromVersionTxtYear <- substr(idfVersionFromVersionTxt, 1, 4) |> as.numeric()
+idfVersionFromVersionTxtMonth <- substr(idfVersionFromVersionTxt, 5, 6) |> as.numeric()
+if (whoddMonth == "Sep") {
+  tempYear <- current_year
+  tempMonth <- 4
+} else {
+  tempYear <- current_year - 1
+  tempMonth <- 10
+}
+if (idfVersionFromVersionTxtYear != tempYear || idfVersionFromVersionTxtMonth != tempMonth) {
+  stop(str_c("error:test6 - idfVersionFromVersionTxt is not ", tempYear, str_pad(tempMonth, 2, pad = "0")))
+} else {
+  cat("test6:OK\n")
+}
