@@ -15,11 +15,12 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import { extractWOSRecordsToSheet_, test_ } from './test';
-function test() {
-  test_();
+import { extractWOSRecordsToSheet_, verifyWosIdsInJsonFiles_ } from './test';
+// 2. 調査対象スプレッドシートから情報を取得し、JSONファイルに存在するか確認する処理
+function verifyWosIdsInJsonFiles() {
+  verifyWosIdsInJsonFiles_();
 }
-
+// 1. 調査対象のレコードを抽出してスプレッドシートに書き出す処理
 function extractWOSRecordsToSheet() {
   extractWOSRecordsToSheet_();
 }

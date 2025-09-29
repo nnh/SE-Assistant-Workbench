@@ -91,7 +91,7 @@ export function extractWOSRecordsToSheet_() {
   return;
 }
 // 調査対象シートから情報を取得し、JSONファイルに存在するか確認する処理
-export function test_() {
+export function verifyWosIdsInJsonFiles_() {
   const targetWosIdRecordsSheet = getSheetByName_(
     SpreadsheetApp.getActiveSpreadsheet().getId(),
     '調査対象'
@@ -100,11 +100,73 @@ export function test_() {
     .getDataRange()
     .getValues()
     .filter((_, idx) => idx > 0);
+  const facilityWosMap = new Map<string, string[]>();
+  for (const row of targetValues) {
+    const facilityCode = row[0] as string;
+    const wosId = row[3] as string;
+    if (!facilityWosMap.has(facilityCode)) {
+      facilityWosMap.set(facilityCode, []);
+    }
+    facilityWosMap.get(facilityCode)!.push(wosId);
+  }
+  const facilityWosArray: [string, string[]][] = Array.from(
+    facilityWosMap.entries()
+  );
+
   const inputJsonFolderId = getScriptProperty_('targetJsonFolderId');
-  const folder = DriveApp.getFolderById(inputJsonFolderId);
-  const files = folder.getFiles();
-  /*  while (files.hasNext()) {
-    const file = files.next();
-    Logger.log(`Found file: ${file.getName()}`);
-  }*/
+  const files = getFilesInFolder_(inputJsonFolderId);
+  const facilityWosStatusArray: [string, [string, string][]][] =
+    facilityWosArray.map(([facilityCode, wosIds]) => {
+      // Find the file matching the facility code (e.g., "100.json")
+      const file = files.find(f => f.getName() === `${facilityCode}.json`);
+      let jsonWosIds: string[] = [];
+      if (file) {
+        try {
+          const content = file.getBlob().getDataAsString();
+          const jsonData = JSON.parse(content);
+          jsonWosIds = jsonData['papers'].map(
+            (paper: any) => paper['uid'] as string
+          );
+        } catch (e) {
+          console.error(
+            `Error parsing JSON in file ${facilityCode}.json: ${e}`
+          );
+        }
+      }
+      const wosIdSet = new Set(jsonWosIds || []);
+      const wosStatus: [string, string][] = wosIds.map(wosId => [
+        wosId,
+        wosIdSet.has(wosId) ? 'あり' : 'なし',
+      ]);
+      return [facilityCode, wosStatus];
+    });
+  const flatFacilityWosStatusArray: [string, string, string][] = [];
+  facilityWosStatusArray.forEach(([facilityCode, wosStatusList]) => {
+    wosStatusList.forEach(([wosId, status]) => {
+      flatFacilityWosStatusArray.push([facilityCode, wosId, status]);
+    });
+  });
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'jsonファイル存在確認'
+  );
+  outputSheet.clearContents();
+  const header = [['施設コード', 'WOS ID', 'JSONファイル内の存在有無']];
+  outputSheet.getRange(1, 1, 1, header[0].length).setValues(header);
+  if (flatFacilityWosStatusArray.length > 0) {
+    outputSheet
+      .getRange(2, 1, flatFacilityWosStatusArray.length, header[0].length)
+      .setValues(flatFacilityWosStatusArray);
+  } else {
+    console.warn('No data to write to the output sheet.');
+  }
+}
+function getFilesInFolder_(folderId: string): GoogleAppsScript.Drive.File[] {
+  const folder = DriveApp.getFolderById(folderId);
+  const files: GoogleAppsScript.Drive.File[] = [];
+  const fileIterator = folder.getFiles();
+  while (fileIterator.hasNext()) {
+    files.push(fileIterator.next());
+  }
+  return files;
 }
