@@ -19,7 +19,12 @@ import {
   extractWOSRecordsToSheet_,
   verifyWosIdsInJsonFiles_,
   createQueryString_,
+  importWosTsvToSheet_,
 } from './test';
+// 4. WoSのTSVデータをスプレッドシートにインポートする処理
+function importWosTsvToSheet() {
+  importWosTsvToSheet_();
+}
 // 3. WoS GUI検索用のクエリ文字列を作成する処理
 function createQueryString() {
   createQueryString_();

@@ -190,3 +190,37 @@ export function createQueryString_(): void {
   const file = folder.createFile(fileName, wosIds, MimeType.PLAIN_TEXT);
   console.log(`File created: ${file.getUrl()}`);
 }
+// WoS GUI検索結果のタブ区切りテキストをスプレッドシートに書き出す処理
+export function importWosTsvToSheet_(): void {
+  const thisFolderId = getScriptProperty_('thisFolderId');
+  const folder = DriveApp.getFolderById(thisFolderId);
+  const fileIterator = folder.getFiles();
+  let tsvContent = '';
+  while (fileIterator.hasNext()) {
+    const file = fileIterator.next();
+    if (file.getName() === 'savedrecs.txt') {
+      tsvContent = file.getBlob().getDataAsString();
+      break;
+    }
+  }
+  if (!tsvContent) {
+    throw new Error('savedrecs.txt file not found in the specified folder.');
+  }
+  const rows: string[][] = tsvContent.split('\n').map(line => line.split('\t'));
+  const headerLength = rows[0].length;
+  const outputValues = rows.map(row => {
+    if (row.length < headerLength) {
+      return [...row, ...Array(headerLength - row.length).fill('')];
+    }
+    return row.slice(0, headerLength);
+  });
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'WoS検索結果'
+  );
+  outputSheet.clearContents();
+  outputSheet
+    .getRange(1, 1, outputValues.length, outputValues[0].length)
+    .setValues(outputValues);
+  return;
+}
