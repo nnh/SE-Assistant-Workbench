@@ -170,3 +170,23 @@ function getFilesInFolder_(folderId: string): GoogleAppsScript.Drive.File[] {
   }
   return files;
 }
+// クエリ文字列を作成する
+export function createQueryString_(): void {
+  const inputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'jsonファイル存在確認'
+  );
+  const inputValues = inputSheet.getDataRange().getValues();
+  const wosIds: string = inputValues
+    .filter((row, idx) => idx > 0 && row[2] === 'なし')
+    .map(row => {
+      const wosid = row[1] as string;
+      const res = `UT="${wosid}"`;
+      return res;
+    })
+    .join(' OR ');
+  const fileName = 'wos_query.txt';
+  const folder = DriveApp.getRootFolder(); // マイドライブ
+  const file = folder.createFile(fileName, wosIds, MimeType.PLAIN_TEXT);
+  console.log(`File created: ${file.getUrl()}`);
+}

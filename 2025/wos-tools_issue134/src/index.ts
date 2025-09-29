@@ -15,7 +15,15 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import { extractWOSRecordsToSheet_, verifyWosIdsInJsonFiles_ } from './test';
+import {
+  extractWOSRecordsToSheet_,
+  verifyWosIdsInJsonFiles_,
+  createQueryString_,
+} from './test';
+// 3. WoS GUI検索用のクエリ文字列を作成する処理
+function createQueryString() {
+  createQueryString_();
+}
 // 2. 調査対象スプレッドシートから情報を取得し、JSONファイルに存在するか確認する処理
 function verifyWosIdsInJsonFiles() {
   verifyWosIdsInJsonFiles_();
