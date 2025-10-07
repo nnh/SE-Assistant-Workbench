@@ -224,3 +224,70 @@ export function importWosTsvToSheet_(): void {
     .setValues(outputValues);
   return;
 }
+// WoS GUIにて検索した結果と調査依頼シートの内容を突き合わせる処理
+export function mergeRequestSheetWithWosResults_(): void {
+  const requestSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    '調査対象'
+  );
+  const requestValues: string[][] = requestSheet.getDataRange().getValues();
+  const wosSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'WoS検索結果'
+  );
+  const wosValues: string[][] = wosSheet.getDataRange().getValues();
+  const wosTargetColnames = ['UT', 'PY', 'PD', 'PM', 'DT', 'C1'];
+  const header = wosValues[0].map((col: string) => col.trim());
+  const wosTargetColMaps: Map<string, number> = new Map();
+  wosTargetColnames.forEach((colname: string) => {
+    const idx: number = header.indexOf(colname);
+    if (idx === -1) {
+      throw new Error(`Column ${colname} not found in WoS search results.`);
+    }
+    wosTargetColMaps.set(colname, idx);
+  });
+  const idxWosUt = 0;
+  const idxWosPy = 1;
+  const idxRequestWosId = 3;
+  const wosGuiValues: string[][] = wosValues.map(
+    (row: string[], idx: number) => {
+      const filteredRow: string[] = [];
+      wosTargetColMaps.forEach((idx: number, _) => {
+        filteredRow.push(row[idx]);
+      });
+      let value = '';
+      if (idx === 0) {
+        value = '備考';
+      } else if (String(filteredRow[idxWosPy]) === '2025') {
+        value = 'PYが2025の論文';
+      }
+      const isMatched: string[][] = requestValues.filter(
+        requestRow => requestRow[idxRequestWosId] === filteredRow[idxWosUt]
+      );
+      if (isMatched.length === 0 && idx !== 0) {
+        console.warn(
+          `No matching WOS ID found for UT: ${filteredRow[idxWosUt]}`
+        );
+      }
+      if (isMatched.length > 1) {
+        console.warn(
+          `Multiple matching WOS IDs found for UT: ${filteredRow[idxWosUt]}`
+        );
+      }
+      const joinRecord: string[] = isMatched[0]
+        ? isMatched[0].slice(0, -1)
+        : ['', '', ''];
+      const targetRow: string[] = [...joinRecord, ...filteredRow, value];
+      return targetRow;
+    }
+  );
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    '調査結果'
+  );
+  outputSheet.clearContents();
+  outputSheet
+    .getRange(1, 1, wosGuiValues.length, wosGuiValues[0].length)
+    .setValues(wosGuiValues);
+  return;
+}

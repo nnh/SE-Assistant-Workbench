@@ -20,7 +20,12 @@ import {
   verifyWosIdsInJsonFiles_,
   createQueryString_,
   importWosTsvToSheet_,
+  mergeRequestSheetWithWosResults_,
 } from './test';
+// 5. リクエストシートとWoSの検索結果をマージする処理
+function mergeRequestSheetWithWosResults() {
+  mergeRequestSheetWithWosResults_();
+}
 // 4. WoSのTSVデータをスプレッドシートにインポートする処理
 function importWosTsvToSheet() {
   importWosTsvToSheet_();
