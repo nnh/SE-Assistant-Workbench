@@ -190,6 +190,55 @@ export function createQueryString_(): void {
   const file = folder.createFile(fileName, wosIds, MimeType.PLAIN_TEXT);
   console.log(`File created: ${file.getUrl()}`);
 }
+// pmid.jsonファイルを読み込む処理
+export function importPmidJsonToSheet_(): void {
+  const thisFolderId = getScriptProperty_('thisFolderId');
+  const folder = DriveApp.getFolderById(thisFolderId);
+  const fileIterator = folder.getFiles();
+  let jsonContent = '';
+  while (fileIterator.hasNext()) {
+    const file = fileIterator.next();
+    if (file.getName() === 'pmid.json') {
+      jsonContent = file.getBlob().getDataAsString();
+      break;
+    }
+  }
+  if (!jsonContent) {
+    throw new Error('pmid.json file not found in the specified folder.');
+  }
+  const jsonData: { [key: string]: any } = JSON.parse(jsonContent);
+  const uidAndAuthors = new Map<string, any[]>();
+
+  for (const key in jsonData) {
+    const value = jsonData[key];
+    uidAndAuthors.set(
+      String(value.uid),
+      Array.isArray(value.authors) ? value.authors : []
+    );
+  }
+
+  Logger.log(uidAndAuthors);
+
+  if (!Array.isArray(jsonData)) {
+    throw new Error('Invalid JSON format: Expected an array of objects.');
+  }
+  const header = Object.keys(jsonData[0]);
+  const rows: string[][] = jsonData.map((obj: { [key: string]: any }) =>
+    header.map(key => (obj[key] !== undefined ? String(obj[key]) : ''))
+  );
+  const outputValues = [header, ...rows];
+  return;
+  /*
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'pmidデータ'
+  );
+  outputSheet.clearContents();
+  outputSheet
+    .getRange(1, 1, outputValues.length, outputValues[0].length)
+    .setValues(outputValues);*/
+}
+
 // WoS GUI検索結果のタブ区切りテキストをスプレッドシートに書き出す処理
 export function importWosTsvToSheet_(): void {
   const thisFolderId = getScriptProperty_('thisFolderId');
@@ -248,7 +297,9 @@ export function mergeRequestSheetWithWosResults_(): void {
   });
   const idxWosUt = 0;
   const idxWosPy = 1;
+  const idxWosDt = 4;
   const idxRequestWosId = 3;
+  const validTypes = ['Letter', 'Editorial Material', 'Article', 'Review'];
   const wosGuiValues: string[][] = wosValues.map(
     (row: string[], idx: number) => {
       const filteredRow: string[] = [];
@@ -258,11 +309,18 @@ export function mergeRequestSheetWithWosResults_(): void {
       let value = '';
       if (idx === 0) {
         value = '備考';
-      } else if (String(filteredRow[idxWosPy]) === '2025') {
-        value = 'PYが2025の論文';
+      } else if (String(filteredRow[idxWosPy]) !== '2024') {
+        value = 'PYが2024以外の論文';
+      } else {
+        const dt = String(filteredRow[idxWosDt]);
+        if (!validTypes.some(type => dt.includes(type))) {
+          value = 'DTがLetter, Editorial Material, Article, Review以外の論文';
+        }
       }
+
       const isMatched: string[][] = requestValues.filter(
-        requestRow => requestRow[idxRequestWosId] === filteredRow[idxWosUt]
+        requestRow =>
+          requestRow[idxRequestWosId].trim() === filteredRow[idxWosUt].trim()
       );
       if (isMatched.length === 0 && idx !== 0) {
         console.warn(
@@ -276,7 +334,9 @@ export function mergeRequestSheetWithWosResults_(): void {
       }
       const joinRecord: string[] = isMatched[0]
         ? isMatched[0].slice(0, -1)
-        : ['', '', ''];
+        : idx === 0
+          ? ['施設コード', '施設名', 'PubMed ID']
+          : ['', '', ''];
       const targetRow: string[] = [...joinRecord, ...filteredRow, value];
       return targetRow;
     }

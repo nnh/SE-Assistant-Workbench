@@ -21,7 +21,12 @@ import {
   createQueryString_,
   importWosTsvToSheet_,
   mergeRequestSheetWithWosResults_,
+  importPmidJsonToSheet_,
 } from './test';
+// 6. JSONファイルからPubMedの情報をスプレッドシートにインポートする処理
+function importPubmedJsonToSheet() {
+  importPmidJsonToSheet_();
+}
 // 5. リクエストシートとWoSの検索結果をマージする処理
 function mergeRequestSheetWithWosResults() {
   mergeRequestSheetWithWosResults_();

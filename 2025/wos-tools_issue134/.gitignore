@@ -5,3 +5,5 @@ build/
 .clasp*.json
 *.tgz
 .vscode/
+pmid.json
+
