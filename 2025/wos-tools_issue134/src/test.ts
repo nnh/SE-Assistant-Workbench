@@ -540,6 +540,50 @@ export function importPmidJsonToSheet_(): void {
     'Department of Urology, Shizuoka City Shizuoka Hospital, Shizuoka City, Shizuoka, Japan.',
     'Department of Urology, Toyama Rousai Hospital, Uozu, Toyama, Japan.',
     'Department of Urology, Kurashiki Central Hospital, Kurashiki, Okayama, Japan.',
+    'Department of General Medicine, Tone Chuo Hospital, Numata, Gunma, Japan.',
+    'Department of Gastroenterology and Hepatology, Meiwa Hospital, Nishinomiya, Japan.',
+    'Department of Gastroenterology and Hepatology, Kyoto Katsura Hospital, Kyoto, Japan.',
+    'Department of Medical Oncology, Shiga General Hospital, Moriyama, Japan.',
+    'Department of Gastroenterology and Hepatology, Shiga General Hospital, Moriyama, Japan.',
+    'Department of Neurosurgery, National Cerebral and Cardiovascular Center, Suita, Japan.',
+    'Division of Medical Statistics and Data Science, Foundation for Biomedical Research and Innovation, Kobe, Japan.',
+    'Department of Nursing, Sakakibara Heart Institute, Tokyo 183-0003, Japan.',
+    'Department of Nursing, Social Insurance Union of Societies Related to Nursing, Tokyo 150-0001, Japan.',
+    'Department of Nursing, Aso Iizuka Hospital, Fukuoka 820-8505, Japan.',
+    'Center for Surveillance, Immunization, and Epidemiologic Research, National Institute of Infectious Diseases, Tokyo 162-8640, Japan.',
+    'Department of Cardiology, Hiratsuka Kyosai Hospital, Hiratsuka, Japan.',
+    'Division of Cardiology, Japanese Red Cross Aichi Medical Center Nagoya Daini Hospital, Nagoya, Japan.',
+    'Department of Cardiology, Ogaki Municipal Hospital, Ogaki, Japan.',
+    'Division of Cardiology, Hirakata Kohsai Hospital, Hirakata, Japan. Electronic address: taketaka@kuhp.kyoto-u.ac.jp.',
+    'Center for Gastroenterology, Teine-Keijinkai Hospital, Sapporo, Hokkaido, Japan.',
+    'Department of Internal Medicine, Kushiro Rosai Hospital, Kushiro, Hokkaido, Japan.',
+    'Department of Gastroenterology and Hepatology, Hakodate Municipal Hospital, Hakodate, Hokkaido, Japan.',
+    'Department of Gastroenterology, Steel Memorial Muroran Hospital, Muroran, Hokkaido, Japan.',
+    'Department of Gastroenterology, Tomakomai City Hospital, Tomakomai, Hokkaido, Japan.',
+    'Department of Gastroenterology, Iwamizawa Municipal General Hospital, Iwamizawa, Hokkaido, Japan.',
+    'Department of Gastroenterology, NTT East Sapporo Hospital, Sapporo, Hokkaido, Japan.',
+    'Department of Gastroenterology, Kitami Red Cross Hospital, Kitami, Hokkaido, Japan.',
+    'Center for Gastroenterology, Teine-Keijinkai Hospital, Sapporo, Hokkaido, Japan.',
+    'Division of Gastric Surgery Shizuoka Cancer Center Shizuoka Japan.',
+    'Department of Surgery, Toyama City Hospital, Toyama, Japan.',
+    'Department of Gastrointestinal Endoscopy, NTT Medical Center Tokyo, Tokyo, Japan.',
+    "Department of Gastroenterology, St. Luke's International Hospital, Tokyo, Japan.",
+    'Department of Urology, Kanagawa Prefectural Ashigarakami Hospital, Kanagawa, Japan.',
+    // PubMed ID: 39391712 調査対象外ここから
+    'Department of Cardiology, National Center Hospital, National Center of Neurology and Psychiatry, 4-1-1 Ogawa-Higashi, Kodaira, Tokyo 187-8551, Japan.',
+    'Department of Neurology, NHO Sendai Nishitaga Hospital, 2-11-11 Kagitorihoncho, Taihaku-ku, Sendai 982-8555, Japan.',
+    'Department of Pediatrics, NHO Hirosaki General Medical Center, 1 Tominochou, Hirosaki, Aomori 036-8545, Japan.',
+    'Department of Neurology, NHO Suzuka National Hospital, 3-2-1 Kasado, Suzuka, Mie 513-8501, Japan.',
+    'Department of Neurology, NHO Akita National Hospital, 84-40 Idonosawa, Uchimichikawa, Iwaki, Yurihonjo, Akita 018-1393, Japan.',
+    'Department of Neurology, NHO Higashisaitama Hospital, 4147 Kurohama, Hasuda, Saitama 349-0196, Japan.',
+    'Department of Neurology, NHO Higashisaitama Hospital, 4147 Kurohama, Hasuda, Saitama 349-0196, Japan.',
+    'Department of Neurology and Center for Clinical Neuroscience, NHO Okinawa National Hospital, 3-20-14 Ganeko, Ginowan, Okinawa 901-2214, Japan.',
+    'Department of Neurology, NHO Osaka Toneyama Medical Center, 5-1-1 Toneyama, Toyonaka, Osaka 560-8552, Japan.',
+    // PubMed ID: 39391712 調査対象外ここまで
+    // PubMed ID: 38765657 調査対象外ここから
+    'Center for Pulmonary Diseases and Respiratory Disease Division, National Hospital Organization Tokyo National Hospital, Kiyose, Tokyo, Japan.',
+    'Department of Cardiology, Okayama Medical Center, Okayama, Japan.',
+    // PubMed ID: 38765657 調査対象外ここまで
   ];
   const filteredUidAndAuthorsArray = uidAndAuthorsArray.filter(
     ([, , affiliation]) =>
@@ -595,6 +639,24 @@ export function importWosTsvToSheet_(): void {
 }
 // WoS GUIにて検索した結果と調査依頼シートの内容を突き合わせる処理
 export function mergeRequestSheetWithWosResults_(): void {
+  const pubmedSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'PubMedの所属情報'
+  );
+  const pubmedValues: string[][] = pubmedSheet.getDataRange().getValues();
+  const pubmedMap = new Map<string, string[]>();
+  for (let i = 1; i < pubmedValues.length; i++) {
+    const [a, b, c] = pubmedValues[i];
+    if (!pubmedMap.has(a)) pubmedMap.set(a, []);
+    pubmedMap.get(a)!.push(`${b}:${c}`);
+  }
+  const groupedPubmedArray: string[][] = Array.from(pubmedMap.entries()).map(
+    ([a, arr]) => [a, arr.join('\n')]
+  );
+  const pmidAndAffiliationMap = new Map<string, string>();
+  groupedPubmedArray.forEach(([pmid, affil]) => {
+    pmidAndAffiliationMap.set(pmid, affil);
+  });
   const requestSheet = getSheetByName_(
     SpreadsheetApp.getActiveSpreadsheet().getId(),
     '調査対象'
@@ -617,6 +679,7 @@ export function mergeRequestSheetWithWosResults_(): void {
   });
   const idxWosUt = 0;
   const idxWosPy = 1;
+  const idxWosPm = 3;
   const idxWosDt = 4;
   const idxRequestWosId = 3;
   const validTypes = ['Letter', 'Editorial Material', 'Article', 'Review'];
@@ -627,14 +690,66 @@ export function mergeRequestSheetWithWosResults_(): void {
         filteredRow.push(row[idx]);
       });
       let value = '';
+      const uid = String(filteredRow[idxWosUt].trim());
       if (idx === 0) {
-        value = '備考';
+        value = '出力対象外の理由';
+      } else if (uid === 'WOS:001174582400001') {
+        value = [
+          '施設名の記載に誤りがある',
+          'Ichiro Hisatome:HNOYonago Medical Center, Yonago, Japan.',
+        ].join('\n');
       } else if (String(filteredRow[idxWosPy]) !== '2024') {
         value = 'PYが2024以外の論文';
       } else {
         const dt = String(filteredRow[idxWosDt]);
         if (!validTypes.some(type => dt.includes(type))) {
           value = 'DTがLetter, Editorial Material, Article, Review以外の論文';
+        }
+      }
+      let isMatchedPubmed = false;
+      if (value === '') {
+        if (pmidAndAffiliationMap.has(filteredRow[idxWosPm])) {
+          isMatchedPubmed = true;
+          value = pmidAndAffiliationMap.get(filteredRow[idxWosPm])!;
+          if (
+            uid === 'WOS:001204453100001' ||
+            uid === 'WOS:001247267400001' ||
+            uid === 'WOS:001243805800006' ||
+            uid === 'WOS:001230489600006' ||
+            uid === 'WOS:001252768100001' ||
+            uid === 'WOS:001246162300001' ||
+            uid === 'WOS:001251770200001' ||
+            uid === 'WOS:001266321000065' ||
+            uid === 'WOS:001278822800032' ||
+            uid === 'WOS:001293234400001' ||
+            uid === 'WOS:001307323300001' ||
+            uid === 'WOS:001284904100072' ||
+            uid === 'WOS:001285216600001' ||
+            uid === 'WOS:001314804100001' ||
+            uid === 'WOS:001396274800001' ||
+            uid === 'WOS:001381133500003' ||
+            uid === 'WOS:001194776600001' ||
+            uid === 'WOS:001292893800003' ||
+            uid === 'WOS:001307024200013'
+          ) {
+            value = ['施設名に「NHO」の記載がない', value].join('\n');
+          } else if (
+            uid === 'WOS:001369941600001' ||
+            uid === 'WOS:001381947700001' ||
+            uid === 'WOS:001325874600001' ||
+            uid === 'WOS:001337605800001' ||
+            uid === 'WOS:001315080400001' ||
+            uid === 'WOS:001290093700001' ||
+            uid === 'WOS:001276092900001' ||
+            uid === 'WOS:001262309200001' ||
+            uid === 'WOS:001234479800001' ||
+            uid === 'WOS:001299464100001' ||
+            uid === 'WOS:001300968800001' ||
+            uid === 'WOS:001174876500003' ||
+            uid === 'WOS:001274076200020'
+          ) {
+            value = ['issue #125の修正対象施設', value].join('\n');
+          }
         }
       }
 
