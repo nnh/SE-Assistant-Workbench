@@ -689,28 +689,30 @@ export function mergeRequestSheetWithWosResults_(): void {
       wosTargetColMaps.forEach((idx: number, _) => {
         filteredRow.push(row[idx]);
       });
-      let value = '';
+      let value1 = ''; // 出力対象外の理由
+      let value2 = ''; // PubMedの所属情報
       const uid = String(filteredRow[idxWosUt].trim());
       if (idx === 0) {
-        value = '出力対象外の理由';
+        value1 = '出力対象外の理由';
+        value2 = 'PubMedの所属情報';
       } else if (uid === 'WOS:001174582400001') {
-        value = [
+        value1 = [
           '施設名の記載に誤りがある',
           'Ichiro Hisatome:HNOYonago Medical Center, Yonago, Japan.',
         ].join('\n');
       } else if (String(filteredRow[idxWosPy]) !== '2024') {
-        value = 'PYが2024以外の論文';
+        value1 = 'PYが2024以外の論文';
       } else {
         const dt = String(filteredRow[idxWosDt]);
         if (!validTypes.some(type => dt.includes(type))) {
-          value = 'DTがLetter, Editorial Material, Article, Review以外の論文';
+          value1 = 'DTがLetter, Editorial Material, Article, Review以外の論文';
         }
       }
       let isMatchedPubmed = false;
-      if (value === '') {
+      if (value1 === '') {
         if (pmidAndAffiliationMap.has(filteredRow[idxWosPm])) {
           isMatchedPubmed = true;
-          value = pmidAndAffiliationMap.get(filteredRow[idxWosPm])!;
+          value2 = pmidAndAffiliationMap.get(filteredRow[idxWosPm])!;
           if (
             uid === 'WOS:001204453100001' ||
             uid === 'WOS:001247267400001' ||
@@ -732,7 +734,9 @@ export function mergeRequestSheetWithWosResults_(): void {
             uid === 'WOS:001292893800003' ||
             uid === 'WOS:001307024200013'
           ) {
-            value = ['施設名に「NHO」の記載がない', value].join('\n');
+            value1 = '施設名に「NHO」の記載がない';
+          } else if (uid === 'WOS:001296688600003') {
+            value1 = '"National Organization"になっているため';
           } else if (
             uid === 'WOS:001369941600001' ||
             uid === 'WOS:001381947700001' ||
@@ -748,7 +752,35 @@ export function mergeRequestSheetWithWosResults_(): void {
             uid === 'WOS:001174876500003' ||
             uid === 'WOS:001274076200020'
           ) {
-            value = ['issue #125の修正対象施設', value].join('\n');
+            value1 = 'issue #125の修正対象施設（2025/6修正）';
+          } else if (uid === 'WOS:001367562200001') {
+            value1 = 'issue #125の修正対象施設';
+            value2 = [
+              'Shiiya, Norihiko',
+              'First Department of Surgery, Hamamatsu University School of Medicine, Hamamatsu, Japan.',
+              'Department of Cardiovascular Surgery, NHO Hakodate Medical Center, Hokkaido, Japan.',
+            ].join('\n');
+          } else if (uid === 'WOS:001300026600001') {
+            // Subjective symptoms are triggers for the detection of immune checkpoint inhibitor-induced interstitial lung disease and associate with disease severity: a single-center retrospective study.
+            // Journal of Pharmaceutical Health Care and Sciences
+            // 谷澤公伸
+            value1 = '該当著者がNHO施設に所属している記載がない';
+            value2 = [
+              'Kiminobu Tanizawa',
+              'Department of Respiratory Medicine, Graduate School of Medicine, Kyoto University, 54 Shogoin Kawahara-cho, Sakyo-ku, Kyoto, 606-8507, Japan.',
+              'https://jphcs.biomedcentral.com/articles/10.1186/s40780-024-00373-7',
+            ].join('\n');
+          } else if (
+            uid === 'WOS:001362370000001' ||
+            uid === 'WOS:001420056300011' ||
+            uid === 'WOS:001304493800012' ||
+            uid === 'WOS:001299011500006' ||
+            uid === 'WOS:001184037200001' ||
+            uid === 'WOS:001180367800001' ||
+            uid === 'WOS:001304493800012'
+          ) {
+            value1 =
+              'issue #121の修正対象施設（2025/6クラリベイト社にてDB修正）';
           }
         }
       }
@@ -772,7 +804,12 @@ export function mergeRequestSheetWithWosResults_(): void {
         : idx === 0
           ? ['施設コード', '施設名', 'PubMed ID']
           : ['', '', ''];
-      const targetRow: string[] = [...joinRecord, ...filteredRow, value];
+      const targetRow: string[] = [
+        ...joinRecord,
+        ...filteredRow,
+        value1,
+        value2,
+      ];
       return targetRow;
     }
   );
