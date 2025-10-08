@@ -14,10 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 rm(list = ls())
-# 必要なパッケージの読み込み
 library(jsonlite)
 library(dplyr)
-# 対象のPubMed ID（PMID）のベクトル
+library(httr)
+library(xml2)
+
+# 対象のPubMed ID
 pmids <- c(
   39702011, 39659746, 39624677, 39711579, 39669335, 39427990, 39282615, 39351981,
   38866416, 39403200, 39289234, 39233094, 39391712, 39350867, 39192314, 39177840,
@@ -29,34 +31,60 @@ pmids <- c(
   38098205, 37537887, 37289506
 ) %>% unique()
 
-# 保存先ディレクトリの指定
+# 保存先ディレクトリ
 save_dir <- file.path("/Users/mariko/Downloads", "pubmed_json")
-if (!dir.exists(save_dir)) {
-    dir.create(save_dir)
-}
-# PMIDを100件ずつに分割
-pmid_chunks <- split(pmids, ceiling(seq_along(pmids) / 100))
+if (!dir.exists(save_dir)) dir.create(save_dir)
 
-# 結果をまとめるリスト
+# PMIDを100件ずつに分割
+pmid_chunks <- split(pmids, ceiling(seq_along(pmids)/100))
+
 all_results <- list()
 
-# 各チャンクごとに取得
 for (chunk in pmid_chunks) {
   id_list <- paste(chunk, collapse = ",")
-  url <- paste0("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=", id_list, "&retmode=json")
-  response <- fromJSON(url)
-
-  # 結果をリストに追加
-  all_results <- c(all_results, response$result)
+  
+  ## 1. esummary で基本情報取得
+  esummary_url <- paste0(
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=",
+    id_list, "&retmode=json"
+  )
+  esum <- fromJSON(esummary_url)$result
+  esum$uids <- NULL
+  
+  ## 2. efetch で著者の affiliation を取得
+  efetch_url <- paste0(
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=",
+    id_list, "&retmode=xml"
+  )
+  res <- GET(efetch_url)
+  xml <- read_xml(content(res, "text", encoding = "UTF-8"))
+  articles <- xml_find_all(xml, ".//PubmedArticle")
+  
+  for (article in articles) {
+    pmid <- xml_text(xml_find_first(article, ".//PMID"))
+    
+    # 著者名と所属
+    authors <- xml_find_all(article, ".//Author")
+    author_list <- lapply(authors, function(a) {
+      lname <- xml_text(xml_find_first(a, "LastName"))
+      fname <- xml_text(xml_find_first(a, "ForeName"))
+      affiliation <- xml_text(xml_find_first(a, "AffiliationInfo/Affiliation"))
+      list(
+        name = paste(fname, lname),
+        affiliation = affiliation
+      )
+    })
+    
+    # esummary の基本情報に authors を追加
+    if (!is.null(esum[[pmid]])) {
+      esum[[pmid]]$authors <- author_list
+      all_results[[pmid]] <- esum[[pmid]]
+    }
+  }
 }
 
-# 不要な "uids" 要素を削除（あれば）
-all_results$uids <- NULL
-
-# ファイル名
-file_path <- file.path(save_dir, paste0("pmid.json"))
-
-# 1つのJSONファイルとして保存
+# JSON に保存
+file_path <- file.path(save_dir, "pmid.json")
 write_json(all_results, path = file_path, pretty = TRUE, auto_unbox = TRUE)
 
-message("🎉 すべてのPubMedデータを1つのJSONファイルに保存しました: ", file_path)
+message("🎉 すべてのPubMedデータ（著者の所属付き）を pmid.json に保存しました: ", file_path)
