@@ -22,10 +22,17 @@ import {
   importWosTsvToSheet_,
   mergeRequestSheetWithWosResults_,
   importPmidJsonToSheet_,
+  createSubmissionSheet_,
+  mergeWosResultsWithPubmed_,
 } from './test';
+// 7. 提出用シートの作成
+function createSubmissionSheet() {
+  createSubmissionSheet_();
+}
 // 6. JSONファイルからPubMedの情報をスプレッドシートにインポートする処理
 function importPubmedJsonToSheet() {
   importPmidJsonToSheet_();
+  mergeWosResultsWithPubmed_();
 }
 // 5. リクエストシートとWoSの検索結果をマージする処理
 function mergeRequestSheetWithWosResults() {

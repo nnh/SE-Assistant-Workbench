@@ -569,21 +569,6 @@ export function importPmidJsonToSheet_(): void {
     'Department of Gastrointestinal Endoscopy, NTT Medical Center Tokyo, Tokyo, Japan.',
     "Department of Gastroenterology, St. Luke's International Hospital, Tokyo, Japan.",
     'Department of Urology, Kanagawa Prefectural Ashigarakami Hospital, Kanagawa, Japan.',
-    // PubMed ID: 39391712 調査対象外ここから
-    'Department of Cardiology, National Center Hospital, National Center of Neurology and Psychiatry, 4-1-1 Ogawa-Higashi, Kodaira, Tokyo 187-8551, Japan.',
-    'Department of Neurology, NHO Sendai Nishitaga Hospital, 2-11-11 Kagitorihoncho, Taihaku-ku, Sendai 982-8555, Japan.',
-    'Department of Pediatrics, NHO Hirosaki General Medical Center, 1 Tominochou, Hirosaki, Aomori 036-8545, Japan.',
-    'Department of Neurology, NHO Suzuka National Hospital, 3-2-1 Kasado, Suzuka, Mie 513-8501, Japan.',
-    'Department of Neurology, NHO Akita National Hospital, 84-40 Idonosawa, Uchimichikawa, Iwaki, Yurihonjo, Akita 018-1393, Japan.',
-    'Department of Neurology, NHO Higashisaitama Hospital, 4147 Kurohama, Hasuda, Saitama 349-0196, Japan.',
-    'Department of Neurology, NHO Higashisaitama Hospital, 4147 Kurohama, Hasuda, Saitama 349-0196, Japan.',
-    'Department of Neurology and Center for Clinical Neuroscience, NHO Okinawa National Hospital, 3-20-14 Ganeko, Ginowan, Okinawa 901-2214, Japan.',
-    'Department of Neurology, NHO Osaka Toneyama Medical Center, 5-1-1 Toneyama, Toyonaka, Osaka 560-8552, Japan.',
-    // PubMed ID: 39391712 調査対象外ここまで
-    // PubMed ID: 38765657 調査対象外ここから
-    'Center for Pulmonary Diseases and Respiratory Disease Division, National Hospital Organization Tokyo National Hospital, Kiyose, Tokyo, Japan.',
-    'Department of Cardiology, Okayama Medical Center, Okayama, Japan.',
-    // PubMed ID: 38765657 調査対象外ここまで
   ];
   const filteredUidAndAuthorsArray = uidAndAuthorsArray.filter(
     ([, , affiliation]) =>
@@ -637,25 +622,84 @@ export function importWosTsvToSheet_(): void {
     .setValues(outputValues);
   return;
 }
-// WoS GUIにて検索した結果と調査依頼シートの内容を突き合わせる処理
-export function mergeRequestSheetWithWosResults_(): void {
+// PubMedの所属情報シートとWoS検索結果シートを突き合わせて、WoSIDとPubMedデータ結合シートに結果を書き出す処理
+export function mergeWosResultsWithPubmed_(): void {
   const pubmedSheet = getSheetByName_(
     SpreadsheetApp.getActiveSpreadsheet().getId(),
     'PubMedの所属情報'
   );
   const pubmedValues: string[][] = pubmedSheet.getDataRange().getValues();
+  const wosSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'WoS検索結果'
+  );
+  const wosValues: string[][] = wosSheet.getDataRange().getValues();
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'WoSIDとPubMedデータ結合'
+  );
+  const pubmedHeader = pubmedValues[0];
+  const wosHeader = wosValues[0];
+  const outputHeader = [...wosHeader, ...pubmedHeader.slice(1)];
+
+  // PubMedのA列(PMID)をキーにMapを作成
+  const pubmedMap = new Map<string, string[][]>();
+  for (let i = 1; i < pubmedValues.length; i++) {
+    const row = pubmedValues[i];
+    const key = String(row[0]);
+    const values = pubmedValues.filter(r => String(r[0]) === key);
+    pubmedMap.set(key, values);
+  }
+
+  // WoSのPM列(0始まりで何列目か)を取得
+  const wosKeyCol = wosHeader.indexOf('PM');
+  if (wosKeyCol === -1) throw new Error('PM列がWoS検索結果にありません');
+
+  // left join
+  const outputRows: string[][] = [outputHeader];
+  for (let i = 1; i < wosValues.length; i++) {
+    const wosRow = wosValues[i];
+    const key = String(wosRow[wosKeyCol]);
+    const pubmedRows = pubmedMap.get(key);
+    if (pubmedRows) {
+      pubmedRows.forEach(pubmedRow => {
+        outputRows.push([...wosRow, ...pubmedRow.slice(1)]);
+      });
+    } else {
+      //outputRows.push([...wosRow, ...Array(pubmedHeader.length - 1).fill('')]);
+    }
+  }
+  const outputValues = outputRows.map(row => [
+    row[70],
+    row[65],
+    row[71],
+    row[72],
+  ]); // WoSID, 著者名, 所属
+
+  outputSheet.clearContents();
+  outputSheet
+    .getRange(1, 1, outputValues.length, outputValues[0].length)
+    .setValues(outputValues);
+}
+// WoS GUIにて検索した結果と調査依頼シートの内容を突き合わせる処理
+export function mergeRequestSheetWithWosResults_(): void {
+  const pubmedSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    'WoSIDとPubMedデータ結合'
+  );
+  const pubmedValues: string[][] = pubmedSheet.getDataRange().getValues();
   const pubmedMap = new Map<string, string[]>();
   for (let i = 1; i < pubmedValues.length; i++) {
-    const [a, b, c] = pubmedValues[i];
-    if (!pubmedMap.has(a)) pubmedMap.set(a, []);
-    pubmedMap.get(a)!.push(`${b}:${c}`);
+    const [wosid, pmid, author, affiliation] = pubmedValues[i];
+    if (!pubmedMap.has(wosid)) pubmedMap.set(wosid, []);
+    pubmedMap.get(wosid)!.push(`${author}:${affiliation}`);
   }
   const groupedPubmedArray: string[][] = Array.from(pubmedMap.entries()).map(
     ([a, arr]) => [a, arr.join('\n')]
   );
-  const pmidAndAffiliationMap = new Map<string, string>();
-  groupedPubmedArray.forEach(([pmid, affil]) => {
-    pmidAndAffiliationMap.set(pmid, affil);
+  const wosidAndAffiliationMap = new Map<string, string>();
+  groupedPubmedArray.forEach(([wosid, affil]) => {
+    wosidAndAffiliationMap.set(wosid, affil);
   });
   const requestSheet = getSheetByName_(
     SpreadsheetApp.getActiveSpreadsheet().getId(),
@@ -683,274 +727,205 @@ export function mergeRequestSheetWithWosResults_(): void {
   const idxWosDt = 4;
   const idxRequestWosId = 3;
   const validTypes = ['Letter', 'Editorial Material', 'Article', 'Review'];
-  const wosGuiValues: string[][] = wosValues.map(
-    (row: string[], idx: number) => {
-      const filteredRow: string[] = [];
-      wosTargetColMaps.forEach((idx: number, _) => {
-        filteredRow.push(row[idx]);
-      });
-      let value1 = ''; // 出力対象外の理由
-      let value2 = ''; // PubMedの所属情報
-      const uid = String(filteredRow[idxWosUt].trim());
-      if (idx === 0) {
-        value1 = '出力対象外の理由';
-        value2 = 'PubMedの所属情報';
-      } else if (uid === 'WOS:001174582400001') {
-        value1 = [
-          '施設名の記載に誤りがある',
-          'Ichiro Hisatome:HNOYonago Medical Center, Yonago, Japan.',
-        ].join('\n');
-      } else if (String(filteredRow[idxWosPy]) !== '2024') {
-        value1 = 'PYが2024以外の論文';
-      } else {
-        const dt = String(filteredRow[idxWosDt]);
-        if (!validTypes.some(type => dt.includes(type))) {
-          value1 = 'DTがLetter, Editorial Material, Article, Review以外の論文';
-        }
+  const wosGuiValues: string[][] = [];
+  wosValues.forEach((row: string[], idx: number) => {
+    const filteredRow: string[] = [];
+    wosTargetColMaps.forEach((idx: number, _) => {
+      filteredRow.push(row[idx]);
+    });
+    let value1 = ''; // 出力対象外の理由
+    let value2 = ''; // PubMedの所属情報
+    const uid = String(filteredRow[idxWosUt].trim());
+    if (idx === 0) {
+      value1 = '出力対象外の理由';
+      value2 = 'PubMedの所属情報';
+    } else if (uid === 'WOS:001174582400001') {
+      value1 = [
+        '施設名の記載に誤りがある',
+        'Ichiro Hisatome:HNOYonago Medical Center, Yonago, Japan.',
+      ].join('\n');
+    } else if (String(filteredRow[idxWosPy]) !== '2024') {
+      value1 = 'PYが2024以外の論文';
+    } else {
+      const dt = String(filteredRow[idxWosDt]);
+      if (!validTypes.some(type => dt.includes(type))) {
+        value1 = 'DTがLetter, Editorial Material, Article, Review以外の論文';
       }
-      let isMatchedPubmed = false;
-      if (value1 === '') {
-        if (
-          uid === 'WOS:001204453100001' ||
-          uid === 'WOS:001247267400001' ||
-          uid === 'WOS:001243805800006' ||
-          uid === 'WOS:001230489600006' ||
-          uid === 'WOS:001252768100001' ||
-          uid === 'WOS:001246162300001' ||
-          uid === 'WOS:001251770200001' ||
-          uid === 'WOS:001266321000065' ||
-          uid === 'WOS:001278822800032' ||
-          uid === 'WOS:001293234400001' ||
-          uid === 'WOS:001307323300001' ||
-          uid === 'WOS:001284904100072' ||
-          uid === 'WOS:001285216600001' ||
-          uid === 'WOS:001314804100001' ||
-          uid === 'WOS:001396274800001' ||
-          uid === 'WOS:001381133500003' ||
-          uid === 'WOS:001194776600001' ||
-          uid === 'WOS:001292893800003' ||
-          uid === 'WOS:001307024200013' ||
-          uid === 'WOS:001243347800007' ||
-          uid === 'WOS:001157696000001' ||
-          uid === 'WOS:001179165100001' ||
-          uid === 'WOS:001296688600003' ||
-          uid === 'WOS:001215740900001'
-        ) {
-          value1 =
-            '施設名に「NHO」「National Hospital Organization」の記載がない';
-        } else if (
-          uid === 'WOS:001369941600001' ||
-          uid === 'WOS:001381947700001' ||
-          uid === 'WOS:001325874600001' ||
-          uid === 'WOS:001337605800001' ||
-          uid === 'WOS:001315080400001' ||
-          uid === 'WOS:001290093700001' ||
-          uid === 'WOS:001276092900001' ||
-          uid === 'WOS:001262309200001' ||
-          uid === 'WOS:001234479800001' ||
-          uid === 'WOS:001299464100001' ||
-          uid === 'WOS:001300968800001' ||
-          uid === 'WOS:001174876500003' ||
-          uid === 'WOS:001274076200020'
-        ) {
-          value1 = 'issue #125の修正対象施設（2025/6修正）';
-        } else if (
-          uid === 'WOS:001362370000001' ||
-          uid === 'WOS:001420056300011' ||
-          uid === 'WOS:001304493800012' ||
-          uid === 'WOS:001299011500006' ||
-          uid === 'WOS:001184037200001' ||
-          uid === 'WOS:001180367800001' ||
-          uid === 'WOS:001304493800012'
-        ) {
-          value1 = 'issue #121の修正対象施設（2025/6クラリベイト社にてDB修正）';
-        } else if (uid === 'WOS:001490513700008') {
-          // 近畿中央呼吸器センター
-          value1 = 'issue #121の修正対象施設（2025/6クラリベイト社にてDB修正）';
-        } else if (uid === 'WOS:001367562200001') {
-          value1 = 'issue #125の修正対象施設（2025/6修正）';
-          value2 = [
-            'Shiiya, Norihiko',
-            'First Department of Surgery, Hamamatsu University School of Medicine, Hamamatsu, Japan.',
-            'Department of Cardiovascular Surgery, NHO Hakodate Medical Center, Hokkaido, Japan.',
-          ].join('\n');
-        } else if (uid === 'WOS:001300026600001') {
-          // Subjective symptoms are triggers for the detection of immune checkpoint inhibitor-induced interstitial lung disease and associate with disease severity: a single-center retrospective study.
-          // Journal of Pharmaceutical Health Care and Sciences
-          // 谷澤公伸
-          value1 = '該当著者がNHO施設に所属している記載がない';
-          value2 = [
-            'Kiminobu Tanizawa',
-            'Department of Respiratory Medicine, Graduate School of Medicine, Kyoto University, 54 Shogoin Kawahara-cho, Sakyo-ku, Kyoto, 606-8507, Japan.',
-            'https://jphcs.biomedcentral.com/articles/10.1186/s40780-024-00373-7',
-          ].join('\n');
-        } else if (uid === 'WOS:001164609700001') {
-          // Clinicopathologic Features of Adult-onset Still's Disease Complicated by Severe Liver Injury
-          // Internal Medicine
-          // 国府島庸之
-          value1 = '該当著者がNHO施設に所属している記載がない';
-          value2 = [
-            'Kohjima, Motoyuki',
-            'Department of Medicine and Bioregulatory Science, Graduate School of Medical Sciences, Kyushu University, Japan.',
-            'https://www.jstage.jst.go.jp/article/internalmedicine/63/4/63_2043-23/_article',
-          ].join('\n');
-        } else if (uid === 'WOS:001206355700001') {
-          // Potential utility of pretreatment serum miRNAs for optimal treatment selection in advanced high-grade serous ovarian cancer
-          // Japanese Journal of Clinical Oncology
-          // 植原貴史
-          value1 = '該当著者がNHO施設に所属している記載がない';
-          value2 = [
-            'Uehara, Takashi',
-            'Department of Gynecology, National Cancer Center Hospital, Tokyo, Japan.',
-            'Department of Obstetrics and Gynecology, Chiba University Hospital, Chiba, Japan.',
-            'https://academic.oup.com/jjco/article/54/8/917/7655838?login=false',
-          ].join('\n');
-        } else if (uid === 'WOS:001526826000006') {
-          value1 = 'クラリベイト社に修正依頼を行う';
-        } else if (uid === 'WOS:001040584800001') {
-          // Late-Life High Blood Pressure and Enlarged Perivascular Spaces in the Putaminal Regions of Community-Dwelling Japanese Older Persons
-          // Journal of geriatric psychiatry and neurology
-          // 中島健二
-          value1 = '原因不明';
-          value2 = [
-            'Nakashima, Kenji',
-            'PubMed Affiliation:',
-            'National Hospital Organization, Matsue Medical Center, Shimane, Japan.',
-            'WoS C1:',
-            '[Nakashima, Kenji] Natl Hosp Org, Matsue Med Ctr, Shimane, Japan;',
-          ].join('\n');
-        } else if (uid === 'WOS:001505211700003') {
-          // Lepidic Pulmonary Metastasis from Pancreatic Carcinoma Mimicking Organizing Pneumonia, Diagnosed by a Transbronchial Cryobiopsy.
-          // Internal medicine
-          // Matsuoka S
-          //（松岡涼果）
-          value1 = '原因不明';
-          value2 = [
-            'Suzuka Matsuoka',
-            'PubMed Affiliation:',
-            'Department of Respiratory Medicine, NHO Okayama Medical Center, Japan.',
-            'WoS C1:',
-            '[Matsuoka, Suzuka] NHO Okayama Med Ctr, Dept Resp Med, Okayama, Japan; NHO Fukuyama Med Ctr, Dept Resp Med, Fukuyama, Japan',
-          ].join('\n');
-        } else if (uid === 'WOS:001183950500001') {
-          // Action of GABAB receptor on local network oscillation in somatosensory cortex of oral part:focusing on NMDA receptor.
-          // The journal of physiological sciences : JPS
-          // 金山宏幸
-          value1 = '原因不明';
-          value2 = [
-            'Kanayama, Hiroyuki',
-            'PubMed Affiliation:',
-            'Department of Molecular Oral Physiology, Institute of Biomedical Sciences, Tokushima University Graduate School, 3-18-15 Kuramoto, Tokushima, 770-8504,  Japan.,',
-            'Department of Oral and Maxillofacial Surgery, National Hospital Organization Osaka National Hospital, Osaka, 540-0006, Japan.',
-            'WoS C1:',
-            '[Kanayama, Hiroyuki; Yoshimura, Hiroshi] Tokushima Univ, Inst Biomed Sci, Dept Mol Oral Physiol, Grad Sch, 3-18-15 Kuramoto, Tokushima 7708504, Japan; ',
-            '[Kanayama, Hiroyuki] Osaka Natl Hosp, Natl Hosp Org, Dept Oral & Maxillofacial Surg, Osaka 5400006, Japan;',
-          ].join('\n');
-        } else if (uid === 'WOS:001200552800001') {
-          value1 = '論文の修正依頼が必要';
-          value2 =
-            'https://docs.google.com/document/d/1gjjbdVCupCXK3G4GzmE2Xq5DXxNsrLWmAkFkK3otCSs/edit?tab=t.0';
-        } else if (uid === 'WOS:001252588100001') {
-          value1 = '論文の修正依頼が必要';
-          value2 =
-            'https://docs.google.com/document/d/1sH_J3CryhEGcQ9I6zxRNTE_V9vnEjJoPY5ohmQVU1SU/edit?tab=t.0';
-        } else if (uid === 'WOS:001492944500036') {
-          // Successful treatment of the dupilumab-induced psoriatic dermatitis/arthritis and atopic dermatitis with a JAK inhibitor: A case report and literature review
-          // Journal of Allergy and Clinical Immunology
-          // 角田美鈴
-          value1 = '原因不明';
-          value2 = [
-            'Misuzu Tsunoda',
-            'PubMed Affiliation:',
-            'Department of Dermatology, National Hospital Organization Saitama Hospital, Saitama, Japan.',
-            'WoS C1:',
-            '[Tsunoda, Misuzu; Adachi, Takeya; Nakajima, Yuuri; Yatomi, Yoshihiro; Shimizu, Tomoko; Nakasute, Katsuki; Kinase, Janus] Natl Hosp Org Saitama Hosp, Dept Dermatol, Saitama, Japan; ',
-          ].join('\n');
-        } else if (uid === 'WOS:001472196600010') {
-          // CTG repeat length underlying cardiac events and sudden death in myotonic dystrophy type 1
-          // European Heart Journal Open
-          // 髙田博仁
-          value1 = '原因不明';
-          value2 = [
-            'Hiroto Takada',
-            'PubMed Affiliation:',
-            'Department of Neurology, NHO Aomori National Hospital, 155-1 Namioka-Megasawa-Hirano, Aomori 038-1331, Japan.',
-            'WoS C1:',
-            '[Takada, Hiroto] NHO Aomori Natl Hosp, Dept Neurol, 155-1 Namioka Megasawa Hirano, Aomori 0381331, Japan;',
-          ].join('\n');
-        } else if (uid === 'WOS:001253422300001') {
-          // Altered expression of human myxovirus resistance protein A in amyotrophic lateral sclerosis.
-          // Journal of Neuropathology and Experimental Neurology
-          // 本田裕之
-          value1 = '原因不明';
-          value2 = [
-            'Hiroyuki Honda',
-            'PubMed Affiliation:',
-            'Neuropathology Center, NHO, Omuta Hospital, Fukuoka, Japan.',
-            'WoS C1:',
-            '[Honda, Hiroyuki; Sakurada, Naonori] Omuta Hosp, Neuropathol Ctr, NHO, 1044-1 Tachibana, Omuta, Fukuoka 8370911, Japan;',
-          ].join('\n');
-        } else if (uid === 'WOS:001476878100016') {
-          // Effects of COVID-19 pandemic-associated reduction in respiratory infections on infantile asthma development.
-          // Journal of Allergy and Clinical Immunology
-          // 只木弘美
-          value1 = '原因不明';
-          value2 = [
-            'Hiromi Tadaki',
-            'PubMed Affiliation:',
-            'Division of Pediatrics, National Hospital Organization Yokohama Medical Center, Yokohama, Japan.',
-            'WoS C1:',
-            '[Tadaki, Hiromi; Yoshihara, Shigemi] Natl Hosp Org Yokohama Med Ctr, Div Pediat, Yokohama, Japan;',
-          ].join('\n');
-        } else if (uid === 'WOS:001526826000003') {
-          // Clinical usefulness of endothelial progenitor cells in predicting the efficacy of riociguat in chronic thromboembolic pulmonary hypertension.
-          // Nagoya Journal of Medical Science
-          // 今井遼
-          value1 = '原因不明';
-          value2 = [
-            'Imai, Ryo',
-            '[Imai, Ryo; Yoshida, Masahiro; Shimokata, Shigetake; Okumura, Naoki; Murohara, Toyoaki; Kondo, Takahisa] Nagoya Univ, Dept Cardiol, Grad Sch Med, Nagoya, Aichi, Japan;',
-            'Department of Cardiology, Nagoya University Graduate School of Medicine, Nagoya, Japan.',
-            'Department of Cardiology, NHO Nagoya Medical Center, Nagoya, Japan.',
-            'PubMed Affiliation:',
-            'WoS C1:',
-            '[Imai, Ryo; Kondo, Takahisa] NHO, Dept Cardiol, Nagoya Med Ctr, 4-1-1 Sannomaru,Naka Ku, Nagoya, Aichi 4600001, Japan;',
-          ].join('\n');
-        }
-        if (pmidAndAffiliationMap.has(filteredRow[idxWosPm])) {
-          isMatchedPubmed = true;
-          value2 = pmidAndAffiliationMap.get(filteredRow[idxWosPm])!;
-        }
-      }
-
-      const isMatched: string[][] = requestValues.filter(
-        requestRow =>
-          requestRow[idxRequestWosId].trim() === filteredRow[idxWosUt].trim()
-      );
-      if (isMatched.length === 0 && idx !== 0) {
-        console.warn(
-          `No matching WOS ID found for UT: ${filteredRow[idxWosUt]}`
-        );
-      }
-      if (isMatched.length > 1) {
-        console.warn(
-          `Multiple matching WOS IDs found for UT: ${filteredRow[idxWosUt]}`
-        );
-      }
-      const joinRecord: string[] = isMatched[0]
-        ? isMatched[0].slice(0, -1)
-        : idx === 0
-          ? ['施設コード', '施設名', 'PubMed ID']
-          : ['', '', ''];
-      const targetRow: string[] = [
-        ...joinRecord,
-        ...filteredRow,
-        value1,
-        value2,
-      ];
-      return targetRow;
     }
-  );
+    if (value1 === '') {
+      if (
+        uid === 'WOS:001204453100001' ||
+        uid === 'WOS:001247267400001' ||
+        uid === 'WOS:001243805800006' ||
+        uid === 'WOS:001230489600006' ||
+        uid === 'WOS:001252768100001' ||
+        uid === 'WOS:001246162300001' ||
+        uid === 'WOS:001251770200001' ||
+        uid === 'WOS:001266321000065' ||
+        uid === 'WOS:001278822800032' ||
+        uid === 'WOS:001293234400001' ||
+        uid === 'WOS:001307323300001' ||
+        uid === 'WOS:001284904100072' ||
+        uid === 'WOS:001285216600001' ||
+        uid === 'WOS:001314804100001' ||
+        uid === 'WOS:001396274800001' ||
+        uid === 'WOS:001381133500003' ||
+        uid === 'WOS:001194776600001' ||
+        uid === 'WOS:001292893800003' ||
+        uid === 'WOS:001307024200013' ||
+        uid === 'WOS:001243347800007' ||
+        uid === 'WOS:001157696000001' ||
+        uid === 'WOS:001179165100001' ||
+        uid === 'WOS:001296688600003' ||
+        uid === 'WOS:001215740900001'
+      ) {
+        value1 =
+          '施設名に「NHO」「National Hospital Organization」の記載がない';
+      } else if (
+        uid === 'WOS:001369941600001' ||
+        uid === 'WOS:001381947700001' ||
+        uid === 'WOS:001325874600001' ||
+        uid === 'WOS:001337605800001' ||
+        uid === 'WOS:001315080400001' ||
+        uid === 'WOS:001290093700001' ||
+        uid === 'WOS:001276092900001' ||
+        uid === 'WOS:001262309200001' ||
+        uid === 'WOS:001234479800001' ||
+        uid === 'WOS:001299464100001' ||
+        uid === 'WOS:001300968800001' ||
+        uid === 'WOS:001174876500003' ||
+        uid === 'WOS:001274076200020'
+      ) {
+        value1 = 'issue #125の修正対象施設（2025/6修正）';
+      } else if (
+        uid === 'WOS:001362370000001' ||
+        uid === 'WOS:001420056300011' ||
+        uid === 'WOS:001304493800012' ||
+        uid === 'WOS:001299011500006' ||
+        uid === 'WOS:001184037200001' ||
+        uid === 'WOS:001180367800001' ||
+        uid === 'WOS:001304493800012'
+      ) {
+        value1 = 'issue #121の修正対象施設（2025/6クラリベイト社にてDB修正）';
+      } else if (uid === 'WOS:001490513700008') {
+        // 近畿中央呼吸器センター
+        value1 = 'issue #121の修正対象施設（2025/6クラリベイト社にてDB修正）';
+      } else if (uid === 'WOS:001367562200001') {
+        value1 = 'issue #125の修正対象施設（2025/6修正）';
+        value2 = [
+          'Shiiya, Norihiko',
+          'First Department of Surgery, Hamamatsu University School of Medicine, Hamamatsu, Japan.',
+          'Department of Cardiovascular Surgery, NHO Hakodate Medical Center, Hokkaido, Japan.',
+        ].join('\n');
+      } else if (uid === 'WOS:001300026600001') {
+        // Subjective symptoms are triggers for the detection of immune checkpoint inhibitor-induced interstitial lung disease and associate with disease severity: a single-center retrospective study.
+        // Journal of Pharmaceutical Health Care and Sciences
+        // 谷澤公伸
+        value1 = '該当著者がNHO施設に所属している記載がない';
+        value2 = [
+          'Kiminobu Tanizawa',
+          'Department of Respiratory Medicine, Graduate School of Medicine, Kyoto University, 54 Shogoin Kawahara-cho, Sakyo-ku, Kyoto, 606-8507, Japan.',
+          'https://jphcs.biomedcentral.com/articles/10.1186/s40780-024-00373-7',
+        ].join('\n');
+      } else if (uid === 'WOS:001164609700001') {
+        // Clinicopathologic Features of Adult-onset Still's Disease Complicated by Severe Liver Injury
+        // Internal Medicine
+        // 国府島庸之
+        value1 = '該当著者がNHO施設に所属している記載がない';
+        value2 = [
+          'Kohjima, Motoyuki',
+          'Department of Medicine and Bioregulatory Science, Graduate School of Medical Sciences, Kyushu University, Japan.',
+          'https://www.jstage.jst.go.jp/article/internalmedicine/63/4/63_2043-23/_article',
+        ].join('\n');
+      } else if (uid === 'WOS:001206355700001') {
+        // Potential utility of pretreatment serum miRNAs for optimal treatment selection in advanced high-grade serous ovarian cancer
+        // Japanese Journal of Clinical Oncology
+        // 植原貴史
+        value1 = '該当著者がNHO施設に所属している記載がない';
+        value2 = [
+          'Uehara, Takashi',
+          'Department of Gynecology, National Cancer Center Hospital, Tokyo, Japan.',
+          'Department of Obstetrics and Gynecology, Chiba University Hospital, Chiba, Japan.',
+          'https://academic.oup.com/jjco/article/54/8/917/7655838?login=false',
+        ].join('\n');
+      } else if (uid === 'WOS:001526826000006') {
+        value1 = 'クラリベイト社に修正依頼を行う';
+      } else if (
+        [
+          'WOS:001040584800001',
+          'WOS:001505211700003',
+          'WOS:001492944500036',
+          'WOS:001472196600010',
+          'WOS:001253422300001',
+          'WOS:001476878100016',
+        ].includes(uid)
+      ) {
+        value1 = '原因不明';
+      } else if (uid === 'WOS:001183950500001') {
+        value1 = '原因不明';
+        value2 = [
+          'Kanayama, Hiroyuki',
+          'PubMed Affiliation:',
+          'Department of Molecular Oral Physiology, Institute of Biomedical Sciences, Tokushima University Graduate School, 3-18-15 Kuramoto, Tokushima, 770-8504,  Japan.,',
+          'Department of Oral and Maxillofacial Surgery, National Hospital Organization Osaka National Hospital, Osaka, 540-0006, Japan.',
+          'WoS C1:',
+          '[Kanayama, Hiroyuki; Yoshimura, Hiroshi] Tokushima Univ, Inst Biomed Sci, Dept Mol Oral Physiol, Grad Sch, 3-18-15 Kuramoto, Tokushima 7708504, Japan; ',
+          '[Kanayama, Hiroyuki] Osaka Natl Hosp, Natl Hosp Org, Dept Oral & Maxillofacial Surg, Osaka 5400006, Japan;',
+        ].join('\n');
+      } else if (uid === 'WOS:001526826000003') {
+        value1 = '原因不明';
+        value2 = [
+          'Imai, Ryo',
+          '[Imai, Ryo; Yoshida, Masahiro; Shimokata, Shigetake; Okumura, Naoki; Murohara, Toyoaki; Kondo, Takahisa] Nagoya Univ, Dept Cardiol, Grad Sch Med, Nagoya, Aichi, Japan;',
+          'Department of Cardiology, Nagoya University Graduate School of Medicine, Nagoya, Japan.',
+          'Department of Cardiology, NHO Nagoya Medical Center, Nagoya, Japan.',
+          'PubMed Affiliation:',
+          'WoS C1:',
+          '[Imai, Ryo; Kondo, Takahisa] NHO, Dept Cardiol, Nagoya Med Ctr, 4-1-1 Sannomaru,Naka Ku, Nagoya, Aichi 4600001, Japan;',
+        ].join('\n');
+      } else if (uid === 'WOS:001200552800001') {
+        value1 = '論文の修正依頼が必要';
+        value2 =
+          'https://docs.google.com/document/d/1gjjbdVCupCXK3G4GzmE2Xq5DXxNsrLWmAkFkK3otCSs/edit?tab=t.0';
+      } else if (uid === 'WOS:001252588100001') {
+        value1 = '論文の修正依頼が必要';
+        value2 =
+          'https://docs.google.com/document/d/1sH_J3CryhEGcQ9I6zxRNTE_V9vnEjJoPY5ohmQVU1SU/edit?tab=t.0';
+      }
+      if (wosidAndAffiliationMap.has(filteredRow[idxWosUt])) {
+        value2 = wosidAndAffiliationMap.get(filteredRow[idxWosUt])!;
+      }
+    }
+
+    const isMatched: string[][] = requestValues.filter(
+      requestRow =>
+        requestRow[idxRequestWosId].trim() === filteredRow[idxWosUt].trim()
+    );
+    if (isMatched.length === 0 && idx !== 0) {
+      console.warn(`No matching WOS ID found for UT: ${filteredRow[idxWosUt]}`);
+    }
+    if (isMatched.length > 1) {
+      console.warn(
+        `Multiple matching WOS IDs found for UT: ${filteredRow[idxWosUt]}`
+      );
+    }
+    // isMatchedが複数ある場合は全てのレコードを出力
+    const joinRecords: string[][] =
+      isMatched.length > 0
+        ? isMatched.map(row => row.slice(0, -1))
+        : idx === 0
+          ? [['施設コード', '施設名', 'PubMed ID']]
+          : [['', '', '']];
+    // joinRecordsごとにtargetRowを作成
+    if (joinRecords.length > 1) {
+      joinRecords.forEach(joinRecord => {
+        wosGuiValues.push([...joinRecord, ...filteredRow, value1, value2]);
+      });
+      //
+    } else {
+      wosGuiValues.push([...joinRecords[0], ...filteredRow, value1, value2]);
+    }
+  });
   const outputSheet = getSheetByName_(
     SpreadsheetApp.getActiveSpreadsheet().getId(),
     '調査結果'
@@ -959,5 +934,84 @@ export function mergeRequestSheetWithWosResults_(): void {
   outputSheet
     .getRange(1, 1, wosGuiValues.length, wosGuiValues[0].length)
     .setValues(wosGuiValues);
+  return;
+}
+export function createSubmissionSheet_(): void {
+  const requestSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    '調査対象'
+  );
+  // 施設コード、施設名、WoS ID
+  const requestValues: string[][] = requestSheet
+    .getDataRange()
+    .getValues()
+    .map(row => [row[0], row[1], row[3]]);
+  // 調査結果シートの内容を取得
+  const resultSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    '調査結果'
+  );
+  const resultFacilityCodeCol = 0; // 施設コードの列インデックス
+  const resultWosIdCol = 3; // WoS IDの列インデックス
+  const resultValues: string[][] = resultSheet.getDataRange().getValues();
+  // 施設コードとWoS IDをキーにしてrequestValuesとresultValuesをleft joinする
+  const resultMap = new Map<string, string[]>();
+  for (let i = 1; i < resultValues.length; i++) {
+    const row = resultValues[i];
+    const key = `${row[resultFacilityCodeCol]}|${row[resultWosIdCol].trim()}`;
+    resultMap.set(key, row);
+  }
+  const joinedValues: string[][] = [resultValues[0]]; // ヘッダー
+  for (let i = 1; i < requestValues.length; i++) {
+    const [facilityCode, , wosId] = requestValues[i];
+    const key = `${facilityCode}|${wosId.trim()}`;
+    if (resultMap.has(key)) {
+      joinedValues.push(resultMap.get(key)!);
+    } else {
+      // resultValuesのヘッダー長に合わせて空欄で埋める
+      joinedValues.push([
+        facilityCode,
+        requestValues[i][1],
+        '',
+        wosId,
+        ...Array(resultValues[0].length - 4).fill(''),
+      ]);
+    }
+  }
+  const outputValues: string[][] = joinedValues.map((row, idx) => {
+    if (idx === 0) {
+      return [
+        '施設コード',
+        '施設名',
+        'Wos連番',
+        '出力対象外の理由',
+        'PMID',
+        'PY',
+        'DT(docType)',
+        'Wosの所属情報',
+        'PubMedの所属情報',
+      ];
+    }
+    return [
+      row[0], // 施設コード
+      row[1], // 施設名
+      row[3], // WoS ID
+      row[9],
+      row[4],
+      row[6], // PubMed ID
+      row[7], // 著者名
+      row[8],
+      row[10],
+    ];
+  });
+
+  const outputSheet = getSheetByName_(
+    SpreadsheetApp.getActiveSpreadsheet().getId(),
+    '提出用'
+  );
+  outputSheet.clearContents();
+  outputSheet
+    .getRange(1, 1, outputValues.length, outputValues[0].length)
+    .setValues(outputValues);
   return;
 }
