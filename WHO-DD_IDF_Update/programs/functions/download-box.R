@@ -52,7 +52,16 @@ GetTargetPassword <- function(boxDirInfo, inputFilename, footer) {
   if (nrow(targetPasswordFile) != 1) {
     stop("The specified file is not found.")
   }
-  res <- targetPasswordFile[1, "id", drop=T] |> flatten_chr() |> box_read_tsv(header=F) %>% .[1, 1, drop=T]
+  res <- tryCatch({
+    targetPasswordFile[1, "id", drop = TRUE] |>
+      flatten_chr() |>
+      box_read_tsv(header = FALSE) %>%
+      .[1, 1, drop = TRUE]
+  }, error = function(e) {
+    # エラー時にNAを返す
+    NA
+  })
+  
   return(res)
 }
 

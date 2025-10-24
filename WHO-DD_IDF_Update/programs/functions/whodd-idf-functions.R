@@ -2,18 +2,25 @@
 #' Description: This script includes functions to unzip IDF and WHODD files, and save them to Box.
 #' @file whodd-idf-functions.R
 #' @author Mariko Ohtsuka
-#' @date 2025.3.5
+#' @date 2025.10.24
 # ------ functions ------
 UnzipIdf <- function(input_zip_path, idf_password) {
   if (is.null(input_zip_path)) {
     return(NA)
   }
   unzipDir <- file.path(downloads_path, "tempUnzipIdf")
-  passwordFilePath <- ExecUnzipByPassword(
-    input_zip_path,
-    unzipDir,
-    idf_password
-  )
+  if (!is.na(idf_password)) {
+    passwordFilePath <- ExecUnzipByPassword(
+      input_zip_path,
+      unzipDir,
+      idf_password
+    )
+  } else {
+    passwordFilePath <- ExecUnzip(
+      input_zip_path,
+      unzipDir
+    )
+  }
   return(unzipDir)
 }
 UnzipWhodd <- function(input_zip_path) {
