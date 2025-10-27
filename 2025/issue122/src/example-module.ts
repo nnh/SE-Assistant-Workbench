@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+import { getDataInformation_ } from './getData';
 /**
  * 指定フォルダ配下すべてのフォルダ・ファイルの共有権限をスプレッドシートに出力
  * - 再帰的に全サブフォルダを探索
@@ -39,28 +39,26 @@ export function exportFolderPermissionsRecursive_() {
   );
 
   // ヘッダー設定
-  if (resultSheet.getLastRow() === 0) {
-    resultSheet
-      .getRange(1, 1, 1, 9)
-      .setValues([
-        [
-          'タイプ',
-          'パス',
-          '名前',
-          'ID',
-          'URL',
-          'アクセス種別',
-          '権限',
-          'オーナー',
-          '編集者',
-          '閲覧者',
-        ],
-      ]);
-  }
+  resultSheet
+    .getRange(1, 1, 1, 9)
+    .setValues([
+      [
+        'タイプ',
+        'パス',
+        '名前',
+        'ID',
+        'URL',
+        'アクセス種別',
+        '権限',
+        'オーナー',
+        '編集者',
+        '閲覧者',
+      ],
+    ]);
 
   const rootFolder = DriveApp.getFolderById(folderId);
   const outputValues: string[][] = [];
-  const BATCH_SIZE = 20;
+  const BATCH_SIZE = 200;
   let processedCount = 0;
 
   const flushBatch = () => {
@@ -126,42 +124,4 @@ export function exportFolderPermissionsRecursive_() {
   processFolder(rootFolder, rootFolder.getName());
   flushBatch();
   console.log(`🎉 全処理完了。合計: ${processedCount}件`);
-}
-
-/**
- * ファイルまたはフォルダの情報を配列で返す
- */
-function getDataInformation_(
-  data: GoogleAppsScript.Drive.File | GoogleAppsScript.Drive.Folder
-): string[] {
-  const name = data.getName();
-  const id = data.getId();
-  const url = data.getUrl();
-  const accessClass = safeGet_(() => String(data.getSharingAccess()));
-  const perm = safeGet_(() => String(data.getSharingPermission()));
-  const owner = safeGet_(() => data.getOwner()?.getEmail() ?? '');
-  const editors = safeGet_(() =>
-    data
-      .getEditors()
-      .map(e => e.getEmail())
-      .join(', ')
-  );
-  const viewers = safeGet_(() =>
-    data
-      .getViewers()
-      .map(v => v.getEmail())
-      .join(', ')
-  );
-  return [name, id, url, accessClass, perm, owner, editors, viewers];
-}
-
-/**
- * try/catch 安全取得
- */
-function safeGet_<T>(fn: () => T): T | string {
-  try {
-    return fn();
-  } catch {
-    return '!取得不可!';
-  }
 }
