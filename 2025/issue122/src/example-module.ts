@@ -96,6 +96,8 @@ export function exportFolderPermissionsRecursive_() {
       processedIds.add(folderId);
       processedCount++;
       console.log(`対象フォルダ: ${path}`);
+    } else {
+      processedIds.delete(folderId);
     }
 
     // ファイル処理
@@ -104,11 +106,14 @@ export function exportFolderPermissionsRecursive_() {
     while (files.hasNext()) {
       const file = files.next();
       const fileId = file.getId();
-      if (processedIds.has(fileId)) continue;
-      outputValues.push(['ファイル', path, ...getDataInformation_(file)]);
-      doneFileData.push([fileId, path]);
-      processedIds.add(fileId);
-      processedCount++;
+      if (!processedIds.has(fileId)) {
+        outputValues.push(['ファイル', path, ...getDataInformation_(file)]);
+        doneFileData.push([fileId, path]);
+        processedIds.add(fileId);
+        processedCount++;
+      } else {
+        processedIds.delete(fileId);
+      }
     }
     flushBatch(outputValues, processedCount);
     const doneData = [[folderId, path], ...doneFileData];
