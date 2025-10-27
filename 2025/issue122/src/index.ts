@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { hello } from './example-module';
-import { exportFolderPermissions_ } from './example-module';
+import { exportFolderPermissionsRecursive_ } from './example-module';
 
 function main() {
-  exportFolderPermissions_();
+  exportFolderPermissionsRecursive_();
 }
-console.log(hello());
+console.log('');
