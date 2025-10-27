@@ -89,32 +89,39 @@ export function exportFolderPermissionsRecursive_() {
     const outputValues: string[][] = [];
     let processedCount = 0;
     const folderId = folder.getId();
-    /*if (processedIds.has(folderId)) {
-      console.log(`⏭️ スキップ: ${path}`);
-      return;
-    }*/
 
     // フォルダ情報を追加
-    outputValues.push(['フォルダ', path, ...getDataInformation_(folder)]);
-    doneSheet.appendRow([folderId, path]);
-    processedIds.add(folderId);
-    processedCount++;
-    //    if (processedCount % BATCH_SIZE === 0) flushBatch();
+    if (!processedIds.has(folderId)) {
+      outputValues.push(['フォルダ', path, ...getDataInformation_(folder)]);
+      processedIds.add(folderId);
+      processedCount++;
+      console.log(`対象フォルダ: ${path}`);
+    }
 
     // ファイル処理
+    const doneFileData = [];
     const files = folder.getFiles();
     while (files.hasNext()) {
       const file = files.next();
       const fileId = file.getId();
-      //if (processedIds.has(fileId)) continue;
+      if (processedIds.has(fileId)) continue;
       outputValues.push(['ファイル', path, ...getDataInformation_(file)]);
-      doneSheet.appendRow([fileId, path]);
+      doneFileData.push([fileId, path]);
       processedIds.add(fileId);
       processedCount++;
-      //      if (processedCount % BATCH_SIZE === 0) flushBatch();
     }
     flushBatch(outputValues, processedCount);
-
+    const doneData = [[folderId, path], ...doneFileData];
+    if (doneData.length > 0) {
+      doneSheet
+        .getRange(
+          doneSheet.getLastRow() + 1,
+          1,
+          doneData.length,
+          doneData[0].length
+        )
+        .setValues(doneData);
+    }
     // サブフォルダ処理（再帰）
     const subFolders = folder.getFolders();
     while (subFolders.hasNext()) {

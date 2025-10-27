@@ -30,13 +30,13 @@ export function getDataInformation_(
     data
       .getEditors()
       .map(e => e.getEmail())
-      .join(', ')
+      .join('\n')
   );
   const viewers = safeGet_(() =>
     data
       .getViewers()
       .map(v => v.getEmail())
-      .join(', ')
+      .join('\n')
   );
   return [name, id, url, accessClass, perm, owner, editors, viewers];
 }
