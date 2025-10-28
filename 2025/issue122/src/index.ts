@@ -15,8 +15,14 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { exportFolderPermissionsRecursive_ } from './example-module';
+import { testGetDataSinetInformation_ } from './forIsrTest';
+
+function test() {
+  testGetDataSinetInformation_();
+}
 
 function main() {
   exportFolderPermissionsRecursive_();
 }
+
 console.log('');
