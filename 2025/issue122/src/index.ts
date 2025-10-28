@@ -15,10 +15,15 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { exportFolderPermissionsRecursive_ } from './example-module';
-import { testGetDataSinetInformation_ } from './forIsrTest';
+import {
+  testGetDataSinetInformation_,
+  testCompareDataBeforeAfterMove_,
+} from './forIsrTest';
 
 function test() {
-  testGetDataSinetInformation_();
+  const beforeSheetName = '共有ドライブ移動前SINETフォルダ';
+  const afterSheetName = '共有権限';
+  testCompareDataBeforeAfterMove_(beforeSheetName, afterSheetName);
 }
 
 function main() {
