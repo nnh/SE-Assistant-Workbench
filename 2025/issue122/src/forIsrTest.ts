@@ -69,6 +69,17 @@ export function testCompareDataBeforeAfterMove_(
   } else {
     outputViewerMismatchSheet.clearContents();
   }
+  const outputPermissionMismatchSheetName = '権限不一致';
+  let outputPermissionMismatchSheet = SpreadsheetApp.getActive().getSheetByName(
+    outputPermissionMismatchSheetName
+  );
+  if (!outputPermissionMismatchSheet) {
+    outputPermissionMismatchSheet = SpreadsheetApp.getActive().insertSheet(
+      outputPermissionMismatchSheetName
+    );
+  } else {
+    outputPermissionMismatchSheet.clearContents();
+  }
   const headerEditor = [
     'タイプ',
     'パス',
@@ -87,11 +98,24 @@ export function testCompareDataBeforeAfterMove_(
     '移動前閲覧者',
     '移動後閲覧者',
   ];
+  const headerPermission = [
+    'タイプ',
+    'パス',
+    '名前',
+    'ID',
+    'URL',
+    '移動前アクセス種別',
+    '移動後アクセス種別',
+    '移動前権限',
+    '移動後権限',
+  ];
   const beforeData = beforeSheet.getDataRange().getValues();
   const afterData = afterSheet.getDataRange().getValues();
   const nameIndex = 2; // 名前列のインデックス
   const idIndex = 3; // ID列のインデックス
   const urlIndex = 4; // URL列のインデックス
+  const accessClassIndex = 5; // アクセス種別列のインデックス
+  const permIndex = 6; // 権限列のインデックス
   const editorIndex = 8; // 編集者列のインデックス
   const viewerIndex = 9; // 閲覧者列のインデックス
   // beforeだけに存在するIDまたはURLを抽出
@@ -118,7 +142,10 @@ export function testCompareDataBeforeAfterMove_(
   });
   const editorMismatch: string[][] = [];
   const viewerMismatch: string[][] = [];
+  const permissionMismatch: string[][] = [];
   // 名前、編集者、閲覧者が違うものはないか
+  // 「リンクを知っている全員がアクセスできる」は移動前アクセス種別が「!取得不可!」になる
+  // 移動後が「ANYONE_WITH_LINK」になっていなければ不一致とする
   moveData.forEach(beforeRow => {
     const beforeId = beforeRow[idIndex];
     const afterRow = afterData.find(row => row[idIndex] === beforeId);
@@ -185,6 +212,34 @@ export function testCompareDataBeforeAfterMove_(
         ];
         viewerMismatch.push(temp);
       }
+      // アクセス種別・権限比較
+      const beforeAccessClass = String(beforeRow[accessClassIndex]);
+      const afterAccessClass = String(afterRow[accessClassIndex]);
+      const beforePerm = String(beforeRow[permIndex]);
+      const afterPerm = String(afterRow[permIndex]);
+      let isMismatch = false;
+      if (beforeAccessClass === cstNoGet) {
+        if (afterAccessClass !== 'ANYONE_WITH_LINK') {
+          isMismatch = true;
+        }
+      } else {
+        if (afterAccessClass === cstNoGet) {
+          isMismatch = true;
+        }
+      }
+      if (isMismatch) {
+        permissionMismatch.push([
+          beforeRow[0], // タイプ
+          beforeRow[1], // パス
+          beforeRow[2], // 名前
+          beforeRow[3], // ID
+          beforeRow[4], // URL
+          beforeAccessClass, // 移動前アクセス種別
+          afterAccessClass, // 移動後アクセス種別
+          beforePerm, // 移動前権限
+          afterPerm, // 移動後権限
+        ]);
+      }
       if (beforeName !== afterName) {
         throw new Error(
           `名前不一致 ID: ${beforeId} 共有ドライブ移動前: "${beforeName}" 共有ドライブ移動後: "${afterName}"`
@@ -220,23 +275,42 @@ export function testCompareDataBeforeAfterMove_(
       .setValue('✅ 共有ドライブ移動前後で閲覧者の不一致はありませんでした。');
     console.log('✅ 共有ドライブ移動前後で閲覧者の不一致はありませんでした。');
   }
-  console.log('✅ 共有ドライブ移動前後で名前の不一致はありませんでした。');
+  if (permissionMismatch.length > 0) {
+    const outputValues = [headerPermission, ...permissionMismatch];
+    outputPermissionMismatchSheet
+      .getRange(1, 1, outputValues.length, headerPermission.length)
+      .setValues(outputValues);
+  } else {
+    outputPermissionMismatchSheet
+      .getRange(1, 1)
+      .setValue('✅ 共有ドライブ移動前後で権限の不一致はありませんでした。');
+    console.log('✅ 共有ドライブ移動前後で権限の不一致はありませんでした。');
+  }
 }
 
 // 共有ドライブ移動テストのために指定したフォルダ配下のデータを抽出して別シートに出力する
-export function testGetDataSinetInformation_(
-  inputSheetName = '共有権限',
-  outputSheetName = 'ISRテスト用',
-  pathStartText = '情報システム研究室(ISR)/SINET'
+export function testGetDataInformation_(
+  inputSheetName: string,
+  outputSheetName: string,
+  pathStartText: string
 ) {
-  const outputSheet =
-    SpreadsheetApp.getActive().getSheetByName(outputSheetName);
-  if (!outputSheet) {
-    throw new Error(`シート「${outputSheetName}」が見つかりません。`);
+  const inputSpreadSheetId =
+    PropertiesService.getScriptProperties().getProperty(
+      'BEFORE_SPREADSHEET_ID'
+    );
+  if (!inputSpreadSheetId) {
+    throw new Error('BEFORE_SPREADSHEET_ID is not set in Script Properties.');
   }
-  const inputSheet = SpreadsheetApp.getActive().getSheetByName(inputSheetName);
+  const inputSpreadsheet = SpreadsheetApp.openById(inputSpreadSheetId);
+  const inputSheet = inputSpreadsheet.getSheetByName(inputSheetName);
   if (!inputSheet) {
     throw new Error(`シート「${inputSheetName}」が見つかりません。`);
+  }
+  let outputSheet = SpreadsheetApp.getActive().getSheetByName(outputSheetName);
+  if (!outputSheet) {
+    outputSheet = SpreadsheetApp.getActive().insertSheet(outputSheetName);
+  } else {
+    outputSheet.clearContents();
   }
   outputSheet.clearContents();
   const data = inputSheet.getDataRange().getValues();

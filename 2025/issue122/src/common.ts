@@ -17,6 +17,7 @@
  * try/catch 安全取得
  */
 export const cstNoGet = '!取得不可!';
+export const cstMoveBeforeDataSheetName = '共有権限';
 export function safeGet_<T>(fn: () => T): T | string {
   try {
     return fn();

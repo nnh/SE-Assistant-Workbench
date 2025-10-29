@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import { getDataInformation_ } from './getData';
+import { cstMoveBeforeDataSheetName } from './common';
 const getRootFolder_ = () => {
   const folderId =
     PropertiesService.getScriptProperties().getProperty('TARGET_FOLDER_ID');
@@ -35,7 +36,8 @@ export function exportFolderPermissionsRecursive_() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const resultSheet =
-    ss.getSheetByName('共有権限') || ss.insertSheet('共有権限');
+    ss.getSheetByName(cstMoveBeforeDataSheetName) ||
+    ss.insertSheet(cstMoveBeforeDataSheetName);
   const doneSheet = ss.getSheetByName('検索済み') || ss.insertSheet('検索済み');
   doneSheet.getRange(1, 1, 1, 2).setValues([['ID', 'パス']]);
 
