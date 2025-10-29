@@ -16,10 +16,11 @@
 /**
  * try/catch 安全取得
  */
+export const cstNoGet = '!取得不可!';
 export function safeGet_<T>(fn: () => T): T | string {
   try {
     return fn();
   } catch {
-    return '!取得不可!';
+    return cstNoGet;
   }
 }

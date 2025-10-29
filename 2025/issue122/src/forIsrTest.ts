@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 // 共有ドライブ移動前後でのデータ比較用テストコード
+import { cstNoGet } from './common';
 export function testCompareDataBeforeAfterMove_(
   beforeSheetName: string,
   afterSheetName: string
