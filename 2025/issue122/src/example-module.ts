@@ -140,4 +140,9 @@ export function exportFolderPermissionsRecursive_() {
   console.log(`📂 探索開始: ${rootFolder.getName()}`);
   processFolder(rootFolder, rootFolder.getName());
   console.log(`🎉 全処理完了。合計: ${processedAllCount}件`);
+  const targetPath: string = resultSheet.getRange(2, 2).getValue();
+  PropertiesService.getScriptProperties().setProperty(
+    'TARGET_PATH',
+    targetPath
+  );
 }

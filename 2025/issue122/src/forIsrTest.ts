@@ -240,7 +240,7 @@ export function testCompareDataBeforeAfterMove_(
           afterPerm, // 移動後権限
         ]);
       }
-      if (beforeName !== afterName) {
+      if (String(beforeName) !== String(afterName)) {
         throw new Error(
           `名前不一致 ID: ${beforeId} 共有ドライブ移動前: "${beforeName}" 共有ドライブ移動後: "${afterName}"`
         );
@@ -259,7 +259,7 @@ export function testCompareDataBeforeAfterMove_(
       .getRange(1, 1, outputValues.length, headerEditor.length)
       .setValues(outputValues);
   } else {
-    outputViewerMismatchSheet
+    outputEditorMismatchSheet
       .getRange(1, 1)
       .setValue('✅ 共有ドライブ移動前後で編集者の不一致はありませんでした。');
     console.log('✅ 共有ドライブ移動前後で編集者の不一致はありませんでした。');
