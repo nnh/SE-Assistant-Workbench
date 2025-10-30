@@ -16,6 +16,9 @@
 /**
  * try/catch 安全取得
  */
+export const targetFolderId = 'FOLDER_ID_HERE';
+export const root = '情報システム研究室(ISR)';
+
 export const cstNoGet = '!取得不可!';
 export const cstMoveBeforeDataSheetName = '共有権限';
 export function safeGet_<T>(fn: () => T): T | string {

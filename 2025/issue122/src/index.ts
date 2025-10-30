@@ -19,16 +19,18 @@ import {
   testGetDataInformation_,
   testCompareDataBeforeAfterMove_,
 } from './forIsrTest';
-import { cstMoveBeforeDataSheetName } from './common';
+import { cstMoveBeforeDataSheetName, root, targetFolderId } from './common';
 import { setScriptProperties_ } from './config';
 
 function test() {
-  const root = '情報システム研究室(ISR)';
   const targetPath = getTargetPath_();
   const beforeSheetName = `共有ドライブ移動前${targetPath}フォルダ`;
   execTestGetDataInformation_(root, beforeSheetName);
   const afterSheetName = cstMoveBeforeDataSheetName;
   testCompareDataBeforeAfterMove_(beforeSheetName, afterSheetName);
+  SpreadsheetApp.getActiveSpreadsheet().rename(
+    `共有ドライブに移動した${targetPath}フォルダの権限確認`
+  );
 }
 
 function main() {
@@ -37,7 +39,6 @@ function main() {
 }
 
 function execSetProperties_() {
-  const targetFolderId = 'FOLDER_ID_HERE';
   if (targetFolderId === 'FOLDER_ID_HERE') {
     throw new Error('Please set the actual folder ID in the code.');
   }
