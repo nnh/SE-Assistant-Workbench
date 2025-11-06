@@ -48,7 +48,7 @@ function execSetProperties_() {
 function execTestGetDataInformation_(root: string, outputSheetName: string) {
   const targetPath = getTargetPath_();
   const inputSheetName = cstMoveBeforeDataSheetName;
-  const pathStartText = `${root}/${targetPath}`;
+  const pathStartText = root === '' ? targetPath : `${root}/${targetPath}`;
   testGetDataInformation_(inputSheetName, outputSheetName, pathStartText);
 }
 

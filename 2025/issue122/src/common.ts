@@ -17,6 +17,7 @@
  * try/catch 安全取得
  */
 export const targetFolderId = 'FOLDER_ID_HERE';
+// 移動前のパスの最上位が情報システム研究室(ISR)/xxxなら'情報システム研究室(ISR)'をセット、xxxなら''をセット
 export const root = '情報システム研究室(ISR)';
 
 export const cstNoGet = '!取得不可!';
