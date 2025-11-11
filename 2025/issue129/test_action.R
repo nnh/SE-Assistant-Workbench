@@ -50,14 +50,14 @@ action_fieldItems <- action_target %>% map( ~ {
         return(list(name = fi$name, label = fi$label))
     }) %>% bind_rows()
     bind_tibble_field_items <- bind_tibble_field_items %>%
-        left_join(field_items_name_labels, by = c("field" = "name")) 
+        left_join(field_items_name_labels, by = c("field" = "name"))
         return(bind_tibble_field_items)
         res <- bind_tibble_field_items %>% select(jpname, alias_name, name, label.x, code, field, label.y)
 }) %>% discard( ~ is.null(.x) )
 if (length(action_fieldItems) > 0) {
-    action_result <- bind_rows(action_fieldItems)
+    action_result <- bind_rows(action_fieldItems) %>% select(field_item_name, alias_name, name, label.x, code, field, label.y)
     write_csv(action_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_action.csv")
 } else {
     print("action 0件")
-} 
+}
 

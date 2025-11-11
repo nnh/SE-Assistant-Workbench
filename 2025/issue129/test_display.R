@@ -34,7 +34,9 @@ display_fieldItems <- display_target %>% map( ~ {
 }) %>% discard( ~ is.null(.x) )
 if (length(display_fieldItems) > 0) {
     display_result <- bind_rows(display_fieldItems)
-    write_csv(display_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_display.csv")
 } else {
     print("display 0件")
+    display_result <- tibble(name = character(), alias_name = character(), field_item_name = character(), field_item_label = character(), field_item_type = character(), is_invisible = logical())
 }
+write_csv(display_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_display.csv")
+

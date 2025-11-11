@@ -40,7 +40,7 @@ option_fieldItems <- option_target %>% map( ~ {
     return(field_items)
 }) %>% discard( ~ is.null(.x) )
 if (length(option_fieldItems) > 0) {
-    option_result <- bind_rows(option_fieldItems)
+    option_result <- bind_rows(option_fieldItems) %>% distinct()
     write_csv(option_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_option.csv")
 } else {
     print("option 0件")
