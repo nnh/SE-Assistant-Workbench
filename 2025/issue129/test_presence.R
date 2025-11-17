@@ -32,6 +32,19 @@ presence_fieldItems <- presence_target %>% map( ~ {
 }) %>% discard( ~ is.null(.x) )
 if (length(presence_fieldItems) > 0) {
     presence_result <- bind_rows(presence_fieldItems)
+    # ieorres, xxstatを除外
+    ie <- presence_target %>% map( ~ {
+      alias_name <- .$alias_name
+      cdisc_sheet_configs <-.$cdisc_sheet_configs %>% keep( ~ .x$prefix == "IE")
+        if (length(cdisc_sheet_configs) == 0) {
+          return(NULL)
+        }
+        ieorres <- cdisc_sheet_configs$table #%>% keep( ~ .x == "ORRES")
+        if (length(ieorres) == 0) {
+          return(NULL)
+        }
+        return(list(alias_name = alias_name, ieorres = ieorres))
+      })
     write_csv(presence_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_presence.csv")
 } else {
     print("presence 0件")
