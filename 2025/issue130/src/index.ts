@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { hello, test_ } from './example-module';
-function main() {
-  test_();
+import { hello, outputDrives_, outputPermissions_ } from './example-module';
+function permissionOutputMain() {
+  outputPermissions_();
+}
+function driveOutputMain() {
+  outputDrives_();
 }
 console.log(hello());

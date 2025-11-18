@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 import { getDrivesInfo_ } from './getDrives';
+import { getPermissions_ } from './getPermissions';
 export function hello() {
   return 'Hello Apps Script!';
 }
-export function test_() {
+export function outputDrives_() {
   const drivesInfo = getDrivesInfo_();
   if (drivesInfo.length === 0) {
     console.log('No shared drives found.');
@@ -46,6 +47,9 @@ export function test_() {
   outputSheet
     .getRange(1, 1, outputData.length, headers.length)
     .setValues(outputData);
+}
+export function outputPermissions_() {
+  const permissions = getPermissions_('0AC5DqmSREyx8Uk9PVA');
 }
 /*
 export function test_() {
