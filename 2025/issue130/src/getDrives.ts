@@ -58,6 +58,15 @@ export const getDrivesInfo_ = (): string[][] => {
 const getRestrictionsString_ = (
   restrictions: GoogleAppsScript.Drive_v3.Drive.V3.Schema.DriveRestrictions
 ): string[] => {
+  const adminManagedRestrictions = (restrictions as Record<string, any>)[
+    'adminManagedRestrictions'
+  ];
+  const adminManagedRestrictionsStr: string =
+    adminManagedRestrictions === undefined
+      ? ''
+      : adminManagedRestrictions
+        ? '許可しない'
+        : '許可する';
   const domainUsersOnly = (restrictions as Record<string, any>)[
     'domainUsersOnly'
   ];
@@ -114,6 +123,7 @@ const getRestrictionsString_ = (
         ? '許可しない'
         : '許可する';
   const res = [
+    adminManagedRestrictionsStr,
     domainUsersOnlyStr,
     driveMembersOnlyStr,
     sharingFoldersRequiresOrganizerPermissionStr,

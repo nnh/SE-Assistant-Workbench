@@ -17,12 +17,15 @@
 import { outputDrives_, outputPermissions_ } from './getInfo';
 import { createTable_ } from './summary';
 function createSummaryMain() {
+  // DrivesInfoシートとPermissionsInfoシートを結合してlistシートに出力します
   createTable_();
 }
 function permissionOutputMain() {
+  // PermissionsInfoシートに共有ドライブの権限情報を出力します
   outputPermissions_();
 }
 function driveOutputMain() {
+  // DrivesInfoシートに共有ドライブの情報を出力します
   outputDrives_();
 }
 console.log('');
