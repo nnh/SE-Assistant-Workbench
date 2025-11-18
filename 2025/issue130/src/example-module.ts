@@ -50,6 +50,33 @@ export function outputDrives_() {
 }
 export function outputPermissions_() {
   const permissions = getPermissions_('0AC5DqmSREyx8Uk9PVA');
+  const headers = [
+    'driveId',
+    'id',
+    'displayName',
+    'role',
+    'type',
+    'emailAddress',
+    'allowFileDiscovery',
+    'domain',
+    'expirationTime',
+    'deleted',
+    'detail.permissionType',
+    'detail.inheritedFrom',
+    'detail.role',
+    'detail.inherited',
+  ];
+  let outputSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PermissionsInfo');
+  if (!outputSheet) {
+    outputSheet =
+      SpreadsheetApp.getActiveSpreadsheet().insertSheet('PermissionsInfo');
+  } else {
+    outputSheet.clear();
+  }
+  outputSheet
+    .getRange(1, 1, permissions.length + 1, headers.length)
+    .setValues([headers, ...permissions]);
 }
 /*
 export function test_() {
