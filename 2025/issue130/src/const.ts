@@ -17,3 +17,7 @@ export const constSheetNames = new Map<string, string>([
   ['drivesInfo', 'DrivesInfo'],
   ['permissionsInfo', 'PermissionsInfo'],
 ]);
+export const constIndexes = new Map<string, number>([
+  ['drives_driveid', 1],
+  ['permissions_driveid', 0],
+]);

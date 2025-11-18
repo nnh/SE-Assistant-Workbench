@@ -13,12 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { hello } from '../src/example-module';
+import { constSheetNames } from '../src/const';
 
-describe('example-module', () => {
-  describe('hello', () => {
-    it('Returns a hello message', () => {
-      expect(hello()).toBe('Hello Apps Script!');
+describe('const', () => {
+  describe('constSheetNames Map', () => {
+    it('should return "DrivesInfo" for key "drivesInfo"', () => {
+      expect(constSheetNames.get('drivesInfo')).toBe('DrivesInfo');
+    });
+
+    it('should return "PermissionsInfo" for key "permissionsInfo"', () => {
+      expect(constSheetNames.get('permissionsInfo')).toBe('PermissionsInfo');
     });
   });
 });
