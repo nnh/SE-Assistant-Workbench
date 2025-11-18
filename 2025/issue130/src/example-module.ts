@@ -15,20 +15,22 @@
  */
 import { getDrivesInfo_ } from './getDrives';
 import { getPermissions_ } from './getPermissions';
-export function hello() {
-  return 'Hello Apps Script!';
-}
+import { constSheetNames } from './const';
 export function outputDrives_() {
   const drivesInfo = getDrivesInfo_();
   if (drivesInfo.length === 0) {
     console.log('No shared drives found.');
     return;
   }
+  const drivesInfoSheetName = constSheetNames.get('drivesInfo');
+  if (!drivesInfoSheetName) {
+    throw new Error('DrivesInfo sheet name not found in constants.');
+  }
   let outputSheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DrivesInfo');
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(drivesInfoSheetName);
   if (!outputSheet) {
     outputSheet =
-      SpreadsheetApp.getActiveSpreadsheet().insertSheet('DrivesInfo');
+      SpreadsheetApp.getActiveSpreadsheet().insertSheet(drivesInfoSheetName);
   } else {
     outputSheet.clear();
   }
@@ -37,11 +39,11 @@ export function outputDrives_() {
     'Drive ID',
     'Drive Kind',
     'Created Time',
-    'Copy Requires Writer Permission',
-    'Domain Users Only',
-    'Drive Members Only',
-    'Admin Managed Restrictions',
-    'Sharing Folders Requires Organizer Permission',
+    '組織外のユーザーにファイルへのアクセスを許可する',
+    '共有ドライブのメンバー以外のユーザーにファイルへのアクセスを許可する',
+    'コンテンツ管理者にフォルダの共有を許可する',
+    'ダウンロード、コピー、印刷できるユーザー：投稿者とコンテンツ管理者',
+    'ダウンロード、コピー、印刷できるユーザー：閲覧者（コメント可）と閲覧者',
   ];
   const outputData = [headers, ...drivesInfo];
   outputSheet
@@ -49,28 +51,52 @@ export function outputDrives_() {
     .setValues(outputData);
 }
 export function outputPermissions_() {
-  const permissions = getPermissions_('0AC5DqmSREyx8Uk9PVA');
+  const drivesInfoSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DrivesInfo');
+  if (!drivesInfoSheet) {
+    throw new Error(
+      'DrivesInfo sheet not found. Please run outputDrives_ first.'
+    );
+  }
+  const drivesInfo = drivesInfoSheet.getDataRange().getValues();
+  if (drivesInfo.length < 2) {
+    console.log('No drives information available to get permissions.');
+    return;
+  }
+  const driveIdList = drivesInfo.slice(1).map(row => row[1] as string);
+  const permissions = driveIdList.flatMap(driveId => getPermissions_(driveId));
+  if (permissions.length === 0) {
+    console.log('No permissions found for the drives.');
+    return;
+  }
   const headers = [
     'driveId',
     'id',
-    'displayName',
-    'role',
-    'type',
-    'emailAddress',
-    'allowFileDiscovery',
-    'domain',
-    'expirationTime',
-    'deleted',
-    'detail.permissionType',
-    'detail.inheritedFrom',
-    'detail.role',
-    'detail.inherited',
+    'kind',
+    '表示名',
+    'ロール',
+    'タイプ',
+    'メールアドレス',
+    'ファイルの検索を許可する',
+    'ドメイン',
+    '有効期限',
+    '削除済み',
+    'このユーザーの権限タイプ',
+    'この権限が継承されるアイテムの ID',
+    'このユーザーのメインのロール',
+    'この権限が継承されているか',
   ];
-  let outputSheet =
-    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PermissionsInfo');
+  const permissionsInfoSheetName = constSheetNames.get('permissionsInfo');
+  if (!permissionsInfoSheetName) {
+    throw new Error('PermissionsInfo sheet name not found in constants.');
+  }
+  let outputSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    permissionsInfoSheetName
+  );
   if (!outputSheet) {
-    outputSheet =
-      SpreadsheetApp.getActiveSpreadsheet().insertSheet('PermissionsInfo');
+    outputSheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(
+      permissionsInfoSheetName
+    );
   } else {
     outputSheet.clear();
   }
@@ -78,44 +104,3 @@ export function outputPermissions_() {
     .getRange(1, 1, permissions.length + 1, headers.length)
     .setValues([headers, ...permissions]);
 }
-/*
-export function test_() {
-  let pageTokenDrive: string | undefined;
-  const outputValues: string[][] = [];
-
-  let drivesList;
-  do {
-    drivesList = Drive.Drives.list({
-      ...(pageTokenDrive !== undefined && { pageToken: pageTokenDrive }),
-      pageSize: 100,
-      useDomainAdminAccess: true,
-    });
-    if (drivesList.drives && drivesList.drives.length > 0) {
-      for (const drive of drivesList.drives) {
-        const driveName = drive.name;
-        const driveId = drive.id;
-        if (driveId === undefined) {
-          throw new Error('Drive ID is undefined');
-        }
-        const permissions = Drive.Permissions.list(driveId, {
-          supportsAllDrives: true,
-        });
-        for (const permission of permissions.permissions || []) {
-          const displayName = permission.displayName;
-          const role = permission.role;
-          const type = permission.type;
-          const emailAddress = permission.emailAddress;
-          console.log(
-            `Drive Name: ${driveName}, Drive ID: ${driveId}, Role: ${role}, Type: ${type}, Email: ${emailAddress}`
-          );
-        }
-
-        outputValues.push([driveName ?? '', driveId ?? '']);
-      }
-    }
-    pageTokenDrive = drivesList.nextPageToken;
-  } while (pageTokenDrive);
-
-  console.log(outputValues);
-}
-*/
