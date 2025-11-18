@@ -13,9 +13,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { getDrivesInfo_ } from './getDrives';
 export function hello() {
   return 'Hello Apps Script!';
 }
+export function test_() {
+  const drivesInfo = getDrivesInfo_();
+  if (drivesInfo.length === 0) {
+    console.log('No shared drives found.');
+    return;
+  }
+  let outputSheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DrivesInfo');
+  if (!outputSheet) {
+    outputSheet =
+      SpreadsheetApp.getActiveSpreadsheet().insertSheet('DrivesInfo');
+  } else {
+    outputSheet.clear();
+  }
+  const headers = [
+    'Drive Name',
+    'Drive ID',
+    'Drive Kind',
+    'Created Time',
+    'Copy Requires Writer Permission',
+    'Domain Users Only',
+    'Drive Members Only',
+    'Admin Managed Restrictions',
+    'Sharing Folders Requires Organizer Permission',
+  ];
+  const outputData = [headers, ...drivesInfo];
+  outputSheet
+    .getRange(1, 1, outputData.length, headers.length)
+    .setValues(outputData);
+}
+/*
 export function test_() {
   let pageTokenDrive: string | undefined;
   const outputValues: string[][] = [];
@@ -55,3 +87,4 @@ export function test_() {
 
   console.log(outputValues);
 }
+*/
