@@ -1,5 +1,5 @@
 /**
- * Copyright 2023 Google LLC
+ * Copyright 2025 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,19 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/**
- * try/catch 安全取得
- */
-export const targetFolderId = 'FOLDER_ID_HERE';
-// 移動前のパスの最上位が情報システム研究室(ISR)/xxxなら'情報システム研究室(ISR)'をセット、xxxなら''をセット
-export const root = '情報システム研究室(ISR)';
-
-export const cstNoGet = '!取得不可!';
-export const cstMoveBeforeDataSheetName = '共有権限';
-export function safeGet_<T>(fn: () => T): T | string {
-  try {
-    return fn();
-  } catch {
-    return cstNoGet;
-  }
-}
+export const constSheetNames = new Map<string, string>([
+  ['drivesInfo', 'DrivesInfo'],
+  ['permissionsInfo', 'PermissionsInfo'],
+]);
+export const constIndexes = new Map<string, number>([
+  ['drives_driveid', 1],
+  ['permissions_driveid', 0],
+]);

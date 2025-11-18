@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import { getDataInformation_ } from './getData';
+import { cstMoveBeforeDataSheetName } from './common';
 const getRootFolder_ = () => {
   const folderId =
     PropertiesService.getScriptProperties().getProperty('TARGET_FOLDER_ID');
@@ -35,7 +36,8 @@ export function exportFolderPermissionsRecursive_() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const resultSheet =
-    ss.getSheetByName('共有権限') || ss.insertSheet('共有権限');
+    ss.getSheetByName(cstMoveBeforeDataSheetName) ||
+    ss.insertSheet(cstMoveBeforeDataSheetName);
   const doneSheet = ss.getSheetByName('検索済み') || ss.insertSheet('検索済み');
   doneSheet.getRange(1, 1, 1, 2).setValues([['ID', 'パス']]);
 
@@ -96,6 +98,8 @@ export function exportFolderPermissionsRecursive_() {
       processedIds.add(folderId);
       processedCount++;
       console.log(`対象フォルダ: ${path}`);
+    } else {
+      processedIds.delete(folderId);
     }
 
     // ファイル処理
@@ -104,11 +108,14 @@ export function exportFolderPermissionsRecursive_() {
     while (files.hasNext()) {
       const file = files.next();
       const fileId = file.getId();
-      if (processedIds.has(fileId)) continue;
-      outputValues.push(['ファイル', path, ...getDataInformation_(file)]);
-      doneFileData.push([fileId, path]);
-      processedIds.add(fileId);
-      processedCount++;
+      if (!processedIds.has(fileId)) {
+        outputValues.push(['ファイル', path, ...getDataInformation_(file)]);
+        doneFileData.push([fileId, path]);
+        processedIds.add(fileId);
+        processedCount++;
+      } else {
+        processedIds.delete(fileId);
+      }
     }
     flushBatch(outputValues, processedCount);
     const doneData = [[folderId, path], ...doneFileData];
@@ -133,4 +140,9 @@ export function exportFolderPermissionsRecursive_() {
   console.log(`📂 探索開始: ${rootFolder.getName()}`);
   processFolder(rootFolder, rootFolder.getName());
   console.log(`🎉 全処理完了。合計: ${processedAllCount}件`);
+  const targetPath: string = resultSheet.getRange(2, 2).getValue();
+  PropertiesService.getScriptProperties().setProperty(
+    'TARGET_PATH',
+    targetPath
+  );
 }
