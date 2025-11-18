@@ -33,8 +33,13 @@ export const createTable_ = () => {
   const drivesInfoKeyIndex = constIndexes.get('drives_driveid')!;
   const permissionsInfoKeyIndex = constIndexes.get('permissions_driveid')!;
   // Left join drivesInfo with permissionsInfo on driveid
-  const mergedData: any[] = [];
-  drivesInfo.forEach(driveRow => {
+  const mergedData: string[][] = [];
+  drivesInfo.forEach((driveRow, idx) => {
+    if (idx === 0) {
+      // Header row
+      mergedData.push([...driveRow, ...permissionsInfo[0]]);
+      return;
+    }
     const driveId = driveRow[drivesInfoKeyIndex];
     const matchingPermissionRows = permissionsInfo.filter(
       row => row[permissionsInfoKeyIndex] === driveId
@@ -57,7 +62,7 @@ export const createTable_ = () => {
     outputSheet =
       SpreadsheetApp.getActiveSpreadsheet().insertSheet(outputSheetName);
   } else {
-    outputSheet.clear();
+    outputSheet.clearContents();
   }
   outputSheet
     .getRange(1, 1, mergedData.length, mergedData[0].length)
