@@ -51,7 +51,8 @@ if (length(date_fieldItems) > 0) {
                 keep(~ .x$name == after) %>%
                 .[[1]] %>%
                 .$label
-            text <- str_c("(", alias_name, ",", after, ",", label, ")")
+            output_alias_name <- alias_name %>% str_remove("_[0-9]+$")
+            text <- str_c("(", output_alias_name, ",", after, ",", label, ")")
             date_result[i, "after_ref"] <- text
         }
     }
