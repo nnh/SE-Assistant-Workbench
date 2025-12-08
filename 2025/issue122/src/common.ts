@@ -18,7 +18,7 @@
  */
 export const targetFolderId = 'FOLDER_ID_HERE';
 // 移動前のパスの最上位が情報システム研究室(ISR)/xxxなら'情報システム研究室(ISR)'をセット、xxxなら''をセット
-export const root = '情報システム研究室(ISR)';
+export const root = '';
 
 export const cstNoGet = '!取得不可!';
 export const cstMoveBeforeDataSheetName = '共有権限';

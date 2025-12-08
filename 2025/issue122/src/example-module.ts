@@ -57,6 +57,7 @@ export function exportFolderPermissionsRecursive_() {
       'オーナー',
       '編集者',
       '閲覧者',
+      'ショートカット元フォルダID',
     ],
   ];
   // ヘッダー設定
