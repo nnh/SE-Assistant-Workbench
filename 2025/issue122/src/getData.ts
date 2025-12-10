@@ -38,5 +38,34 @@ export function getDataInformation_(
       .map(v => v.getEmail())
       .join('\n')
   );
-  return [name, id, url, accessClass, perm, owner, editors, viewers];
+  const shortcutFolderId: string = safeGet_(() => {
+    try {
+      const getFileTry: GoogleAppsScript.Drive.File = DriveApp.getFileById(
+        data.getId()
+      );
+    } catch (e) {
+      return '';
+    }
+    const targetFile = DriveApp.getFileById(data.getId());
+    const mimeType = targetFile.getMimeType();
+    if (mimeType !== MimeType.SHORTCUT) {
+      return '';
+    }
+    const targetId = targetFile.getTargetId();
+    if (targetId === null || targetId === undefined) {
+      return '';
+    }
+    return targetId;
+  });
+  return [
+    name,
+    id,
+    url,
+    accessClass,
+    perm,
+    owner,
+    editors,
+    viewers,
+    shortcutFolderId,
+  ];
 }
