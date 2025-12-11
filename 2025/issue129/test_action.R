@@ -61,19 +61,12 @@ action_fieldItems <- action_target %>%
     }) %>%
     discard(~ is.null(.x))
 if (length(action_fieldItems) > 0) {
-    action_result <- bind_rows(action_fieldItems) %>% select(field_item_name, alias_name, name, label.x, code, field, label.y)
-    visit_groups <- input_json$visit_groups %>%
-        map(~ {
-            alias_name <- .x$alias_name
-            visit_sheets <- .x$visit_sheets %>% map(~ c(alias_name = .x$sheet_alias_name, group = alias_name))
-            return(visit_sheets)
-        }) %>%
-        bind_rows()
-    action_result <- action_result %>%
-        left_join(visit_groups, by = c("alias_name" = "alias_name")) %>%
-        mutate(alias_name = ifelse(is.na(group), alias_name, group)) %>%
-        select(-group)
-    write_csv(action_result, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_action.csv")
+    res <- bind_rows(action_fieldItems) %>% select(field_item_name, alias_name, name, label.x, code, field, label.y)
+    colnames(res) <- c("jpname", "alias_name", "action_name", "action_label", "code", "field", "field_label")
+    source("test_getvisitgroups.r")
+    visit_groups <- GetVisitGroups(input_json)
+    res <- res %>% JoinVisitGroups(visit_groups)
+    write_csv(res, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_action.csv")
 } else {
     .
     print("action 0件")

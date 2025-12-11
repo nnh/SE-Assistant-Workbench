@@ -78,5 +78,10 @@ output_df <- res %>%
     return(res)
   }) %>%
   bind_rows()
-colnames(output_df) <- c("シート名", "シート名英数字別名", "フィールドID", "ラベル")
-write_csv(output_df, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_presence.csv")
+source("test_getvisitgroups.r")
+visit_groups <- GetVisitGroups(input_json)
+res <- output_df %>%
+  JoinVisitGroups(visit_groups) %>%
+  distinct()
+colnames(res) <- c("シート名", "シート名英数字別名", "フィールドID", "ラベル")
+write_csv(res, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_presence.csv")
