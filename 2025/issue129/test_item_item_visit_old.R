@@ -313,5 +313,23 @@ item_visit$numericality <- NULL
 item_visit$field_type <- NULL
 item_visit$sheetCategory <- NULL
 
+visits <- input_json$visits %>%
+    map(~ {
+        res <- list(visit_name = .x$name, visit_number = as.integer(.x$num))
+        return(res)
+    }) %>%
+    bind_rows() %>%
+    arrange(visit_number)
+for (row in 1:nrow(item_visit)) {
+    temp <- item_visit[row, "jpname", drop = T] %>%
+        str_split("\\(") %>%
+        .[[1]]
+    item_visit[row, "jpname"] <- temp[1]
+    temp <- item_visit[row, "alias_name", drop = T] %>%
+        str_split("_") %>%
+        .[[1]]
+    item_visit[row, "alias_name"] <- temp[1]
+}
+
 write_csv(item_visit, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_item_visit_old.csv")
 write_csv(item, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_item.csv")

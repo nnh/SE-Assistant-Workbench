@@ -57,6 +57,11 @@ if (length(date_fieldItems) > 0) {
         }
     }
     res <- date_result %>% select(jpname, alias_name, field_item_name, field_item_label, after, after_ref, before, before_ref)
+    source("test_getvisitgroups.r")
+    visit_groups <- GetVisitGroups(input_json)
+    res <- res %>%
+        JoinVisitGroups(visit_groups) %>%
+        distinct()
     write_csv(res, "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2025/20251107/AML224-FLT3-ITD_date.csv")
 } else {
     print("date 0件")
