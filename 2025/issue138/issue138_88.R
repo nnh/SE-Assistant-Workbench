@@ -211,7 +211,10 @@ for (i in 1:length(target_trials)) {
     # date
     print("dateの並び順がfield_item内のseq順になっているか確認")
     date <- excel_file %>%
-        readxl::read_excel(sheet = "date") %>%
+        readxl::read_excel(
+            sheet = "date",
+            col_types = "text"
+        ) %>%
         select(シート名英数字別名, フィールドID)
     temp <- input_json$sheets
     validators <- temp %>%
@@ -309,6 +312,8 @@ for (i in 1:length(target_trials)) {
             return(res)
         }) %>%
         bind_rows()
+    df_normal_range <- df_normal_range %>%
+        filter(normal_range_lessthan != "" | normal_range_greaterthan != "")
     df_validators <- validators %>%
         map(~ {
             aliasName <- .x$alias_name
@@ -355,9 +360,19 @@ for (i in 1:length(target_trials)) {
         distinct()
     colnames(output_limitation) <- colnames(limitation)
     if (!identical(output_limitation, limitation)) {
-        str(limitation)
-        str(output_limitation)
-        stop("issue 88 NG")
+        if (nrow(limitation) == 1 & nrow(output_limitation) == 0) {
+            if (all(is.na(limitation))) {
+                print("limitation0件、スキップ")
+            } else {
+                str(limitation)
+                str(output_limitation)
+                stop("issue 88 NG")
+            }
+        } else {
+            str(limitation)
+            str(output_limitation)
+            stop("issue 88 NG")
+        }
     }
     #####################################################
     # allocation
@@ -414,7 +429,7 @@ for (i in 1:length(target_trials)) {
     # item_nonvisit
     print("item_nonvisitの並び順がfield_item内のseq順になっているか確認")
     item_nonvisit <- excel_file %>%
-        readxl::read_excel(sheet = "item_nonvisit") %>%
+        readxl::read_excel(sheet = "item_nonvisit", col_types = "text") %>%
         select("シート名英数字別名", "フィールドID", "ラベル")
     input_items_nonvisit <- input_json$sheets %>% keep(~ .$category != "visit")
     temp <- input_items_nonvisit %>%
