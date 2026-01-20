@@ -14,4 +14,6 @@
  * limitations under the License.
  */
 export const TARGET_CALENDAR_IDS_SHEET_NAME = '対象カレンダーリスト';
+export const EVENT_OUTPUT_SHEET_NAME = 'イベント一覧';
+export const EVENT_SUMMARY_SHEET_NAME = 'イベント集計';
 export const RESOURCE_CALENDAR_SUFFIX = '@resource.calendar.google.com';

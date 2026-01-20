@@ -21,6 +21,11 @@ import {
   TARGET_CALENDAR_IDS_SHEET_NAME,
   RESOURCE_CALENDAR_SUFFIX,
 } from './const';
+import { summaryEvents_ } from './summaryEvents';
+
+function summaryEvents() {
+  summaryEvents_();
+}
 
 function listEvents() {
   const targetCalendarIdsSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
@@ -62,6 +67,9 @@ function listEvents() {
   if (!outputSheet) {
     throw new Error('Sheet "イベント一覧" not found.');
   }
+  // 出力シートの内容をクリア
+  outputSheet.clearContents();
+  SpreadsheetApp.flush();
   let outputRowNumber = outputSheet.getLastRow() + 1;
   // 対象のカレンダーIDを配列で指定します
   const targetCalendarIds = targetCalendarIdList;
