@@ -17,6 +17,7 @@
  * Lists the calendars shown in the user's calendar list.
  * @see https://developers.google.com/calendar/api/v3/reference/calendarList/list
  */
+import { RESOURCE_CALENDAR_SUFFIX } from './const';
 export function listCalendars_() {
   let calendars;
   let pageToken;
@@ -53,21 +54,32 @@ export function getCalendars_(id: string): string[][] {
     throw new Error(`Calendar with ID ${id} not found.`);
   }
   const today = new Date();
-  const events = calendar.getEvents(today, new Date('2026-03-31'));
+  // 会議室の場合は2027年3月31日まで取得する
+  let events: GoogleAppsScript.Calendar.CalendarEvent[];
+  if (id.endsWith(RESOURCE_CALENDAR_SUFFIX)) {
+    events = calendar.getEvents(today, new Date('2027-03-31'));
+  } else {
+    events = calendar.getEvents(today, new Date('2026-03-31'));
+  }
   if (events.length === 0) {
     console.log('No upcoming events found.');
     return [[id, 'No Events', '', '', '', '', '', '']];
   }
   const eventsInfo: string[][] = events
     .map(event => {
-      if (event.getGuestList(false).length === 0) {
-        return null;
+      // 会議室の場合はゲストなしでも出力する
+      if (id.endsWith(RESOURCE_CALENDAR_SUFFIX)) {
+        // 会議室の場合はゲストなしでも出力するため、ここでnullを返さない
+      } else {
+        if (event.getGuestList(false).length === 0) {
+          return null;
+        }
       }
       const temp: string[] = event
         .getGuestList(false)
         .map(guest => guest.getEmail());
       const checkTarget = temp.filter(guest => guest !== id);
-      if (checkTarget.length === 0) {
+      if (checkTarget.length === 0 && !id.endsWith(RESOURCE_CALENDAR_SUFFIX)) {
         return null;
       }
       const guestList = temp.map(guest => guest).join(', ');

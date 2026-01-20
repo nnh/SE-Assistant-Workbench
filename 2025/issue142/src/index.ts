@@ -17,7 +17,10 @@
 import { hello } from './example-module';
 import { listCalendars_, getCalendars_ } from './getCalendar';
 import { getOrCreateSheet_, getSheetOrNull_ } from './spreadsheetUtils';
-const TARGET_CALENDAR_IDS_SHEET_NAME = '対象カレンダーリスト';
+import {
+  TARGET_CALENDAR_IDS_SHEET_NAME,
+  RESOURCE_CALENDAR_SUFFIX,
+} from './const';
 
 function listEvents() {
   const targetCalendarIdsSheet: GoogleAppsScript.Spreadsheet.Sheet | null =
@@ -31,8 +34,7 @@ function listEvents() {
   // 会議室の情報を取得
   const meetingRooms = targetCalendars.filter(
     row =>
-      typeof row[1] === 'string' &&
-      row[1].endsWith('@resource.calendar.google.com')
+      typeof row[1] === 'string' && row[1].endsWith(RESOURCE_CALENDAR_SUFFIX)
   );
   // 除外対象のカレンダーIDを正規表現でリスト化
   const excluedTarget = targetCalendars.filter(row => row[2] === '除外');
@@ -83,7 +85,7 @@ function listEvents() {
       continue;
     }
     let outputValues: string[][];
-    if (eventsArray[0][0].endsWith('@resource.calendar.google.com')) {
+    if (eventsArray[0][0].endsWith(RESOURCE_CALENDAR_SUFFIX)) {
       // 会議室の場合、meetingRooms配列から名前を取得してセット
       const roomName = meetingRooms.find(
         row => row[1] === eventsArray[0][0]
