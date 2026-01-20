@@ -28,6 +28,13 @@ function listEvents() {
   const targetCalendars: string[][] = targetCalendarIdsSheet
     .getDataRange()
     .getValues();
+  // 会議室の情報を取得
+  const meetingRooms = targetCalendars.filter(
+    row =>
+      typeof row[1] === 'string' &&
+      row[1].endsWith('@resource.calendar.google.com')
+  );
+  // 除外対象のカレンダーIDを正規表現でリスト化
   const excluedTarget = targetCalendars.filter(row => row[2] === '除外');
   const excluedTargetIds: RegExp[] = [];
   if (excluedTarget.length > 0) {
@@ -75,10 +82,24 @@ function listEvents() {
     if (eventsArray.length === 0) {
       continue;
     }
+    let outputValues: string[][];
+    if (eventsArray[0][0].endsWith('@resource.calendar.google.com')) {
+      // 会議室の場合、meetingRooms配列から名前を取得してセット
+      const roomName = meetingRooms.find(
+        row => row[1] === eventsArray[0][0]
+      )?.[0];
+      outputValues = eventsArray.map(event => {
+        const newEvent = [...event];
+        newEvent[0] = roomName || '不明な会議室';
+        return newEvent;
+      });
+    } else {
+      outputValues = eventsArray;
+    }
     outputSheet
-      .getRange(outputRowNumber, 1, eventsArray.length, header.length)
-      .setValues(eventsArray);
-    outputRowNumber += eventsArray.length;
+      .getRange(outputRowNumber, 1, outputValues.length, header.length)
+      .setValues(outputValues);
+    outputRowNumber += outputValues.length;
     console.log(`Finished processing calendar ID: ${targetCalendarIds[i]}`);
   }
 }
