@@ -4,6 +4,23 @@ library(purrr)
 library(tidyverse)
 library(readxl)
 library(here)
+library(googlesheets4)
+
+write_to_google_sheet <- function(df) {
+    ss_id <- config$spreadsheet_id
+    target_sheet <- config$sheet_name
+    range_clear(config$spreadsheet_id, sheet = config$sheet_name, range = "A2:Z10000")
+    range_write(
+        ss = ss_id,
+        sheet = target_sheet,
+        data = df,
+        range = "A2", # ここで開始位置を指定
+        col_names = FALSE, # 列名は書き込まない
+        reformat = FALSE # スプレッドシート側の書式（色や枠線）を壊さない
+    )
+
+    message("スプレッドシートの2行目以降への書き込みが完了しました！")
+}
 
 summarize_wos_addresses <- function(df_authors) {
     # 1. 各著者のラベルを生成
@@ -143,11 +160,10 @@ temp_final_table <- left_join(final_metadata, address_summary, by = c("source_fi
 temp_final_table$facility_code <- str_remove(temp_final_table$source_file, "\\.json$") %>% as.double()
 temp_final_table_with_facility <- left_join(temp_final_table, facility_table, by = "facility_code")
 
-
 final_table <- temp_final_table_with_facility %>%
     # ダミー列をまとめて作成（中身は空文字）
     mutate(
-        dummy2 = "", dummy3 = "",
+        dummy1 = "", dummy2 = "", dummy3 = "",
         dummy4 = "", dummy5 = "", dummy6 = "",
         dummy7 = ""
     ) %>%
@@ -155,6 +171,7 @@ final_table <- temp_final_table_with_facility %>%
     select(
         facility_code,
         facility_name,
+        dummy1,
         uid,
         all_authors_list,
         title,
@@ -173,3 +190,7 @@ final_table <- temp_final_table_with_facility %>%
         pubMedId,
         targetDate,
     ) %>% arrange(facility_code, targetDate)
+
+config <- fromJSON(here("config.json"))
+gs4_auth()
+write_to_google_sheet(final_table)
