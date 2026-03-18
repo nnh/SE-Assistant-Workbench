@@ -39,7 +39,7 @@ summarize_wos_addresses <- function(df_authors) {
         group_by(source_file, uid) %>%
         summarise(
             # 名前リスト（以前のまま）
-            all_authors_list = paste(name[order(original_order)], collapse = ", "),
+            all_authors_list = paste(name[order(original_order)], collapse = ","),
 
             # ラベルリスト（NAを除去して結合することで、余計なカンマを防ぐ）
             author_label_list = paste(na.omit(author_label[order(original_order)]), collapse = ""),
