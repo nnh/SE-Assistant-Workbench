@@ -15,7 +15,14 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import { aggregateDataToGasSheet_ } from './issue148';
+import {
+  aggregateDataToGasSheet_,
+  compareSheetsUntilFirstDiff_,
+} from './issue148';
+
+function compareSheetsUntilFirstDiff(): void {
+  compareSheetsUntilFirstDiff_();
+}
 /**
  * RシートとGASシートのA列およびW列をキーにして昇順ソートする
  */

@@ -103,3 +103,74 @@ export const aggregateDataToGasSheet_ = (): void => {
     console.warn('集約対象のデータが見つかりませんでした。');
   }
 };
+
+/**
+ * RシートとGASシートの値を比較し、最初の相違点で停止する
+ * 日付オブジェクトは自動的にISO形式の文字列に変換して比較します
+ */
+export const compareSheetsUntilFirstDiff_ = (): void => {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetR = ss.getSheetByName('R');
+  const sheetGas = ss.getSheetByName('GAS');
+
+  if (!sheetR || !sheetGas) {
+    console.error('比較対象のシート（R または GAS）が見つかりません。');
+    return;
+  }
+
+  // 型定義: string | number | boolean | Date
+  const dataR = sheetR.getDataRange().getValues() as string[][];
+  const dataGas = sheetGas.getDataRange().getValues() as string[][];
+
+  const rowCountR = dataR.length;
+  const rowCountGas = dataGas.length;
+  const maxRows = Math.max(rowCountR, rowCountGas);
+
+  console.log('比較を開始します（日付形式を正規化して比較）...');
+
+  for (let r = 0; r < maxRows; r++) {
+    const rowR = dataR[r] || [];
+    const rowGas = dataGas[r] || [];
+    const maxCols = Math.max(rowR.length, rowGas.length);
+
+    for (let c = 0; c < maxCols; c++) {
+      const valRRaw = rowR[c];
+      const valGasRaw = rowGas[c];
+
+      // 値を文字列に変換する関数（日付なら先頭10文字のYYYY-MM-DDのみを抽出）
+      const normalizeValue = (
+        val: string | number | boolean | Date | undefined | null
+      ): string => {
+        if (val === undefined || val === null) return '';
+
+        if (val instanceof Date) {
+          // タイムゾーンによるズレを防ぐため、スプレッドシートの表示上の日付（JST想定）を
+          // yyyy-MM-dd 形式で取得する
+          return Utilities.formatDate(val, 'JST', 'yyyy-MM-dd');
+        }
+
+        const strVal = String(val).trim();
+
+        // R側の値が ISO形式 (2024-07-12T00:00:00.000Z) の場合、先頭10文字だけを切り出す
+        if (/^\d{4}-\d{2}-\d{2}T/.test(strVal)) {
+          return strVal.substring(0, 10);
+        }
+
+        return strVal;
+      };
+      const valR = normalizeValue(valRRaw);
+      const valGas = normalizeValue(valGasRaw);
+
+      if (valR !== valGas) {
+        const cellAddress = `行: ${r + 1}, 列: ${c + 1} (A1: ${sheetR.getRange(r + 1, c + 1).getA1Notation()})`;
+        console.log(`❌ 相違発見！`);
+        console.log(`位置: ${cellAddress}`);
+        console.log(`Rシート (Normalized): [${valR}]`);
+        console.log(`GASシート(Normalized): [${valGas}]`);
+        return;
+      }
+    }
+  }
+
+  console.log('✅ すべての値が一致しました（日付形式の差異も解消済み）。');
+};

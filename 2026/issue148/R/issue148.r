@@ -23,38 +23,49 @@ write_to_google_sheet <- function(df) {
 }
 
 summarize_wos_addresses <- function(df_authors) {
-    # 1. 各著者のラベルを生成
-    df_with_labels <- df_authors %>%
+    # 1. 各著者のラベルを生成（all_authors_list用）
+    # ※ 内部で original_order を作成し、論文内での著者の登場順を固定します
+    df_base <- df_authors %>%
+        group_by(source_file, uid) %>%
+        mutate(original_order = row_number()) %>%
+        ungroup() %>%
         mutate(
-            original_order = row_number(),
             author_label = case_when(
                 isFirstAuthor == TRUE & (facility_numbers != "" & !is.na(facility_numbers)) ~ "（筆頭筆者）",
                 isFirstAuthor == TRUE & (facility_numbers == "" | is.na(facility_numbers)) ~ "（筆頭筆者以外）",
-                TRUE ~ NA_character_ # カンマで繋がないよう、一旦NAにする
+                TRUE ~ NA_character_
             )
         )
 
-    # 2. 論文(uid)ごとに集約
-    authors_flat <- df_with_labels %>%
+    # 2. all_authors_list と author_label_list の作成
+    authors_flat <- df_base %>%
         group_by(source_file, uid) %>%
         summarise(
-            # 名前リスト（以前のまま）
             all_authors_list = paste(name[order(original_order)], collapse = ","),
-
-            # ラベルリスト（NAを除去して結合することで、余計なカンマを防ぐ）
             author_label_list = paste(na.omit(author_label[order(original_order)]), collapse = ""),
             .groups = "drop"
         )
 
-    # 3. 住所情報の集約処理（以前のまま）
-    address_summary <- df_with_labels %>%
+    # 3. final_full_addresses の作成
+    # ここでは住所ごとに著者をまとめ直します
+    address_summary <- df_base %>%
+        # 住所がセミコロン等で結合されている場合は一度バラす（1著者1住所の行にする）
+        # ※ process_wos_json で既に展開されている想定ですが、念のため
+        separate_rows(full_addresses, sep = ";\\s*") %>%
+        # 重複を除去（同じ人が同じ住所に複数回紐付いている場合）
+        distinct(source_file, uid, name, full_addresses, .keep_all = TRUE) %>%
+        # 住所ごとにグループ化
         group_by(source_file, uid, full_addresses) %>%
         summarise(
+            # その住所が最初に現れる著者の順序を保持（出力順の制御用）
             address_rank = min(original_order),
+            # その住所に属する著者を元の登場順で結合
             author_list = paste0("[", paste(name[order(original_order)], collapse = "; "), "]"),
             .groups = "drop"
         ) %>%
+        # [著者名] 住所 の形にする
         mutate(address_with_authors = paste(author_list, full_addresses)) %>%
+        # 論文ごとに、住所を登場順（address_rank）で結合
         group_by(source_file, uid) %>%
         summarise(
             final_full_addresses = paste(address_with_authors[order(address_rank)], collapse = "; "),
@@ -66,6 +77,7 @@ summarize_wos_addresses <- function(df_authors) {
 
     return(final_summary)
 }
+
 process_wos_json <- function(wos_entry, file_name) {
     # 1. ベースデータの展開（1ファイル内の複数論文に対応）
     base_df <- tibble(data = wos_entry) %>%
