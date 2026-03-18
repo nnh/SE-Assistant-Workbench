@@ -23,8 +23,19 @@ write_to_google_sheet <- function(df) {
 }
 
 summarize_wos_addresses <- function(df_authors) {
-    # 1. 各著者のラベルを生成（all_authors_list用）
-    # ※ 内部で original_order を作成し、論文内での著者の登場順を固定します
+    # 1. GASと同じ「走査順」で住所のユニークなマスターリストを作成する
+    address_master_order <- df_authors %>%
+        group_by(source_file, uid) %>%
+        mutate(author_order = row_number()) %>%
+        separate_rows(full_addresses, sep = ";\\s*") %>%
+        # 空白やNAを除外
+        filter(!is.na(full_addresses) & full_addresses != "" & full_addresses != "NA") %>%
+        # 重要：データに出現した「絶対的な順番」でユニークな住所にIDを振る
+        group_by(source_file, uid) %>%
+        mutate(address_appearance_id = match(full_addresses, unique(full_addresses))) %>%
+        ungroup()
+
+    # 2. 著者ラベル等の基本情報
     df_base <- df_authors %>%
         group_by(source_file, uid) %>%
         mutate(original_order = row_number()) %>%
@@ -37,7 +48,7 @@ summarize_wos_addresses <- function(df_authors) {
             )
         )
 
-    # 2. all_authors_list と author_label_list の作成
+    # 3. 著者リスト列（変更なし）
     authors_flat <- df_base %>%
         group_by(source_file, uid) %>%
         summarise(
@@ -46,33 +57,26 @@ summarize_wos_addresses <- function(df_authors) {
             .groups = "drop"
         )
 
-    # 3. final_full_addresses の作成
-    # ここでは住所ごとに著者をまとめ直します
-    address_summary <- df_base %>%
-        # 住所がセミコロン等で結合されている場合は一度バラす（1著者1住所の行にする）
-        # ※ process_wos_json で既に展開されている想定ですが、念のため
-        separate_rows(full_addresses, sep = ";\\s*") %>%
-        # 重複を除去（同じ人が同じ住所に複数回紐付いている場合）
+    # 4. 住所情報の集約
+    address_summary <- address_master_order %>%
         distinct(source_file, uid, name, full_addresses, .keep_all = TRUE) %>%
-        # 住所ごとにグループ化
         group_by(source_file, uid, full_addresses) %>%
         summarise(
-            # その住所が最初に現れる著者の順序を保持（出力順の制御用）
-            address_rank = min(original_order),
-            # その住所に属する著者を元の登場順で結合
-            author_list = paste0("[", paste(name[order(original_order)], collapse = "; "), "]"),
+            # この住所が論文内で何番目に初登場したか
+            appearance_rank = min(address_appearance_id),
+            # カッコ内の著者順は元の著者順を守る
+            author_list = paste0("[", paste(name[order(author_order)], collapse = "; "), "]"),
             .groups = "drop"
         ) %>%
-        # [著者名] 住所 の形にする
         mutate(address_with_authors = paste(author_list, full_addresses)) %>%
-        # 論文ごとに、住所を登場順（address_rank）で結合
         group_by(source_file, uid) %>%
         summarise(
-            final_full_addresses = paste(address_with_authors[order(address_rank)], collapse = "; "),
+            # appearance_rank（GASの走査順）で結合
+            final_full_addresses = paste(address_with_authors[order(appearance_rank)], collapse = "; "),
             .groups = "drop"
         )
 
-    # 4. 結合
+    # 5. 結合
     final_summary <- left_join(authors_flat, address_summary, by = c("source_file", "uid"))
 
     return(final_summary)
@@ -126,16 +130,22 @@ process_wos_json <- function(wos_entry, file_name) {
     df_metadata <- base_df %>%
         select(-authors) %>%
         mutate(across(where(is.list), function(col) {
+            # 列名を取得するために cur_column() を使用
+            col_name <- cur_column()
+
             map_chr(col, function(x) {
                 if (is.null(x) || length(x) == 0) {
                     return(NA_character_)
                 }
-                paste(unlist(x), collapse = "; ")
+
+                # docTypes の場合はカンマ区切り、それ以外は従来通りセミコロン区切り
+                sep <- if (col_name == "docTypes") "," else "; "
+                paste(unlist(x), collapse = sep)
             })
         })) %>%
         mutate(page = case_when(
-            str_detect(page, "-") ~ str_extract(page, "\\d+-\\d+"), # ハイフンがあれば抽出
-            TRUE ~ page # なければ元のまま（または一番後ろの要素など）
+            str_detect(page, "-") ~ str_extract(page, "\\d+-\\d+"),
+            TRUE ~ page
         ))
 
     return(list(
