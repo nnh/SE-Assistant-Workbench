@@ -117,13 +117,16 @@ export const compareSheetsUntilFirstDiff_ = (): void => {
     return;
   }
 
-  // --- 比較除外設定 ---
-  // キーにD列(UID)の値、値に除外したい列インデックス（0始まり、M列なら12）を指定
+  // --- 比較設定 ---
   const skipColumnsByUid: { [uid: string]: number[] } = {
-    'WOS:001406653700001': [12], // M列を除外
-    // '他のUID': [12, 13] // 複数の列を除外したい場合
+    // 特定のUIDで除外したい列がある場合はここに記述
+    'WOS:001406653700001': [12],
+    'WOS:001573786100027': [12],
+    'WOS:001591613800001': [12],
+    'WOS:001483527700001': [12],
   };
-  const COL_D_INDEX = 3; // D列（0始まりのインデックス）
+  const COL_D_INDEX = 3; // D列: UID
+  const COL_M_INDEX = 12; // M列: authorAffiliation (0始まり)
   // --------------------
 
   const dataR = sheetR.getDataRange().getValues();
@@ -131,22 +134,18 @@ export const compareSheetsUntilFirstDiff_ = (): void => {
 
   const maxRows = Math.max(dataR.length, dataGas.length);
 
-  console.log('比較を開始します（特定UIDの除外設定を適用）...');
+  console.log('比較を開始します（M列はソート順不同を許容）...');
 
   for (let r = 0; r < maxRows; r++) {
     const rowR = dataR[r] || [];
     const rowGas = dataGas[r] || [];
     const maxCols = Math.max(rowR.length, rowGas.length);
 
-    // 現在の行のD列(UID)を取得
     const currentUid = String(rowR[COL_D_INDEX] || '').trim();
     const columnsToSkip = skipColumnsByUid[currentUid] || [];
 
     for (let c = 0; c < maxCols; c++) {
-      // 除外対象の列であればスキップ（ログには残さず次へ）
-      if (columnsToSkip.includes(c)) {
-        continue;
-      }
+      if (columnsToSkip.includes(c)) continue;
 
       const valRRaw = rowR[c];
       const valGasRaw = rowGas[c];
@@ -163,13 +162,30 @@ export const compareSheetsUntilFirstDiff_ = (): void => {
         return strVal;
       };
 
-      const valR = normalizeValue(valRRaw);
-      const valGas = normalizeValue(valGasRaw);
+      let valR = normalizeValue(valRRaw);
+      let valGas = normalizeValue(valGasRaw);
+
+      // --- M列（インデックス12）専用の比較ロジック ---
+      if (c === COL_M_INDEX) {
+        // セミコロンで分割 -> 各要素をトリム -> アルファベット順にソート -> 再結合
+        const sortAffiliation = (str: string) => {
+          return str
+            .split(';')
+            .map(item => item.trim())
+            .filter(item => item !== '') // 空要素を除外
+            .sort()
+            .join('; ');
+        };
+        valR = sortAffiliation(valR);
+        valGas = sortAffiliation(valGas);
+      }
+      // --------------------------------------------
 
       if (valR !== valGas) {
         const cellAddress = `行: ${r + 1}, 列: ${c + 1} (A1: ${sheetR.getRange(r + 1, c + 1).getA1Notation()})`;
         console.log(`❌ 相違発見！`);
         console.log(`位置: ${cellAddress} [UID: ${currentUid}]`);
+        // M列でエラーが出た場合は、ソート後の値を確認できるようにする
         console.log(`Rシート (Normalized): [${valR}]`);
         console.log(`GASシート(Normalized): [${valGas}]`);
         return;
@@ -177,5 +193,5 @@ export const compareSheetsUntilFirstDiff_ = (): void => {
     }
   }
 
-  console.log('✅ すべての値が一致しました（除外設定適用済み）。');
+  console.log('✅ すべての値が一致しました（M列ソート比較適用済み）。');
 };
