@@ -22,28 +22,37 @@ write_to_google_sheet <- function(df) {
     message("スプレッドシートの2行目以降への書き込みが完了しました！")
 }
 
+library(tidyverse)
+
 summarize_wos_addresses <- function(df_authors) {
-    # 1. GASと同じ「走査順」で住所のユニークなマスターリストを作成する
+    # 1. GASと同じ「走査順」で住所のユニークなマスターリストを作成
     address_master_order <- df_authors %>%
         group_by(source_file, uid) %>%
         mutate(author_order = row_number()) %>%
         separate_rows(full_addresses, sep = ";\\s*") %>%
         # 空白やNAを除外
         filter(!is.na(full_addresses) & full_addresses != "" & full_addresses != "NA") %>%
-        # 重要：データに出現した「絶対的な順番」でユニークな住所にIDを振る
         group_by(source_file, uid) %>%
+        # データに出現した「絶対的な順番」でユニークな住所にIDを振る
         mutate(address_appearance_id = match(full_addresses, unique(full_addresses))) %>%
         ungroup()
 
-    # 2. 著者ラベル等の基本情報
+    # 2. 著者ラベル等の基本情報（判定ロジックを修正）
     df_base <- df_authors %>%
         group_by(source_file, uid) %>%
         mutate(original_order = row_number()) %>%
         ungroup() %>%
         mutate(
+            # ソースファイル名からIDを抽出（例: "311.json" -> "311"）
+            target_facility_id = str_remove(source_file, "\\.json$"),
             author_label = case_when(
-                isFirstAuthor == TRUE & (facility_numbers != "" & !is.na(facility_numbers)) ~ "（筆頭筆者）",
-                isFirstAuthor == TRUE & (facility_numbers == "" | is.na(facility_numbers)) ~ "（筆頭筆者以外）",
+                # 条件：筆頭著者であり、かつ facility_numbers の中に target_facility_id が含まれている
+                isFirstAuthor == TRUE & str_detect(as.character(facility_numbers), fixed(target_facility_id)) ~ "（筆頭筆者）",
+
+                # 条件：筆頭著者だが、自施設IDが含まれていない
+                isFirstAuthor == TRUE ~ "（筆頭筆者以外）",
+
+                # 筆頭著者以外
                 TRUE ~ NA_character_
             )
         )
@@ -53,25 +62,23 @@ summarize_wos_addresses <- function(df_authors) {
         group_by(source_file, uid) %>%
         summarise(
             all_authors_list = paste(name[order(original_order)], collapse = ","),
+            # ラベルを結合（NAを除外）
             author_label_list = paste(na.omit(author_label[order(original_order)]), collapse = ""),
             .groups = "drop"
         )
 
-    # 4. 住所情報の集約
+    # 4. 住所情報の集約（appearance_rankを維持）
     address_summary <- address_master_order %>%
         distinct(source_file, uid, name, full_addresses, .keep_all = TRUE) %>%
         group_by(source_file, uid, full_addresses) %>%
         summarise(
-            # この住所が論文内で何番目に初登場したか
             appearance_rank = min(address_appearance_id),
-            # カッコ内の著者順は元の著者順を守る
             author_list = paste0("[", paste(name[order(author_order)], collapse = "; "), "]"),
             .groups = "drop"
         ) %>%
         mutate(address_with_authors = paste(author_list, full_addresses)) %>%
         group_by(source_file, uid) %>%
         summarise(
-            # appearance_rank（GASの走査順）で結合
             final_full_addresses = paste(address_with_authors[order(appearance_rank)], collapse = "; "),
             .groups = "drop"
         )
