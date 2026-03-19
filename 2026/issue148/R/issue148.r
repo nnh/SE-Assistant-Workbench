@@ -151,10 +151,10 @@ process_wos_json <- function(wos_entry, file_name) {
             })
         })) %>%
         mutate(page = case_when(
-            str_detect(page, "-") ~ str_extract(page, "\\d+-\\d+"),
+            # アルファベット、数字、ドット、ハイフンを含む「範囲」の形式を抽出
+            str_detect(page, "-") ~ str_extract(page, "[A-Za-z0-9.]+-[A-Za-z0-9.]+"),
             TRUE ~ page
         ))
-
     return(list(
         authors = df_authors,
         metadata = df_metadata
