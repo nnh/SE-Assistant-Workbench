@@ -161,7 +161,7 @@ process_wos_json <- function(wos_entry, file_name) {
     ))
 }
 # 施設名テーブル読み込み
-facility_table <- read_excel(here("（仮）施設名テーブル.xlsx")) %>% select(ダミー1, ダミー8)
+facility_table <- read_excel(here("NHO施設基本情報.xlsx"), sheet="Base") %>% select(病院コード, 施設名略称1)
 colnames(facility_table) <- c("facility_code", "facility_name")
 # 対象ディレクトリ
 dir_path <- "/Users/mariko/Downloads/evaluation_2025/facilities"
