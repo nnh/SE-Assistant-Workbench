@@ -105,6 +105,7 @@ function exportMissingFoldersToSheet() {
 /**
  * Drive API (v3) を使用して、共有ドライブのメンバーを含む
  * フォルダの全権限詳細を取得する。
+ * 出力項目に「フォルダURL」を追加しました。
  */
 function exportFolderPermissionsAdvanced(): void {
   const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
@@ -133,8 +134,10 @@ function exportFolderPermissionsAdvanced(): void {
 
     if (!folderId) return;
 
+    // フォルダIDからURLを生成
+    const folderUrl = `https://drive.google.com/drive/u/0/folders/${folderId}`;
+
     try {
-      // Drive API v3 が有効であることを確認
       if (typeof Drive === 'undefined' || !Drive.Permissions) {
         throw new Error('Drive APIを有効にしてください。');
       }
@@ -145,13 +148,12 @@ function exportFolderPermissionsAdvanced(): void {
       });
 
       if (response && response.permissions) {
-        // v3 の型定義に合わせてプロパティを取得
-        // 型不整合を回避するため、個別のプロパティを string として扱います
         response.permissions.forEach(
           (perm: GoogleAppsScript.Drive_v3.Drive.V3.Schema.Permission) => {
             results.push([
               folderId,
               folderName,
+              folderUrl, // 追加: フォルダURL
               perm.displayName || '名前なし',
               perm.emailAddress || '(不明)',
               perm.role || '不明',
@@ -162,7 +164,15 @@ function exportFolderPermissionsAdvanced(): void {
       }
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : '取得エラー';
-      results.push([folderId, folderName, 'エラー', errorMessage, '-', '-']);
+      results.push([
+        folderId,
+        folderName,
+        folderUrl,
+        'エラー',
+        errorMessage,
+        '-',
+        '-',
+      ]);
     }
   });
 
@@ -175,6 +185,7 @@ function exportFolderPermissionsAdvanced(): void {
     [
       'Folder ID',
       'Drive Name',
+      'フォルダURL', // 追加: ヘッダー
       'ユーザー名',
       'メールアドレス',
       'ロール',
@@ -191,9 +202,12 @@ function exportFolderPermissionsAdvanced(): void {
     outputSheet
       .getRange(2, 1, results.length, results[0].length)
       .setValues(results);
+
+    // URL列にリンクを設定したい場合は、以下の処理を追加することも可能です
+    // outputSheet.getRange(2, 3, results.length, 1).setWrap(false);
+
     console.log(`詳細権限を ${results.length} 件出力しました。`);
     outputSheet.activate();
   }
 }
-
 console.log(hello());
