@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 export const SHEET_NAME_TARGET_LIST = '対象のスプレッドシート一覧';
+export const SHEET_NAME_PERMISSIONS_PRE = '共有権限一覧_アクセス種別再取得前';
 export const SHEET_NAME_PERMISSIONS = '共有権限一覧';
 export const SHEET_NAME_SHARED_ITEMS =
   'アクセス種別が取得不可またはANYONE_WITH_LINKのアイテム';
@@ -27,4 +28,5 @@ export const SHEET_NAME_EXTERNAL_VIEWERS_SUMMARY =
   'ドメイン外の閲覧者_ファイル別集約';
 export const SHEET_NAME_EXTERNAL_EDITORS_VIEWERS = 'ドメイン外の編集者・閲覧者';
 export const SHEET_NAME_ALL_EXTERNAL_USERS = '外部共有アイテム一覧';
-export const SHEET_NAME_EXTERNAL_SHARING_CLEANSED = 'テスト';
+export const SHEET_NAME_EXTERNAL_SHARING_CLEANSED =
+  '提出用_外部共有アイテム一覧';

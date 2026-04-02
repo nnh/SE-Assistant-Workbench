@@ -28,7 +28,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { SHEET_NAME_PERMISSIONS } from './const';
+import { SHEET_NAME_PERMISSIONS_PRE } from './const';
 /**
  * 指定されたURLのスプレッドシートから「共有権限」シートのデータを取得し、
  * 指定の集約シートの末尾にファイル名を添えて追記します。
@@ -66,11 +66,13 @@ export function appendSharedPermissions_(url: string): void {
 
     // 4. 書き込み先（出力シート）の準備
     const thisSs = SpreadsheetApp.getActiveSpreadsheet();
-    const outputSheet = thisSs.getSheetByName(SHEET_NAME_PERMISSIONS);
-    if (!outputSheet) {
-      throw new Error(`シート "${SHEET_NAME_PERMISSIONS}" が見つかりません。`);
-    }
+    let outputSheet = thisSs.getSheetByName(SHEET_NAME_PERMISSIONS_PRE);
 
+    // シートが見つからなかったら新しく挿入する
+    if (!outputSheet) {
+      outputSheet = thisSs.insertSheet(SHEET_NAME_PERMISSIONS_PRE);
+      console.log(`シート "${SHEET_NAME_PERMISSIONS_PRE}" を作成しました。`);
+    }
     const destLastRow = outputSheet.getLastRow();
     let startRow: number;
 
