@@ -18,13 +18,9 @@ import { hello } from './example-module';
 import {
   exportFolderPermissionsRecursive_,
   execSetProperties_,
-  test_,
 } from './issue154';
 function main() {
   execSetProperties_();
   exportFolderPermissionsRecursive_();
-}
-function test() {
-  test_();
 }
 console.log(hello());

@@ -1,51 +1,83 @@
-//const targetFolderId = '104sxr5MYFDGwnqnNlMjuzuTD9UjsVI0E';
-const root = '';
+/**
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** 取得失敗時に表示する定数文字列 */
 const cstNoGet = '!取得不可!';
+/** 権限情報を出力するメインシート名 */
 const cstMoveBeforeDataSheetName = '共有権限';
-function safeGet_(fn: () => any): any {
+
+/**
+ * 実行に失敗する可能性がある処理をラップし、エラー時はデフォルト値を返します。
+ * @template T - 実行する関数の戻り値の型
+ * @param {function(): T} fn - 実行する関数
+ * @returns {T | string} 関数が成功した場合はその戻り値、失敗した場合は '!取得不可!'
+ */
+function safeGet_<T>(fn: () => T): T | string {
   try {
     return fn();
   } catch {
+    // cstNoGet は '!取得不可!' という文字列なので、戻り値の型は T | string になります
     return cstNoGet;
   }
 }
 
-function getDataInformation_(data: any): any[] {
+/**
+ * フォルダまたはファイルから情報を抽出し、配列として返します。
+ * @param {GoogleAppsScript.Drive.Folder | GoogleAppsScript.Drive.File} data - 取得対象のオブジェクト
+ * @returns {(string | number | boolean)[]} 抽出された情報の配列（名前、ID、URL、アクセス権限、編集/閲覧者、ショートカット情報など）
+ */
+function getDataInformation_(
+  data: GoogleAppsScript.Drive.Folder | GoogleAppsScript.Drive.File
+): (string | number | boolean)[] {
   const name = data.getName();
   const id = data.getId();
   const url = data.getUrl();
+
   const accessClass = safeGet_(() => String(data.getSharingAccess()));
   const perm = safeGet_(() => String(data.getSharingPermission()));
   const owner = safeGet_(() => data.getOwner()?.getEmail() ?? '');
+
   const editors = safeGet_(() =>
     data
       .getEditors()
-      .map((e: any) => e.getEmail())
+      .map((e: GoogleAppsScript.Base.User) => e.getEmail())
       .join('\n')
   );
+
   const viewers = safeGet_(() =>
     data
       .getViewers()
-      .map((v: any) => v.getEmail())
+      .map((v: GoogleAppsScript.Base.User) => v.getEmail())
       .join('\n')
   );
+
   const shortcutFolderId = safeGet_(() => {
     try {
-      const getFileTry = DriveApp.getFileById(data.getId());
-    } catch (e) {
+      const targetFile = DriveApp.getFileById(data.getId());
+      const mimeType = targetFile.getMimeType();
+
+      if (mimeType !== 'application/vnd.google-apps.shortcut') {
+        return '';
+      }
+
+      return targetFile.getTargetId() ?? '';
+    } catch {
       return '';
     }
-    const targetFile = DriveApp.getFileById(data.getId());
-    const mimeType = targetFile.getMimeType();
-    if (mimeType !== 'application/vnd.google-apps.shortcut') {
-      return '';
-    }
-    const targetId = targetFile.getTargetId();
-    if (targetId === null || targetId === undefined) {
-      return '';
-    }
-    return targetId;
   });
+
   return [
     name,
     id,
@@ -59,6 +91,11 @@ function getDataInformation_(data: any): any[] {
   ];
 }
 
+/**
+ * スクリプトプロパティからルートフォルダのIDを取得し、Folderオブジェクトを返します。
+ * @returns {GoogleAppsScript.Drive.Folder} 指定されたルートフォルダ
+ * @throws {Error} TARGET_FOLDER_ID が設定されていない場合
+ */
 const getRootFolder_ = () => {
   const folderId =
     PropertiesService.getScriptProperties().getProperty('TARGET_FOLDER_ID');
@@ -67,6 +104,11 @@ const getRootFolder_ = () => {
   }
   return DriveApp.getFolderById(folderId);
 };
+
+/**
+ * 指定したルートフォルダ配下を再帰的に走査し、共有権限情報をスプレッドシートに書き出します。
+ * バッチ処理による書き込みと「検索済み」シートによる重複防止機能を含みます。
+ */
 export function exportFolderPermissionsRecursive_() {
   let processedAllCount = 0;
   const rootFolder = getRootFolder_();
@@ -95,7 +137,15 @@ export function exportFolderPermissionsRecursive_() {
     ],
   ];
   resultSheet.getRange(1, 1, 1, header[0].length).setValues(header);
-  const flushBatch = (outputValues: string[][], processedCount: number) => {
+  /**
+   * 処理結果のバッチ書き出しを実行し、カウンタを更新します。
+   * @param {(string | number | boolean)[][]} outputValues - 書き出しデータの2次元配列
+   * @param {number} processedCount - このバッチで処理したアイテム数
+   */
+  const flushBatch = (
+    outputValues: (string | number | boolean)[][],
+    processedCount: number
+  ) => {
     if (outputValues.length > 0) {
       resultSheet
         .getRange(
@@ -112,6 +162,11 @@ export function exportFolderPermissionsRecursive_() {
       SpreadsheetApp.flush();
     }
   };
+  /**
+   * フォルダを再帰的に走査し、ファイルとサブフォルダの情報を処理します。
+   * @param {GoogleAppsScript.Drive.Folder} folder - 現在走査中のフォルダ
+   * @param {string} path - ルートからのフォルダパス
+   */
   const processFolder = (
     folder: GoogleAppsScript.Drive.Folder,
     path: string
@@ -162,6 +217,7 @@ export function exportFolderPermissionsRecursive_() {
   console.log(`📂 探索開始: ${rootFolder.getName()}`);
   processFolder(rootFolder, rootFolder.getName());
   console.log(`🎉 全処理完了。合計: ${processedAllCount}件`);
+  // 最後に2行目のパスを TARGET_PATH として保存
   const targetPath = resultSheet.getRange(2, 2).getValue();
   PropertiesService.getScriptProperties().setProperty(
     'TARGET_PATH',
@@ -169,331 +225,21 @@ export function exportFolderPermissionsRecursive_() {
   );
 }
 
-function testCompareDataBeforeAfterMove_(
-  beforeSheetName: string,
-  afterSheetName: string
-) {
-  const myDriveOwner =
-    PropertiesService.getScriptProperties().getProperty('MY_DRIVE_OWNER');
-  if (!myDriveOwner) {
-    throw new Error('MY_DRIVE_OWNER is not set in Script Properties.');
-  }
-  const newDriveOwner =
-    PropertiesService.getScriptProperties().getProperty('NEW_DRIVE_OWNER');
-  if (!newDriveOwner) {
-    throw new Error('NEW_DRIVE_OWNER is not set in Script Properties.');
-  }
-  const beforeSheet =
-    SpreadsheetApp.getActive().getSheetByName(beforeSheetName);
-  if (!beforeSheet) {
-    throw new Error(`シート「${beforeSheetName}」が見つかりません。`);
-  }
-  const afterSheet = SpreadsheetApp.getActive().getSheetByName(afterSheetName);
-  if (!afterSheet) {
-    throw new Error(`シート「${afterSheetName}」が見つかりません。`);
-  }
-  const outputNoIdSheetName = '共有ドライブに存在しないIDまたはURL';
-  let outputNoIdSheet =
-    SpreadsheetApp.getActive().getSheetByName(outputNoIdSheetName);
-  if (!outputNoIdSheet) {
-    outputNoIdSheet =
-      SpreadsheetApp.getActive().insertSheet(outputNoIdSheetName);
-  } else {
-    outputNoIdSheet.clearContents();
-  }
-  const outputEditorMismatchSheetName = '編集者不一致';
-  let outputEditorMismatchSheet = SpreadsheetApp.getActive().getSheetByName(
-    outputEditorMismatchSheetName
-  );
-  if (!outputEditorMismatchSheet) {
-    outputEditorMismatchSheet = SpreadsheetApp.getActive().insertSheet(
-      outputEditorMismatchSheetName
-    );
-  } else {
-    outputEditorMismatchSheet.clearContents();
-  }
-  const outputViewerMismatchSheetName = '閲覧者不一致';
-  let outputViewerMismatchSheet = SpreadsheetApp.getActive().getSheetByName(
-    outputViewerMismatchSheetName
-  );
-  if (!outputViewerMismatchSheet) {
-    outputViewerMismatchSheet = SpreadsheetApp.getActive().insertSheet(
-      outputViewerMismatchSheetName
-    );
-  } else {
-    outputViewerMismatchSheet.clearContents();
-  }
-  const outputPermissionMismatchSheetName = '権限不一致';
-  let outputPermissionMismatchSheet = SpreadsheetApp.getActive().getSheetByName(
-    outputPermissionMismatchSheetName
-  );
-  if (!outputPermissionMismatchSheet) {
-    outputPermissionMismatchSheet = SpreadsheetApp.getActive().insertSheet(
-      outputPermissionMismatchSheetName
-    );
-  } else {
-    outputPermissionMismatchSheet.clearContents();
-  }
-  const headerEditor = [
-    'タイプ',
-    'パス',
-    '名前',
-    'ID',
-    'URL',
-    '移動前編集者',
-    '移動後編集者',
-  ];
-  const headerViewer = [
-    'タイプ',
-    'パス',
-    '名前',
-    'ID',
-    'URL',
-    '移動前閲覧者',
-    '移動後閲覧者',
-  ];
-  const headerPermission = [
-    'タイプ',
-    'パス',
-    '名前',
-    'ID',
-    'URL',
-    '移動前アクセス種別',
-    '移動後アクセス種別',
-    '移動前権限',
-    '移動後権限',
-  ];
-  const beforeData: string[][] = beforeSheet.getDataRange().getValues();
-  const afterData: string[][] = afterSheet.getDataRange().getValues();
-  const nameIndex = 2;
-  const idIndex = 3;
-  const urlIndex = 4;
-  const accessClassIndex = 5;
-  const permIndex = 6;
-  const editorIndex = 8;
-  const viewerIndex = 9;
-  const beforeOnly = beforeData.filter((beforeRow, idx) => {
-    const beforeId = beforeRow[idIndex];
-    const beforeUrl = beforeRow[urlIndex];
-    return (
-      (!afterData.some(afterRow => afterRow[idIndex] === beforeId) &&
-        beforeId) ||
-      (!afterData.some(afterRow => afterRow[urlIndex] === beforeUrl) &&
-        beforeUrl) ||
-      idx === 0
-    );
-  });
-  outputNoIdSheet
-    .getRange(1, 1, beforeOnly.length, beforeOnly[0].length)
-    .setValues(beforeOnly);
-  const moveData = beforeData.filter((beforeRow, idx) => {
-    const beforeId = beforeRow[idIndex];
-    return (
-      afterData.some(afterRow => afterRow[idIndex] === beforeId) || idx === 0
-    );
-  });
-  const editorMismatch: string[][] = [];
-  const viewerMismatch: string[][] = [];
-  const permissionMismatch: string[][] = [];
-  moveData.forEach(beforeRow => {
-    const beforeId = beforeRow[idIndex];
-    const afterRow = afterData.find(row => row[idIndex] === beforeId);
-    if (afterRow) {
-      const beforeName = beforeRow[nameIndex];
-      const afterName = afterRow[nameIndex];
-      const beforeEditors = String(beforeRow[editorIndex])
-        .split('\n')
-        .map(editor =>
-          editor === myDriveOwner || editor === newDriveOwner ? '' : editor
-        )
-        .filter(editor => editor !== '')
-        .sort();
-      const afterEditors = String(afterRow[editorIndex])
-        .split('\n')
-        .map(editor => (editor === newDriveOwner ? '' : editor))
-        .filter(editor => editor !== '')
-        .sort();
-      const beforeViewers = String(beforeRow[viewerIndex])
-        .split('\n')
-        .map(viewer =>
-          viewer === myDriveOwner || viewer === newDriveOwner ? '' : viewer
-        )
-        .filter(viewer => viewer !== '')
-        .sort();
-      const afterViewers = String(afterRow[viewerIndex])
-        .split('\n')
-        .map(viewer => (viewer === newDriveOwner ? '' : viewer))
-        .filter(viewer => viewer !== '')
-        .sort();
-      if (
-        beforeEditors.length !== afterEditors.length ||
-        !beforeEditors.every((value, index) => value === afterEditors[index])
-      ) {
-        const temp = [
-          beforeRow[0],
-          beforeRow[1],
-          beforeRow[2],
-          beforeRow[3],
-          beforeRow[4],
-          String(beforeRow[editorIndex]),
-          String(afterRow[editorIndex]),
-        ];
-        editorMismatch.push(temp);
-      }
-      if (
-        beforeViewers.length !== afterViewers.length ||
-        !beforeViewers.every((value, index) => value === afterViewers[index])
-      ) {
-        const temp = [
-          beforeRow[0],
-          beforeRow[1],
-          beforeRow[2],
-          beforeRow[3],
-          beforeRow[4],
-          String(beforeRow[viewerIndex]),
-          String(afterRow[viewerIndex]),
-        ];
-        viewerMismatch.push(temp);
-      }
-      const beforeAccessClass = String(beforeRow[accessClassIndex]);
-      const afterAccessClass = String(afterRow[accessClassIndex]);
-      const beforePerm = String(beforeRow[permIndex]);
-      const afterPerm = String(afterRow[permIndex]);
-      let isMismatch = false;
-      if (beforeAccessClass === cstNoGet) {
-        if (afterAccessClass !== 'ANYONE_WITH_LINK') {
-          isMismatch = true;
-        }
-      } else {
-        if (afterAccessClass === cstNoGet) {
-          isMismatch = true;
-        }
-      }
-      if (isMismatch) {
-        permissionMismatch.push([
-          beforeRow[0],
-          beforeRow[1],
-          beforeRow[2],
-          beforeRow[3],
-          beforeRow[4],
-          beforeAccessClass,
-          afterAccessClass,
-          beforePerm,
-          afterPerm,
-        ]);
-      }
-      if (String(beforeName) !== String(afterName)) {
-        throw new Error(
-          `名前不一致 ID: ${beforeId} 共有ドライブ移動前: "${beforeName}" 共有ドライブ移動後: "${afterName}"`
-        );
-      }
-    } else {
-      throw new Error(
-        `ID: ${beforeId} に対応する移動後データが見つかりません。`
-      );
-    }
-  });
-  outputEditorMismatchSheet.clearContents();
-  outputViewerMismatchSheet.clearContents();
-  if (editorMismatch.length > 0) {
-    const outputValues = [headerEditor, ...editorMismatch];
-    outputEditorMismatchSheet
-      .getRange(1, 1, outputValues.length, headerEditor.length)
-      .setValues(outputValues);
-  } else {
-    outputEditorMismatchSheet
-      .getRange(1, 1)
-      .setValue('✅ 共有ドライブ移動前後で編集者の不一致はありませんでした。');
-    console.log('✅ 共有ドライブ移動前後で編集者の不一致はありませんでした。');
-  }
-  if (viewerMismatch.length > 0) {
-    const outputValues = [headerViewer, ...viewerMismatch];
-    outputViewerMismatchSheet
-      .getRange(1, 1, outputValues.length, headerViewer.length)
-      .setValues(outputValues);
-  } else {
-    outputViewerMismatchSheet
-      .getRange(1, 1)
-      .setValue('✅ 共有ドライブ移動前後で閲覧者の不一致はありませんでした。');
-    console.log('✅ 共有ドライブ移動前後で閲覧者の不一致はありませんでした。');
-  }
-  if (permissionMismatch.length > 0) {
-    const outputValues = [headerPermission, ...permissionMismatch];
-    outputPermissionMismatchSheet
-      .getRange(1, 1, outputValues.length, headerPermission.length)
-      .setValues(outputValues);
-  } else {
-    outputPermissionMismatchSheet
-      .getRange(1, 1)
-      .setValue('✅ 共有ドライブ移動前後で権限の不一致はありませんでした。');
-    console.log('✅ 共有ドライブ移動前後で権限の不一致はありませんでした。');
-  }
-}
-function testGetDataInformation_(
-  inputSheetName: string,
-  outputSheetName: string,
-  pathStartText: string
-) {
-  const inputSpreadSheetId =
-    PropertiesService.getScriptProperties().getProperty(
-      'BEFORE_SPREADSHEET_ID'
-    );
-  if (!inputSpreadSheetId) {
-    throw new Error('BEFORE_SPREADSHEET_ID is not set in Script Properties.');
-  }
-  const inputSpreadsheet = SpreadsheetApp.openById(inputSpreadSheetId);
-  const inputSheet = inputSpreadsheet.getSheetByName(inputSheetName);
-  if (!inputSheet) {
-    throw new Error(`シート「${inputSheetName}」が見つかりません。`);
-  }
-  let outputSheet = SpreadsheetApp.getActive().getSheetByName(outputSheetName);
-  if (!outputSheet) {
-    outputSheet = SpreadsheetApp.getActive().insertSheet(outputSheetName);
-  } else {
-    outputSheet.clearContents();
-  }
-  outputSheet.clearContents();
-  const data: string[][] = inputSheet.getDataRange().getValues();
-  const filtered = data.filter(
-    (row, idx) =>
-      (typeof row[1] === 'string' && row[1].startsWith(pathStartText)) ||
-      idx === 0
-  );
-  outputSheet
-    .getRange(1, 1, filtered.length, filtered[0].length)
-    .setValues(filtered);
-}
-
+/**
+ * フォルダ移行等に必要な環境設定（スクリプトプロパティ）を一括設定します。
+ * @param {string} targetFolderId - 対象となるルートフォルダのID
+ */
 function setScriptProperties_(targetFolderId: string) {
   PropertiesService.getScriptProperties().setProperty(
     'TARGET_FOLDER_ID',
     targetFolderId
   );
-  PropertiesService.getScriptProperties().setProperty(
-    'MY_DRIVE_OWNER',
-    'saito.toshiki@nnh.go.jp'
-  );
-  PropertiesService.getScriptProperties().setProperty(
-    'NEW_DRIVE_OWNER',
-    'research.center@nnh.go.jp'
-  );
-  PropertiesService.getScriptProperties().setProperty(
-    'BEFORE_SPREADSHEET_ID',
-    '1vfTIlu4Igs4V0xDmpUKuVYZ9X6g3nKDRwDbShnLE3DI'
-  );
 }
 
-export function test_() {
-  const targetPath = getTargetPath_();
-  const beforeSheetName = `共有ドライブ移動前${targetPath}フォルダ`;
-  execTestGetDataInformation_(root, beforeSheetName);
-  const afterSheetName = cstMoveBeforeDataSheetName;
-  testCompareDataBeforeAfterMove_(beforeSheetName, afterSheetName);
-  SpreadsheetApp.getActiveSpreadsheet().rename(
-    `共有ドライブに移動した${targetPath}フォルダの権限確認`
-  );
-}
-
+/**
+ * スクリプトプロパティ 'TARGET_ROOT_FOLDER_ID' を基に設定処理を実行します。
+ * @throws {Error} TARGET_ROOT_FOLDER_ID が未設定の場合
+ */
 export function execSetProperties_() {
   const targetFolderId = PropertiesService.getScriptProperties().getProperty(
     'TARGET_ROOT_FOLDER_ID'
@@ -505,18 +251,4 @@ export function execSetProperties_() {
     throw new Error('Please set the actual folder ID in the code.');
   }
   setScriptProperties_(targetFolderId);
-}
-function execTestGetDataInformation_(root: string, outputSheetName: string) {
-  const targetPath = getTargetPath_();
-  const inputSheetName = cstMoveBeforeDataSheetName;
-  const pathStartText = root === '' ? targetPath : `${root}/${targetPath}`;
-  testGetDataInformation_(inputSheetName, outputSheetName, pathStartText);
-}
-function getTargetPath_() {
-  const targetPath =
-    PropertiesService.getScriptProperties().getProperty('TARGET_PATH');
-  if (!targetPath) {
-    throw new Error('TARGET_PATH is not set in Script Properties.');
-  }
-  return targetPath;
 }
