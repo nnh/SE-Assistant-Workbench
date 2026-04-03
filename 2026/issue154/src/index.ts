@@ -15,12 +15,14 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import {
-  exportFolderPermissionsRecursive_,
-  execSetProperties_,
-} from './issue154';
+import { execSetProperties_ } from './configService';
+import { exportFolderPermissionsRecursive_ } from './permissionService';
+import { initializeProject_ } from './setup';
 function main() {
   execSetProperties_();
   exportFolderPermissionsRecursive_();
+}
+function setup() {
+  initializeProject_();
 }
 console.log(hello());

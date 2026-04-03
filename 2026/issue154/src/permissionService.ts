@@ -13,98 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/** 取得失敗時に表示する定数文字列 */
-const cstNoGet = '!取得不可!';
-/** 権限情報を出力するメインシート名 */
-const cstMoveBeforeDataSheetName = '共有権限';
-
-/**
- * 実行に失敗する可能性がある処理をラップし、エラー時はデフォルト値を返します。
- * @template T - 実行する関数の戻り値の型
- * @param {function(): T} fn - 実行する関数
- * @returns {T | string} 関数が成功した場合はその戻り値、失敗した場合は '!取得不可!'
- */
-function safeGet_<T>(fn: () => T): T | string {
-  try {
-    return fn();
-  } catch {
-    // cstNoGet は '!取得不可!' という文字列なので、戻り値の型は T | string になります
-    return cstNoGet;
-  }
-}
-
-/**
- * フォルダまたはファイルから情報を抽出し、配列として返します。
- * @param {GoogleAppsScript.Drive.Folder | GoogleAppsScript.Drive.File} data - 取得対象のオブジェクト
- * @returns {(string | number | boolean)[]} 抽出された情報の配列（名前、ID、URL、アクセス権限、編集/閲覧者、ショートカット情報など）
- */
-function getDataInformation_(
-  data: GoogleAppsScript.Drive.Folder | GoogleAppsScript.Drive.File
-): (string | number | boolean)[] {
-  const name = data.getName();
-  const id = data.getId();
-  const url = data.getUrl();
-
-  const accessClass = safeGet_(() => String(data.getSharingAccess()));
-  const perm = safeGet_(() => String(data.getSharingPermission()));
-  const owner = safeGet_(() => data.getOwner()?.getEmail() ?? '');
-
-  const editors = safeGet_(() =>
-    data
-      .getEditors()
-      .map((e: GoogleAppsScript.Base.User) => e.getEmail())
-      .join('\n')
-  );
-
-  const viewers = safeGet_(() =>
-    data
-      .getViewers()
-      .map((v: GoogleAppsScript.Base.User) => v.getEmail())
-      .join('\n')
-  );
-
-  const shortcutFolderId = safeGet_(() => {
-    try {
-      const targetFile = DriveApp.getFileById(data.getId());
-      const mimeType = targetFile.getMimeType();
-
-      if (mimeType !== 'application/vnd.google-apps.shortcut') {
-        return '';
-      }
-
-      return targetFile.getTargetId() ?? '';
-    } catch {
-      return '';
-    }
-  });
-
-  return [
-    name,
-    id,
-    url,
-    accessClass,
-    perm,
-    owner,
-    editors,
-    viewers,
-    shortcutFolderId,
-  ];
-}
-
-/**
- * スクリプトプロパティからルートフォルダのIDを取得し、Folderオブジェクトを返します。
- * @returns {GoogleAppsScript.Drive.Folder} 指定されたルートフォルダ
- * @throws {Error} TARGET_FOLDER_ID が設定されていない場合
- */
-const getRootFolder_ = () => {
-  const folderId =
-    PropertiesService.getScriptProperties().getProperty('TARGET_FOLDER_ID');
-  if (!folderId) {
-    throw new Error('TARGET_FOLDER_ID is not set in Script Properties.');
-  }
-  return DriveApp.getFolderById(folderId);
-};
-
+import { getExcludeFolderIds_, getRootFolder_ } from './driveRepository';
+import { getDataInformation_ } from './driveRepository';
+import * as consts from './consts';
 /**
  * 指定したルートフォルダ配下を再帰的に走査し、共有権限情報をスプレッドシートに書き出します。
  * バッチ処理による書き込みと「検索済み」シートによる重複防止機能を含みます。
@@ -112,11 +23,17 @@ const getRootFolder_ = () => {
 export function exportFolderPermissionsRecursive_() {
   let processedAllCount = 0;
   const rootFolder = getRootFolder_();
+
+  // 対象外フォルダIDを取得
+  const excludeFolderIds = getExcludeFolderIds_();
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const resultSheet =
-    ss.getSheetByName(cstMoveBeforeDataSheetName) ||
-    ss.insertSheet(cstMoveBeforeDataSheetName);
-  const doneSheet = ss.getSheetByName('検索済み') || ss.insertSheet('検索済み');
+    ss.getSheetByName(consts.SHEET_NAME.PERMISSION) ||
+    ss.insertSheet(consts.SHEET_NAME.PERMISSION);
+  const doneSheet =
+    ss.getSheetByName(consts.SHEET_NAME.DONE) ||
+    ss.insertSheet(consts.SHEET_NAME.DONE);
   doneSheet.getRange(1, 1, 1, 2).setValues([['ID', 'パス']]);
   const processedIds = new Set(
     doneSheet.getRange('A2:A').getValues().flat().filter(String)
@@ -171,9 +88,19 @@ export function exportFolderPermissionsRecursive_() {
     folder: GoogleAppsScript.Drive.Folder,
     path: string
   ) => {
+    const folderId = folder.getId();
+
+    // 除外対象フォルダであれば、このフォルダ自体とその配下の走査をスキップ
+    if (excludeFolderIds.has(folderId)) {
+      console.log(
+        `⏩ 除外対象フォルダのためスキップ: ${path} (ID: ${folderId})`
+      );
+      return;
+    }
+
     const outputValues = [];
     let processedCount = 0;
-    const folderId = folder.getId();
+
     if (!processedIds.has(folderId)) {
       outputValues.push(['フォルダ', path, ...getDataInformation_(folder)]);
       processedIds.add(folderId);
@@ -220,35 +147,7 @@ export function exportFolderPermissionsRecursive_() {
   // 最後に2行目のパスを TARGET_PATH として保存
   const targetPath = resultSheet.getRange(2, 2).getValue();
   PropertiesService.getScriptProperties().setProperty(
-    'TARGET_PATH',
+    consts.PROP_KEY.TARGET_PATH,
     targetPath
   );
-}
-
-/**
- * フォルダ移行等に必要な環境設定（スクリプトプロパティ）を一括設定します。
- * @param {string} targetFolderId - 対象となるルートフォルダのID
- */
-function setScriptProperties_(targetFolderId: string) {
-  PropertiesService.getScriptProperties().setProperty(
-    'TARGET_FOLDER_ID',
-    targetFolderId
-  );
-}
-
-/**
- * スクリプトプロパティ 'TARGET_ROOT_FOLDER_ID' を基に設定処理を実行します。
- * @throws {Error} TARGET_ROOT_FOLDER_ID が未設定の場合
- */
-export function execSetProperties_() {
-  const targetFolderId = PropertiesService.getScriptProperties().getProperty(
-    'TARGET_ROOT_FOLDER_ID'
-  );
-  if (!targetFolderId) {
-    throw new Error('TARGET_ROOT_FOLDER_ID is not set in Script Properties.');
-  }
-  if (targetFolderId === 'FOLDER_ID_HERE') {
-    throw new Error('Please set the actual folder ID in the code.');
-  }
-  setScriptProperties_(targetFolderId);
 }
