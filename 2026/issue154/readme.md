@@ -1,3 +1,18 @@
+<!--
+Copyright 2025 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
 # Google Drive 権限一括エクスポートツール (TypeScript版)
 
 Google ドライブの指定フォルダ配下を再帰的に走査し、ファイル・フォルダの共有権限、オーナー、ショートカット情報などをスプレッドシートへ抽出するツールです。
@@ -21,6 +36,7 @@ Aside（clasp）環境での開発に最適化された構成です。
 - `src/index.ts`: エントリーポイント（GASから実行する関数）。
 - `src/permissionService.ts`: 再帰探索やバッチ処理のメインロジック。
 - `src/setup.ts`: スプレッドシートのシートセットアップロジック。
+- `src/transformer.ts`: 「共有権限」シートのデータを元に、用途別の各シート（基本情報、アクセス種別、編集者、閲覧者）へ分割・出力するロジック。
 - `src/utils.ts`: 共通ユーティリティ（エラーラップ関数など）。
 
 ## 📋 事前準備

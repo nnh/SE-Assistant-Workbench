@@ -18,10 +18,30 @@ import { hello } from './example-module';
 import { execSetProperties_ } from './configService';
 import { exportFolderPermissionsRecursive_ } from './permissionService';
 import { initializeProject_ } from './setup';
-function main() {
+import { splitPermissionData_ } from './transformer';
+import { mergeSheetsById_ } from './merger';
+/**
+ * exportFolderPermissionsRecursiveで取得した共有権限情報を
+ * 用途別の各シート（基本情報、アクセス種別、編集者、閲覧者）へ分割・出力します。
+ * 複数のシートに分散しているデータをIDをキーにして統合し、1つのシートにまとめます。
+ * 基本情報シート、アクセス種別シート、編集者シート、閲覧者シートからIDを基にデータを結合して外部共有アイテムリストシートに出力します。
+ * 列順は共有権限シートと同様です。
+ */
+function splitPermissionData() {
+  splitPermissionData_();
+  mergeSheetsById_();
+}
+/**
+ * 指定したルートフォルダ配下を再帰的に走査し、共有権限情報をスプレッドシートに書き出します。
+ */
+function exportFolderPermissionsRecursive() {
   execSetProperties_();
   exportFolderPermissionsRecursive_();
 }
+/**
+ * ツール実行に必要なシート作成と初期設定を行う関数です。
+ * 初回実行時、またはシートをリセットしたい時に使用してください。
+ */
 function setup() {
   initializeProject_();
 }
