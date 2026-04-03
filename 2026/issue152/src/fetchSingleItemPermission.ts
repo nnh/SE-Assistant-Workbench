@@ -45,20 +45,28 @@ export function execFetchSingleItemPermission_() {
   const header = allData[0];
   const rows = allData.slice(1);
 
-  // 2. 「!取得不可!」の行を特定して情報を更新
+  // 2. 「!取得不可!」がいずれかの列（F, I, J）にある行を特定して情報を更新
   const processedRows = rows.map((row, index) => {
-    const accessClassValue = String(row[5]); // F列 (Index 5)
-    const targetId = String(row[3]); // D列 (Index 3) - ID
+    const accessClassValue = String(row[5]); // F列: アクセス種別
+    const editorsValue = String(row[8]); // I列: 編集者
+    const viewersValue = String(row[9]); // J列: 閲覧者
+    const targetId = String(row[3]); // D列: ID
 
-    if (accessClassValue === '!取得不可!' && targetId) {
-      console.log(`${index + 2}行目: 再取得中 (ID: ${targetId})`);
+    // F列, I列, J列のいずれかが "!取得不可!" かつ IDが存在する場合に再取得
+    const isMissingData =
+      accessClassValue === '!取得不可!' ||
+      editorsValue === '!取得不可!' ||
+      viewersValue === '!取得不可!';
+
+    if (isMissingData && targetId) {
+      console.log(`${index + 2}行目: 不足情報を再取得中 (ID: ${targetId})`);
 
       // 権限情報を取得
       const newInfo = fetchSingleItemPermissionData_(targetId);
 
       if (newInfo) {
-        // F列からJ列（Index 5〜9）を更新
-        // newInfoの内容: [名前(0), ID(1), URL(2), アクセス種別(3), 権限(4), オーナー(5), 編集者(6), 閲覧者(7), ショートカット元(8)]
+        // F列からJ列（Index 5〜9）を最新情報で上書き
+        // newInfo: [名前(0), ID(1), URL(2), アクセス種別(3), 権限(4), オーナー(5), 編集者(6), 閲覧者(7), ショートカット元(8)]
         row[5] = newInfo[3]; // アクセス種別
         row[6] = newInfo[4]; // 権限
         row[7] = newInfo[5]; // オーナー
