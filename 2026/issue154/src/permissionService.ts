@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { getExcludeFolderIds_, getRootFolder_ } from './driveRepository';
+import { getSearchExcludeFolderIds_, getRootFolder_ } from './driveRepository';
 import { getDataInformation_ } from './driveRepository';
 import * as consts from './consts';
 /**
@@ -24,8 +24,8 @@ export function exportFolderPermissionsRecursive_() {
   let processedAllCount = 0;
   const rootFolder = getRootFolder_();
 
-  // 対象外フォルダIDを取得
-  const excludeFolderIds = getExcludeFolderIds_();
+  // 検索対象外フォルダIDを取得
+  const excludeFolderIds = getSearchExcludeFolderIds_();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const resultSheet =

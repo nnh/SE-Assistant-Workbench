@@ -157,3 +157,109 @@ const updateSubSheet_ = (
   sheet.setFrozenRows(1);
   // sheet.autoResizeColumns(1, header.length); // 実行時間に余裕があれば有効化
 };
+
+/**
+ * 共通のフィルタリングおよびパス加工処理
+ * @param data - 加工元の2次元配列（1行目は見出し）
+ * @param excludePaths - 除外したいパスの完全一致リスト（デフォルトは空配列）
+ * @returns 加工済みのヘッダーとデータ行のセット
+ */
+const getProcessedBaseRows_ = (
+  data: string[][],
+  excludePaths: string[] = [] // デフォルト値を設定
+): {
+  header: string[];
+  rows: string[][];
+} => {
+  if (data.length === 0) return { header: [], rows: [] };
+
+  const header = data[0];
+  const rows = data.slice(1);
+
+  // 1. 対象外パスのフィルタリング（完全一致）
+  const filteredRows = rows.filter(row => {
+    const path = String(row[1] || ''); // B列: パス
+    // excludePaths が空の場合は常に true (除外しない) になります
+    return !excludePaths.some(excludePath => path === excludePath);
+  });
+
+  // 2. データの加工（パスの切り詰め）
+  const processedRows = filteredRows.map(row => {
+    const type = row[0]; // A列
+    let path = String(row[1] || '');
+
+    // フォルダの場合は親フォルダのパスにする（末尾の名称を切り詰める）
+    if (type === 'フォルダ' && path.includes('/')) {
+      const lastSlashIndex = path.lastIndexOf('/');
+      path = path.substring(0, lastSlashIndex);
+    }
+
+    const newRow = [...row];
+    newRow[1] = path;
+    return newRow;
+  });
+
+  return { header, rows: processedRows };
+};
+
+/**
+ * フォルダデータのみを抽出し、指定したシートに出力します。
+ * @param data - 加工元の2次元配列
+ * @param sheetName - フォルダデータの出力先シート名
+ * @param excludePaths - 除外したいパスの完全一致リスト（デフォルトは空配列）
+ */
+export const outputFolderList_ = (
+  data: string[][],
+  sheetName: string,
+  excludePaths: string[] = [] // デフォルト値を設定
+): void => {
+  const { header, rows } = getProcessedBaseRows_(data, excludePaths);
+  const folderData = rows.filter(row => row[0] === 'フォルダ');
+
+  saveToSheet_(sheetName, [header, ...folderData]);
+  console.log(`✅ フォルダ一覧を「${sheetName}」に出力しました。`);
+};
+
+/**
+ * ファイルデータのみを抽出し、指定したシートに出力します。
+ * @param data - 加工元の2次元配列
+ * @param sheetName - ファイルデータの出力先シート名
+ * @param excludePaths - 除外したいパスの完全一致リスト（デフォルトは空配列）
+ */
+export const outputFileList_ = (
+  data: string[][],
+  sheetName: string,
+  excludePaths: string[] = [] // デフォルト値を設定
+): void => {
+  const { header, rows } = getProcessedBaseRows_(data, excludePaths);
+  const fileData = rows.filter(row => row[0] === 'ファイル');
+
+  saveToSheet_(sheetName, [header, ...fileData]);
+  console.log(`✅ ファイル一覧を「${sheetName}」に出力しました。`);
+};
+
+/**
+ * 指定したシートにデータを保存する内部用関数
+ * @param sheetName - 出力先シート名
+ * @param fullData - ヘッダーを含む全データ
+ */
+const saveToSheet_ = (sheetName: string, fullData: string[][]): void => {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(sheetName);
+
+  if (sheet) {
+    sheet.clear();
+  } else {
+    sheet = ss.insertSheet(sheetName);
+  }
+
+  // データがヘッダーのみ（中身が空）でないか確認
+  if (fullData.length > 1) {
+    sheet
+      .getRange(1, 1, fullData.length, fullData[0].length)
+      .setValues(fullData);
+  } else if (fullData.length === 1) {
+    // ヘッダーのみ書き込み
+    sheet.getRange(1, 1, 1, fullData[0].length).setValues(fullData);
+  }
+};

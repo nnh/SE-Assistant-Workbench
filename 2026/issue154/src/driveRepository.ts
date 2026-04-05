@@ -33,22 +33,28 @@ export const getRootFolder_ = () => {
 };
 
 /**
- * 「対象外フォルダ」シートから除外したいフォルダIDの一覧を取得します。
- * @returns {Set<string>} フォルダIDのセット
+ * 「検索対象外フォルダ」シートから、再帰走査の対象から除外したいフォルダIDの一覧を取得します。
+ * この一覧に含まれるフォルダは、その中身（ファイル・サブフォルダ）を含めて一切処理されません。
+ * * @returns {Set<string>} 検索対象外フォルダIDのセット
  */
-export const getExcludeFolderIds_ = (): Set<string> => {
+export const getSearchExcludeFolderIds_ = (): Set<string> => {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(consts.SHEET_NAME.EXCLUDE);
+  const sheet = ss.getSheetByName(consts.SHEET_NAME.SEARCH_EXCLUDE);
+
+  // シートが存在しない場合は除外設定なしとして空のSetを返す
   if (!sheet) return new Set();
 
   const lastRow = sheet.getLastRow();
+  // ヘッダーのみ、または空の場合は空のSetを返す
   if (lastRow < 2) return new Set();
 
-  // A列の2行目からIDを取得
+  // A列の2行目から最終行までIDを取得
   const ids: string[] = sheet
     .getRange(2, 1, lastRow - 1, 1)
     .getValues()
     .flat();
+
+  // 空文字を除去し、重複を排除したSetを返す
   return new Set(ids.filter(id => id && typeof id === 'string'));
 };
 

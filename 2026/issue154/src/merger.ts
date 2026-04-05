@@ -17,8 +17,11 @@ import * as consts from './consts';
 
 /**
  * 分割された各シートをIDをキーに左結合し、元の共有権限シートと同じ形式で統合シートを作成します。
+ * アクセス種別、外部編集者、外部閲覧者のいずれかに値がある行のみを対象とします。
+ * 結合後のデータは「外部共有アイテムリスト」シートに出力されます。
+ * @returns 結合されたデータの2次元配列（ヘッダー行を含む）
  */
-export const mergeSheetsById_ = (): void => {
+export const mergeSheetsById_ = (): string[][] => {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // 各シートのデータを取得
@@ -29,7 +32,7 @@ export const mergeSheetsById_ = (): void => {
 
   if (!basicData.length) {
     console.warn('基本情報シートにデータがないため、結合をスキップします。');
-    return;
+    return [];
   }
 
   // 結合用マップの作成（IDをキーにする）
@@ -90,7 +93,9 @@ export const mergeSheetsById_ = (): void => {
     header,
     mergedRows
   );
+  const resultData = [header, ...mergedRows];
   console.log('✅ 外部共有に絞ったデータの統合が完了しました。');
+  return resultData;
 };
 
 /**

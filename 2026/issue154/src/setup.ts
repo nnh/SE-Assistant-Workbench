@@ -59,8 +59,8 @@ export function initializeProject_(): void {
   doneSheet.getRange(1, 1, 1, doneHeader.length).setValues([doneHeader]);
   doneSheet.setFrozenRows(1);
 
-  // --- 「対象外フォルダ」シート ---
-  const excludeSheet = ss.insertSheet(consts.SHEET_NAME.EXCLUDE);
+  // --- 「検索対象外フォルダ」シート ---
+  const excludeSheet = ss.insertSheet(consts.SHEET_NAME.SEARCH_EXCLUDE);
   const excludeHeader = ['対象外フォルダID', '備考'];
   excludeSheet
     .getRange(1, 1, 1, excludeHeader.length)
@@ -72,6 +72,9 @@ export function initializeProject_(): void {
   ss.insertSheet(consts.SHEET_NAME.ACCESS_INFO);
   ss.insertSheet(consts.SHEET_NAME.EDITOR_LIST);
   ss.insertSheet(consts.SHEET_NAME.VIEWER_LIST);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_ITEMS);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
 
   // ダミーシートを削除して完了
   ss.deleteSheet(dummySheet);
