@@ -18,14 +18,34 @@ import { hello } from './example-module';
 import { execSetProperties_ } from './configService';
 import { exportFolderPermissionsRecursive_ } from './permissionService';
 import { initializeProject_ } from './setup';
-import { splitPermissionData_, outputFolderList_ } from './transformer';
+import {
+  splitPermissionData_,
+  outputFolderList_,
+  outputFileList_,
+} from './transformer';
 import { mergeSheetsById_ } from './merger';
 import { createAndMoveFolders_ } from './folderUtils';
+import { createAndMoveFiles_ } from './fileUtils';
 import * as consts from './consts';
 
 /**
+ * 外部共有ファイルリストの情報からファイルを指定の場所に移動します。
+ */
+
+function createAndMoveFiles() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inputSheet = ss.getSheetByName(consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
+  if (!inputSheet) {
+    console.error(
+      `シート「${consts.SHEET_NAME.EXTERNAL_SHARED_FILES}」が見つかりません。ファイル作成および移動を中止します。`
+    );
+    return;
+  }
+  createAndMoveFiles_(inputSheet);
+}
+
+/**
  * 外部共有フォルダリストの情報からフォルダを指定の場所に移動します。
- * @returns
  */
 function createAndMoveFolders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -51,14 +71,14 @@ function splitPermissionData() {
   splitPermissionData_();
   const data = mergeSheetsById_();
   outputFolderList_(data, consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS);
-  // 基本情報シート、アクセス種別シート、編集者シート、閲覧者シート、外部共有ファイルリストを非表示にする
+  outputFileList_(data, consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
+  // 基本情報シート、アクセス種別シート、編集者シート、閲覧者シートを非表示にする
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetsToHide = [
     consts.SHEET_NAME.BASIC_INFO,
     consts.SHEET_NAME.ACCESS_INFO,
     consts.SHEET_NAME.EDITOR_LIST,
     consts.SHEET_NAME.VIEWER_LIST,
-    consts.SHEET_NAME.EXTERNAL_SHARED_FILES,
   ];
   for (const sheetName of sheetsToHide) {
     const sheet = ss.getSheetByName(sheetName);

@@ -17,10 +17,10 @@ import * as consts from './consts';
 import { createDeepFolderStructure_ } from './driveRepository';
 
 /**
- * 指定したシートのデータをもとにフォルダを作成し、対象フォルダをそこへ移動させます。
- * 最終的に「移動先フォルダID」をL列に出力します。
+ * 指定したシートのデータをもとに（必要であれば）フォルダを作成し、対象ファイルをそこへ移動させます。
+ * 最終的に、ファイルが移動した先のフォルダIDをL列に出力します。
  */
-export function createAndMoveFolders_(
+export function createAndMoveFiles_(
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
 ): void {
   const lastRow = inputSheet.getLastRow();
@@ -36,26 +36,25 @@ export function createAndMoveFolders_(
     );
   }
 
-  // 1. 全データを取得（B列: パス, D列: 移動元ID）
-  // 後の map で index を使うため全範囲を取得するのが安全です
+  // 1. 全データを取得（A列: タイプ, B列: パス, D列: 移動元ファイルID）
   const values: string[][] = inputSheet
     .getRange(2, 1, lastRow - 1, inputSheet.getLastColumn())
     .getValues();
 
-  // 同一パスの再利用のためのキャッシュ
+  // 同一パスの再利用のためのキャッシュ（フォルダ作成を最小限にする）
   const pathCache: { [key: string]: string } = {};
 
   const idResults: string[][] = values.map(row => {
     const type = row[0].toString(); // A列: タイプ
     const originalPath = row[1].toString(); // B列: パス
-    const targetFolderId = row[3].toString(); // D列: 移動元フォルダID
+    const targetFileId = row[3].toString(); // D列: 移動元ファイルID
 
-    // そもそも「フォルダ」行でない、またはパスがない場合はスキップ
-    if (type !== 'フォルダ' || !originalPath) return [''];
+    // 「ファイル」行でない、またはパスがない場合はスキップ
+    if (type !== 'ファイル' || !originalPath) return [''];
 
     let destFolderId = '';
 
-    // --- フォルダ特定/作成フェーズ ---
+    // --- 格納先フォルダ特定/作成フェーズ ---
     if (pathCache[originalPath]) {
       destFolderId = pathCache[originalPath];
     } else if (originalPath === 'ドライブ') {
@@ -71,7 +70,7 @@ export function createAndMoveFolders_(
       if (folderNames.length === 0) {
         destFolderId = rootFolderId;
       } else {
-        // フォルダ作成（または確認）の実行
+        // ファイルを保存すべき階層のフォルダを作成/特定
         destFolderId = createDeepFolderStructure_(folderNames, rootFolderId);
       }
     }
@@ -79,19 +78,21 @@ export function createAndMoveFolders_(
     // キャッシュを更新
     pathCache[originalPath] = destFolderId;
 
-    // --- 移動実行フェーズ ---
-    if (targetFolderId && destFolderId && targetFolderId !== destFolderId) {
+    // --- ファイル移動実行フェーズ ---
+    if (targetFileId && destFolderId) {
       try {
-        const fromFolder = DriveApp.getFolderById(targetFolderId);
+        const file = DriveApp.getFileById(targetFileId);
         const toFolder = DriveApp.getFolderById(destFolderId);
 
+        // ファイルが既にそのフォルダに存在するかチェック（移動不要ならスキップ可能）
+        // ここでは強制的に moveTo を実行
         console.log(
-          `移動中: [${fromFolder.getName()}] -> [${toFolder.getName()}]`
+          `ファイル移動中: [${file.getName()}] -> フォルダID: [${destFolderId}]`
         );
-        fromFolder.moveTo(toFolder);
+        file.moveTo(toFolder);
       } catch (e) {
         console.error(
-          `フォルダの移動に失敗しました (ID: ${targetFolderId}): ${e}`
+          `ファイルの移動に失敗しました (ID: ${targetFileId}): ${e}`
         );
         return [`Error: 移動失敗`];
       }
@@ -100,12 +101,13 @@ export function createAndMoveFolders_(
     return [destFolderId];
   });
 
-  // 2. L列（12列目）にヘッダーと移動先IDを一括出力
+  // 2. L列（12列目）にヘッダーと格納先フォルダIDを一括出力
   inputSheet.getRange(1, 12).setValue('移動先フォルダID');
 
   if (idResults.length > 0) {
+    // 既存データをクリア（2行目以降）し、新しいIDを書き込み
     inputSheet.getRange(2, 12, inputSheet.getMaxRows() - 1, 1).clearContent();
     inputSheet.getRange(2, 12, idResults.length, 1).setValues(idResults);
-    console.log('移動およびL列へのID出力が完了しました。');
+    console.log('ファイルの移動およびL列へのID出力が完了しました。');
   }
 }

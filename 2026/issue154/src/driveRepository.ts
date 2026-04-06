@@ -115,3 +115,26 @@ export const getDataInformation_ = (
     shortcutFolderId,
   ];
 };
+
+/**
+ * 階層フォルダを作成/確認し、最終フォルダのIDを返す
+ */
+export function createDeepFolderStructure_(
+  folderNames: string[],
+  rootFolderId: string
+): string {
+  try {
+    let parentFolder = DriveApp.getFolderById(rootFolderId);
+    for (const folderName of folderNames) {
+      const subFolders = parentFolder.getFoldersByName(folderName);
+      if (subFolders.hasNext()) {
+        parentFolder = subFolders.next();
+      } else {
+        parentFolder = parentFolder.createFolder(folderName);
+      }
+    }
+    return parentFolder.getId();
+  } catch (e) {
+    return 'Error: ' + String(e);
+  }
+}
