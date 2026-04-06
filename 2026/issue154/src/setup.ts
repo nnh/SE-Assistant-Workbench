@@ -89,7 +89,4 @@ export function initializeProject_(): void {
   }
 
   console.log('✅ 全シートをリセットし、初期セットアップが完了しました。');
-  SpreadsheetApp.getUi().alert(
-    'シートを完全にリセットしました。設定を確認してください。'
-  );
 }
