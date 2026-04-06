@@ -20,26 +20,25 @@ import { exportFolderPermissionsRecursive_ } from './permissionService';
 import { initializeProject_ } from './setup';
 import { splitPermissionData_, outputFolderList_ } from './transformer';
 import { mergeSheetsById_ } from './merger';
-import { createFolders_ } from './folderUtils';
+import { createAndMoveFolders_ } from './folderUtils';
 import * as consts from './consts';
 
 /**
- * 外部共有フォルダリストシートのB列の情報から、移動先のフォルダIDを取得してL列に出力します。
- * フォルダが存在しない場合は新規作成します。
+ * 外部共有フォルダリストの情報からフォルダを指定の場所に移動します。
  * @returns
  */
-function createFolders() {
+function createAndMoveFolders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const inputSheet = ss.getSheetByName(
     consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS
   );
   if (!inputSheet) {
     console.error(
-      `シート「${consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS}」が見つかりません。フォルダ作成を中止します。`
+      `シート「${consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS}」が見つかりません。フォルダ作成および移動を中止します。`
     );
     return;
   }
-  createFolders_(inputSheet);
+  createAndMoveFolders_(inputSheet);
 }
 /**
  * exportFolderPermissionsRecursiveで取得した共有権限情報を

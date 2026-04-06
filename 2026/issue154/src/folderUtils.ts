@@ -14,47 +14,18 @@
  * limitations under the License.
  */
 import * as consts from './consts';
-export function moveToFolder_(
-  inputSheet: GoogleAppsScript.Spreadsheet.Sheet
-): void {
-  const values = inputSheet.getDataRange().getValues() as string[][];
-  // A列が「フォルダ」の行をフィルタリング
-  const folderRows = values.filter(row => row[0] === 'フォルダ');
-  //D列が移動元、M列が移動先
-  const fromFolderIdAndToFolderIdList = folderRows.map(row => [
-    row[3],
-    row[12],
-  ]);
-  console.log(
-    '移動元と移動先のフォルダIDのペア: ',
-    fromFolderIdAndToFolderIdList
-  );
 
-  fromFolderIdAndToFolderIdList.forEach(([fromFolderId, toFolderId]) => {
-    if (!fromFolderId || !toFolderId) {
-      console.warn(
-        `移動元または移動先のフォルダIDが空です。fromFolderId: "${fromFolderId}", toFolderId: "${toFolderId}"`
-      );
-      return;
-    }
-    const fromFolder = DriveApp.getFolderById(fromFolderId);
-    console.log(fromFolder.getName());
-    const toFolder = DriveApp.getFolderById(toFolderId);
-    console.log(toFolder.getName());
-    fromFolder.moveTo(toFolder);
-  });
-}
 /**
- * 指定したシートのデータをもとにフォルダを作成し、最終フォルダのIDをL列に出力します。
- * @param inputSheet
+ * 指定したシートのデータをもとにフォルダを作成し、対象フォルダをそこへ移動させます。
+ * 最終的に「移動先フォルダID」をL列に出力します。
  */
-export function createFolders_(
+export function createAndMoveFolders_(
   inputSheet: GoogleAppsScript.Spreadsheet.Sheet
 ): void {
   const lastRow = inputSheet.getLastRow();
   if (lastRow < 2) return;
 
-  // 0. 基点となるフォルダIDを先に取得しておく
+  // 0. 基点となるフォルダIDを取得
   const rootFolderId = PropertiesService.getScriptProperties().getProperty(
     consts.PROP_KEY.DESTINATION_ROOT_FOLDER_ID
   );
@@ -64,60 +35,89 @@ export function createFolders_(
     );
   }
 
-  // 1. B列（2行目以降）からパスを取得
-  const bValues: string[][] = inputSheet
-    .getRange(2, 2, lastRow - 1, 1)
+  // 1. 全データを取得（B列: パス, D列: 移動元ID）
+  // 後の map で index を使うため全範囲を取得するのが安全です
+  const values: string[][] = inputSheet
+    .getRange(2, 1, lastRow - 1, inputSheet.getLastColumn())
     .getValues();
 
-  const idResults: string[][] = bValues.map(row => {
-    let pathString = row[0].toString();
-    if (!pathString) return [''];
-    // A. 「ドライブ」と完全一致する場合
-    if (pathString === 'ドライブ') {
-      pathString = ''; // ルートフォルダを指すので空の文字列
+  // 同一パスの再利用のためのキャッシュ
+  const pathCache: { [key: string]: string } = {};
+
+  const idResults: string[][] = values.map(row => {
+    const type = row[0].toString(); // A列: タイプ
+    const originalPath = row[1].toString(); // B列: パス
+    const targetFolderId = row[3].toString(); // D列: 移動元フォルダID
+
+    // そもそも「フォルダ」行でない、またはパスがない場合はスキップ
+    if (type !== 'フォルダ' || !originalPath) return [''];
+
+    let destFolderId = '';
+
+    // --- フォルダ特定/作成フェーズ ---
+    if (pathCache[originalPath]) {
+      destFolderId = pathCache[originalPath];
+    } else if (originalPath === 'ドライブ') {
+      destFolderId = rootFolderId;
+    } else {
+      let pathString = originalPath;
+      if (pathString.startsWith('ドライブ/')) {
+        pathString = pathString.replace(/^ドライブ\//, '');
+      }
+
+      const folderNames = pathString.split('/').filter(part => part !== '');
+
+      if (folderNames.length === 0) {
+        destFolderId = rootFolderId;
+      } else {
+        // フォルダ作成（または確認）の実行
+        destFolderId = createDeepFolderStructure_(folderNames, rootFolderId);
+      }
     }
 
-    // B. 最初が「ドライブ/」だったらその部分を空白に置換
-    if (pathString.startsWith('ドライブ/')) {
-      pathString = pathString.replace(/^ドライブ\//, '');
+    // キャッシュを更新
+    pathCache[originalPath] = destFolderId;
+
+    // --- 移動実行フェーズ ---
+    if (targetFolderId && destFolderId && targetFolderId !== destFolderId) {
+      try {
+        const fromFolder = DriveApp.getFolderById(targetFolderId);
+        const toFolder = DriveApp.getFolderById(destFolderId);
+
+        console.log(
+          `移動中: [${fromFolder.getName()}] -> [${toFolder.getName()}]`
+        );
+        fromFolder.moveTo(toFolder);
+      } catch (e) {
+        console.error(
+          `フォルダの移動に失敗しました (ID: ${targetFolderId}): ${e}`
+        );
+        return [`Error: 移動失敗`];
+      }
     }
 
-    // パスを分割してフォルダ階層を作成
-    const folderNames = pathString.split('/').filter(part => part !== '');
-    if (folderNames.length === 0) return [rootFolderId]; // 置換の結果空になった場合
-
-    //const folderId = createDeepFolderStructure_(folderNames, rootFolderId);
-    //return [folderId];
-    // for test
-    return [folderNames.join(' / ')];
+    return [destFolderId];
   });
 
-  // 2. L列（12列目）にヘッダーとIDを一括出力
-  const headerRange = inputSheet.getRange(1, 12);
-  headerRange.setValue('移動先フォルダID'); // ヘッダー
+  // 2. L列（12列目）にヘッダーと移動先IDを一括出力
+  inputSheet.getRange(1, 12).setValue('移動先フォルダID');
 
   if (idResults.length > 0) {
-    // 既存データをクリア（2行目以降）
     inputSheet.getRange(2, 12, inputSheet.getMaxRows() - 1, 1).clearContent();
-    // 新しいIDを書き込み
     inputSheet.getRange(2, 12, idResults.length, 1).setValues(idResults);
-    console.log('L列へのフォルダID出力が完了しました。');
+    console.log('移動およびL列へのID出力が完了しました。');
   }
 }
 
 /**
- * 階層フォルダを作成/確認し、最終フォルダのIDを返す
- * @param folderNames フォルダ名の配列
- * @param rootFolderId 基点フォルダID
+ * 階層フォルダを作成/確認し、最終フォルダのIDを返す（既存）
  */
-/*
 function createDeepFolderStructure_(
   folderNames: string[],
   rootFolderId: string
 ): string {
   try {
     let parentFolder = DriveApp.getFolderById(rootFolderId);
-
     for (const folderName of folderNames) {
       const subFolders = parentFolder.getFoldersByName(folderName);
       if (subFolders.hasNext()) {
@@ -128,9 +128,6 @@ function createDeepFolderStructure_(
     }
     return parentFolder.getId();
   } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    console.error('フォルダ作成エラー:', errorMessage);
-    return 'Error: ' + errorMessage;
+    return 'Error: ' + String(e);
   }
 }
-*/
