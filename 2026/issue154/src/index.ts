@@ -51,6 +51,21 @@ function splitPermissionData() {
   splitPermissionData_();
   const data = mergeSheetsById_();
   outputFolderList_(data, consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS);
+  // 基本情報シート、アクセス種別シート、編集者シート、閲覧者シート、外部共有ファイルリストを非表示にする
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetsToHide = [
+    consts.SHEET_NAME.BASIC_INFO,
+    consts.SHEET_NAME.ACCESS_INFO,
+    consts.SHEET_NAME.EDITOR_LIST,
+    consts.SHEET_NAME.VIEWER_LIST,
+    consts.SHEET_NAME.EXTERNAL_SHARED_FILES,
+  ];
+  for (const sheetName of sheetsToHide) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (sheet) {
+      sheet.hideSheet();
+    }
+  }
 }
 /**
  * 指定したルートフォルダ配下を再帰的に走査し、共有権限情報をスプレッドシートに書き出します。
