@@ -18,10 +18,86 @@ import { hello } from './example-module';
 import { execSetProperties_ } from './configService';
 import { exportFolderPermissionsRecursive_ } from './permissionService';
 import { initializeProject_ } from './setup';
-function main() {
+import {
+  splitPermissionData_,
+  outputFolderList_,
+  outputFileList_,
+} from './transformer';
+import { mergeSheetsById_ } from './merger';
+import { createAndMoveFolders_ } from './folderUtils';
+import { createAndMoveFiles_ } from './fileUtils';
+import * as consts from './consts';
+
+/**
+ * 外部共有ファイルリストの情報からファイルを指定の場所に移動します。
+ */
+
+function createAndMoveFiles() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inputSheet = ss.getSheetByName(consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
+  if (!inputSheet) {
+    console.error(
+      `シート「${consts.SHEET_NAME.EXTERNAL_SHARED_FILES}」が見つかりません。ファイル作成および移動を中止します。`
+    );
+    return;
+  }
+  createAndMoveFiles_(inputSheet);
+}
+
+/**
+ * 外部共有フォルダリストの情報からフォルダを指定の場所に移動します。
+ */
+function createAndMoveFolders() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inputSheet = ss.getSheetByName(
+    consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS
+  );
+  if (!inputSheet) {
+    console.error(
+      `シート「${consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS}」が見つかりません。フォルダ作成および移動を中止します。`
+    );
+    return;
+  }
+  createAndMoveFolders_(inputSheet);
+}
+/**
+ * exportFolderPermissionsRecursiveで取得した共有権限情報を
+ * 用途別の各シート（基本情報、アクセス種別、編集者、閲覧者）へ分割・出力します。
+ * 複数のシートに分散しているデータをIDをキーにして統合し、1つのシートにまとめます。
+ * 基本情報シート、アクセス種別シート、編集者シート、閲覧者シートからIDを基にデータを結合して外部共有アイテムリストシートに出力します。
+ * タイプが「フォルダ」の行を「外部共有フォルダリスト」シートに出力します。
+ */
+function splitPermissionData() {
+  splitPermissionData_();
+  const data = mergeSheetsById_();
+  outputFolderList_(data, consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS);
+  outputFileList_(data, consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
+  // 基本情報シート、アクセス種別シート、編集者シート、閲覧者シートを非表示にする
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetsToHide = [
+    consts.SHEET_NAME.BASIC_INFO,
+    consts.SHEET_NAME.ACCESS_INFO,
+    consts.SHEET_NAME.EDITOR_LIST,
+    consts.SHEET_NAME.VIEWER_LIST,
+  ];
+  for (const sheetName of sheetsToHide) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (sheet) {
+      sheet.hideSheet();
+    }
+  }
+}
+/**
+ * 指定したルートフォルダ配下を再帰的に走査し、共有権限情報をスプレッドシートに書き出します。
+ */
+function exportFolderPermissionsRecursive() {
   execSetProperties_();
   exportFolderPermissionsRecursive_();
 }
+/**
+ * ツール実行に必要なシート作成と初期設定を行う関数です。
+ * 初回実行時、またはシートをリセットしたい時に使用してください。
+ */
 function setup() {
   initializeProject_();
 }

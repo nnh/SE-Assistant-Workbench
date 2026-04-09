@@ -14,20 +14,29 @@
  * limitations under the License.
  */
 import * as consts from './consts';
+
 /**
  * ツール実行に必要なシート作成と初期設定を行う関数です。
- * 初回実行時、またはシートをリセットしたい時に使用してください。
+ * 既存の全シートを削除し、完全にリセットした状態でシートを再生成します。
  */
 export function initializeProject_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // 1. 各シートの作成とヘッダー設定
+  // --- 0. 全シートの削除（リセット処理） ---
+  // 一時的なダミーシートを作成（シートが0枚になるのを防ぐため）
+  const dummySheet = ss.insertSheet('temp_dummy');
+  const sheets = ss.getSheets();
+
+  for (const sheet of sheets) {
+    if (sheet.getName() !== 'temp_dummy') {
+      ss.deleteSheet(sheet);
+    }
+  }
+
+  // --- 1. 各シートの作成とヘッダー設定 ---
 
   // --- 「共有権限」シート ---
-  let resultSheet = ss.getSheetByName(consts.SHEET_NAME.PERMISSION);
-  if (!resultSheet) {
-    resultSheet = ss.insertSheet(consts.SHEET_NAME.PERMISSION);
-  }
+  const resultSheet = ss.insertSheet(consts.SHEET_NAME.PERMISSION);
   const mainHeader = [
     'タイプ',
     'パス',
@@ -42,47 +51,42 @@ export function initializeProject_(): void {
     'ショートカット元フォルダID',
   ];
   resultSheet.getRange(1, 1, 1, mainHeader.length).setValues([mainHeader]);
-  resultSheet.setFrozenRows(1); // 1行目を固定
+  resultSheet.setFrozenRows(1);
 
   // --- 「検索済み」シート ---
-  let doneSheet = ss.getSheetByName(consts.SHEET_NAME.DONE);
-  if (!doneSheet) {
-    doneSheet = ss.insertSheet(consts.SHEET_NAME.DONE);
-  }
+  const doneSheet = ss.insertSheet(consts.SHEET_NAME.DONE);
   const doneHeader = ['ID', 'パス'];
   doneSheet.getRange(1, 1, 1, doneHeader.length).setValues([doneHeader]);
-  doneSheet.setFrozenRows(1); // 1行目を固定
+  doneSheet.setFrozenRows(1);
 
-  // --- 「対象外フォルダ」シート ---
-  let excludeSheet = ss.getSheetByName(consts.SHEET_NAME.EXCLUDE);
-  if (!excludeSheet) {
-    excludeSheet = ss.insertSheet(consts.SHEET_NAME.EXCLUDE);
-  }
+  // --- 「検索対象外フォルダ」シート ---
+  const excludeSheet = ss.insertSheet(consts.SHEET_NAME.SEARCH_EXCLUDE);
   const excludeHeader = ['対象外フォルダID', '備考'];
   excludeSheet
     .getRange(1, 1, 1, excludeHeader.length)
     .setValues([excludeHeader]);
-  excludeSheet.setFrozenRows(1); // 1行目を固定
+  excludeSheet.setFrozenRows(1);
 
-  // 2. スクリプトプロパティの雛形作成
+  // --- 2. 分割後のサブシートも作成（transformer用） ---
+  ss.insertSheet(consts.SHEET_NAME.BASIC_INFO);
+  ss.insertSheet(consts.SHEET_NAME.ACCESS_INFO);
+  ss.insertSheet(consts.SHEET_NAME.EDITOR_LIST);
+  ss.insertSheet(consts.SHEET_NAME.VIEWER_LIST);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_ITEMS);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_FOLDERS);
+  ss.insertSheet(consts.SHEET_NAME.EXTERNAL_SHARED_FILES);
+
+  // ダミーシートを削除して完了
+  ss.deleteSheet(dummySheet);
+
+  // --- 3. スクリプトプロパティの雛形作成 ---
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty(consts.PROP_KEY.TARGET_ROOT_FOLDER_ID)) {
-    // 便宜上、空の値をセット（ユーザーに設定を促すため）
     props.setProperty(
       consts.PROP_KEY.TARGET_ROOT_FOLDER_ID,
       consts.LABEL.FOLDER_ID_HERE
     );
   }
 
-  console.log('✅ 初期セットアップが完了しました。');
-  console.log(
-    '1. 「対象外フォルダ」シートにスキップしたいIDを入力してください。'
-  );
-  console.log(
-    `2. スクリプトプロパティに "${consts.PROP_KEY.TARGET_ROOT_FOLDER_ID}" を設定してください。`
-  );
-
-  SpreadsheetApp.getUi().alert(
-    '初期セットアップが完了しました。シートを確認してください。'
-  );
+  console.log('✅ 全シートをリセットし、初期セットアップが完了しました。');
 }

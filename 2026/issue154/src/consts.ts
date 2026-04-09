@@ -21,8 +21,22 @@ export const SHEET_NAME = {
   PERMISSION: '共有権限',
   /** 処理済みのIDを記録するシート */
   DONE: '検索済み',
-  /** 対象外（スキャンをスキップする）フォルダIDを指定するシート */
-  EXCLUDE: '対象外フォルダ',
+  /** 検索対象外（走査自体をスキップする）フォルダIDを指定するシート */
+  SEARCH_EXCLUDE: '検索対象外フォルダ',
+  /** 【新規】基本情報を抽出したシート */
+  BASIC_INFO: '基本情報',
+  /** 【新規】アクセス種別（共有設定）を抽出したシート */
+  ACCESS_INFO: 'アクセス種別',
+  /** 【新規】編集者一覧を抽出したシート */
+  EDITOR_LIST: '編集者リスト',
+  /** 【新規】閲覧者一覧を抽出したシート */
+  VIEWER_LIST: '閲覧者リスト',
+  /** 外部共有アイテムリストを抽出したシート */
+  EXTERNAL_SHARED_ITEMS: '外部共有アイテムリスト',
+  /** 外部共有フォルダリストを抽出したシート */
+  EXTERNAL_SHARED_FOLDERS: '外部共有フォルダリスト',
+  /** 外部共有ファイルリストを抽出したシート */
+  EXTERNAL_SHARED_FILES: '外部共有ファイルリスト',
 } as const;
 
 /**
@@ -35,6 +49,8 @@ export const PROP_KEY = {
   TARGET_FOLDER_ID: 'TARGET_FOLDER_ID',
   /** 最後に処理したフォルダのパス */
   TARGET_PATH: 'TARGET_PATH',
+  /** フォルダ、ファイル移動先のルートフォルダID */
+  DESTINATION_ROOT_FOLDER_ID: 'DESTINATION_ROOT_FOLDER_ID',
 } as const;
 
 /**

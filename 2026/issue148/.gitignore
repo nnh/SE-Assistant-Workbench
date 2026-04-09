@@ -1,10 +1,10 @@
+config.json
 *.xlsx
 *.Rproj
 *.Rhistory
 *.RData
 *.csv
 *.tsv
-*.json
 *.log
 *.html
 *.pdf
@@ -16,3 +16,34 @@
 *.bak
 *.DS_Store
 Thumbs.db
+
+# GAS/clasp 認証情報
+.clasptoken.json
+.clasp.json
+
+# Google API 認証キー / トークン
+credentials.json
+token.json
+*.pem
+*.key
+
+# 環境変数・秘匿情報
+.env
+.env.local
+
+# --- [R] Project Specifics ---
+# Rの個人設定や履歴
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+
+# --- [Node.js / GAS] Dependencies ---
+# ライブラリ本体（package.jsonがあれば不要）
+node_modules/
+npm-debug.log*
+
+# サンプルファイル（これはGit管理してOK）
+!.clasp.json.sample
+!config.json.sample
