@@ -107,3 +107,6 @@ class DocFetcher {
     return result;
   }
 }
+ export function dummy(): void {
+  console.log('dummy');
+}

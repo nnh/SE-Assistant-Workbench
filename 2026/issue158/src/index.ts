@@ -16,9 +16,23 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
 import { exportPublishedFilesRecursive_ } from './issue158';
+import { initializeProject_ } from './setup';
+import { execSetProperties_ } from './configService';
+import * as consts from './consts';
 
 console.log(hello());
 
 function main() {
+  execSetProperties_();
   exportPublishedFilesRecursive_();
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(consts.SHEET_NAME.PUBLISHED)
+    ?.activate();
+}
+/**
+ * ツール実行に必要なシート作成と初期設定を行う関数です。
+ * 初回実行時、またはシートをリセットしたい時に使用してください。
+ */
+function setup() {
+  initializeProject_();
 }

@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { safeGet_ } from './utils';
 import * as consts from './consts';
 /**
  * スクリプトプロパティからルートフォルダのIDを取得し、Folderオブジェクトを返します。
@@ -35,7 +34,7 @@ export const getRootFolder_ = () => {
 /**
  * 「検索対象外フォルダ」シートから、再帰走査の対象から除外したいフォルダIDの一覧を取得します。
  * この一覧に含まれるフォルダは、その中身（ファイル・サブフォルダ）を含めて一切処理されません。
- * * @returns {Set<string>} 検索対象外フォルダIDのセット
+ * @returns {Set<string>} 検索対象外フォルダIDのセット
  */
 export const getSearchExcludeFolderIds_ = (): Set<string> => {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -57,26 +56,3 @@ export const getSearchExcludeFolderIds_ = (): Set<string> => {
   // 空文字を除去し、重複を排除したSetを返す
   return new Set(ids.filter(id => id && typeof id === 'string'));
 };
-
-/**
- * 階層フォルダを作成/確認し、最終フォルダのIDを返す
- */
-export function createDeepFolderStructure_(
-  folderNames: string[],
-  rootFolderId: string
-): string {
-  try {
-    let parentFolder = DriveApp.getFolderById(rootFolderId);
-    for (const folderName of folderNames) {
-      const subFolders = parentFolder.getFoldersByName(folderName);
-      if (subFolders.hasNext()) {
-        parentFolder = subFolders.next();
-      } else {
-        parentFolder = parentFolder.createFolder(folderName);
-      }
-    }
-    return parentFolder.getId();
-  } catch (e) {
-    return 'Error: ' + String(e);
-  }
-}
