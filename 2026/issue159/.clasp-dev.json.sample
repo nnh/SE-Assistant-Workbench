@@ -1,0 +1,17 @@
+{
+  "scriptId": "スクリプトID",
+  "rootDir": "dist",
+  "parentId": "スプレッドシートID",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [],
+  "skipSubdirectories": false
+}

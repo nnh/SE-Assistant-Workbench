@@ -1,0 +1,42 @@
+/**
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { hello } from './example-module';
+import { exportFolderPermissionsRecursive_ } from './issue159';
+import { initializeProject_ } from './setup';
+import { execSetProperties_ } from './configService';
+import { getRootFolder_ } from './driveRepository';
+import * as consts from './consts';
+
+console.log(hello());
+
+function main() {
+  const ssFile = SpreadsheetApp.getActiveSpreadsheet();
+  const rootFolderName = getRootFolder_().getName();
+  const now = new Date().toISOString().replace(/[:.]/g, '-');
+  // ファイル名を設定
+  ssFile.setName(`${consts.SHEET_NAME.PUBLISHED}_${rootFolderName}_${now}`);
+  execSetProperties_();
+  exportFolderPermissionsRecursive_();
+  ssFile.getSheetByName(consts.SHEET_NAME.PUBLISHED)?.activate();
+}
+/**
+ * ツール実行に必要なシート作成と初期設定を行う関数です。
+ * 初回実行時、またはシートをリセットしたい時に使用してください。
+ */
+function setup() {
+  initializeProject_();
+}
