@@ -24,14 +24,23 @@ import * as consts from './consts';
 console.log(hello());
 
 function main() {
-  const ssFile = SpreadsheetApp.getActiveSpreadsheet();
-  const rootFolderName = getRootFolder_().getName();
+  execSetProperties_();
+  const thisFileId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const ssFile = DriveApp.getFileById(thisFileId);
+  const rootFolder = getRootFolder_();
+  if (!rootFolder) {
+    throw new Error(
+      'ルートフォルダが設定されていません。スクリプトプロパティにルートフォルダIDを設定してください。'
+    );
+  }
+  const rootFolderName: string = rootFolder.getName();
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   // ファイル名を設定
   ssFile.setName(`${consts.SHEET_NAME.PUBLISHED}_${rootFolderName}_${now}`);
-  execSetProperties_();
   exportFolderPermissionsRecursive_();
-  ssFile.getSheetByName(consts.SHEET_NAME.PUBLISHED)?.activate();
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(consts.SHEET_NAME.PUBLISHED)
+    ?.activate();
 }
 /**
  * ツール実行に必要なシート作成と初期設定を行う関数です。
