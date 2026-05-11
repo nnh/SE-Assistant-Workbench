@@ -31,6 +31,7 @@ export const CONFIG = {
     DRIVE_CONTENTS_1: '共有ドライブ配下のフォルダ情報_1',
     NOT_FOUND_LIST: 'フォルダ不在確認リスト',
     MIDDLEFILE: 'マイドライブ配下のファイル一覧抽出',
+    FINALFILE: 'ファイル名編集済み一覧',
   },
 
   // パス編集用の文字列

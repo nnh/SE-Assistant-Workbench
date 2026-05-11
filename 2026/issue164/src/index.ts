@@ -28,7 +28,7 @@ import {
   fetchPartialFolderUrl_,
   createMissingFoldersFromList_,
 } from './driveFolderIntegrity';
-import { filterValidfiles_ } from './issue164';
+import { filterValidfiles_, generateFinalFormattedFileList_ } from './issue164';
 
 function updateFormattedSharedFilesList() {
   try {
@@ -40,6 +40,9 @@ function updateFormattedSharedFilesList() {
 
     // 3. 中間シートへ保存
     saveToMiddleSheet_(filteredData, CONFIG.SHEET_NAMES.MIDDLEFILE);
+
+    // 4. パス整形を行い最終レポートを生成
+    generateFinalFormattedFileList_();
 
     console.log('共有ファイル一覧の更新が正常に完了しました。');
   } catch (e: unknown) {
