@@ -14,6 +14,123 @@
  * limitations under the License.
  */
 /**
+ * スプレッドシートの権限情報をチェックし、M列に判定結果を出力する。
+ */
+export function checkSheetPermissions_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('外部共有フォルダ・ファイル一覧');
+  if (!sheet) {
+    throw new Error(
+      '「外部共有フォルダ・ファイル一覧」シートが見つかりません。'
+    );
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  // A列(1)からK列(11)までのデータを取得
+  const range = sheet.getRange(2, 1, lastRow - 1, 11);
+  const data = range.getValues();
+
+  // フォルダ情報と、パスごとの統計を保持するマップ
+  const folderMap: { [path: string]: any } = {};
+  const pathStats: {
+    [path: string]: {
+      totalFiles: number;
+      sameAsFolderCount: number;
+      hasWebPublished: boolean;
+    };
+  } = {};
+
+  // --- ステップ1: 各パスの状況（統計）を把握する ---
+  data.forEach(row => {
+    const type = row[0]; // A列: 種別
+    const path = row[1]; // B列: パス
+    const webStatus = row[10]; // K列: Web公開情報
+
+    // 統計オブジェクトの初期化
+    if (!pathStats[path]) {
+      pathStats[path] = {
+        totalFiles: 0,
+        sameAsFolderCount: 0,
+        hasWebPublished: false,
+      };
+    }
+
+    // Web公開が1つでもあるかチェック
+    if (webStatus === '公開') {
+      pathStats[path].hasWebPublished = true;
+    }
+
+    if (type === 'フォルダ') {
+      folderMap[path] = {
+        access: row[5], // F列: アクセス種別
+        permission: row[6], // G列: 権限
+        editors: row[8], // I列: 編集者
+        viewers: row[9], // J列: 閲覧者
+      };
+    }
+  });
+
+  // --- ステップ2: 各ファイルがフォルダと一致しているかカウントする ---
+  data.forEach(row => {
+    const type = row[0];
+    const path = row[1];
+    if (type === 'ファイル') {
+      pathStats[path].totalFiles++;
+      const fInfo = folderMap[path];
+      if (fInfo) {
+        const isSame =
+          row[5] === fInfo.access &&
+          row[6] === fInfo.permission &&
+          row[8] === fInfo.editors &&
+          row[9] === fInfo.viewers;
+
+        if (isSame) {
+          pathStats[path].sameAsFolderCount++;
+        }
+      }
+    }
+  });
+
+  // --- ステップ3: 判定結果の作成 ---
+  const results: string[][] = [];
+  results.push(['判定結果']); // 1行目（ヘッダー用）
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const type = row[0];
+    const path = row[1];
+    const stats = pathStats[path];
+
+    let message = '';
+
+    if (type === 'フォルダ') {
+      message = 'フォルダ';
+    } else if (type === 'ファイル') {
+      // 条件1: フォルダ内に1つでもWeb公開アイテムがある場合は何も出力しない
+      if (stats.hasWebPublished) {
+        message = '';
+      }
+      // 条件2: フォルダ内のすべてのファイルの権限がフォルダと同じ場合
+      // (ファイルが存在し、かつ一致数が総数と同じ)
+      else if (
+        stats.totalFiles > 0 &&
+        stats.totalFiles === stats.sameAsFolderCount
+      ) {
+        message = 'フォルダ内のすべてのファイルの権限がフォルダと同じ';
+      }
+    }
+
+    results.push([message]);
+  }
+
+  // M列（13列目）に結果を一括で書き込み
+  sheet.getRange(1, 13, results.length, 1).setValues(results);
+
+  console.log('完了しました');
+}
+
+/**
  * 指定フォルダ内の全スプレッドシートから「外部共有フォルダ・ファイル」シートのデータを集約する
  */
 export function aggregateExternalShareData_() {

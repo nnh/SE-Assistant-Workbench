@@ -13,24 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { hello } from './example-module';
-import {
-  aggregateExternalShareData_,
-  filterAndExportRawData_,
-  editAndExportFinalData_,
-  checkSheetPermissions_,
-} from './issue161';
-function checkPermissions() {
-  checkSheetPermissions_();
-}
-function editAndExportFinalData() {
-  editAndExportFinalData_();
-}
-function fileterAndExportRawData() {
-  filterAndExportRawData_();
-}
-function aggregateData() {
-  aggregateExternalShareData_();
-}
-console.log(hello());
+import { hello } from '../src/example-module';
+
+describe('example-module', () => {
+  describe('hello', () => {
+    it('Returns a hello message', () => {
+      expect(hello()).toBe('Hello Apps Script!');
+    });
+  });
+});
