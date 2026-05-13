@@ -28,7 +28,7 @@ const mockAdminReports = {
 const mockDriveApp = {
   createFile: jest.fn(),
   searchFiles: jest.fn(),
-  MimeType: { PLAIN_TEXT: 'text/plain' }, // DriveApp配下のMimeType
+  MimeType: { PLAIN_TEXT: 'text/plain' },
 };
 
 const mockSpreadsheetApp = {
@@ -36,7 +36,10 @@ const mockSpreadsheetApp = {
 };
 
 const mockUtilities = {
-  formatDate: jest.fn((date, tz, format) => '20260513'), // yyyyMMdd形式を返す
+  formatDate: jest.fn((date, tz, format) => {
+    if (format === 'yyyyMMdd') return '20260513';
+    return '2026/05/13 00:00:00';
+  }),
 };
 
 const mockPropertiesService = {
@@ -46,54 +49,85 @@ const mockPropertiesService = {
 };
 
 describe('DriveAuditManager Tests', () => {
-  // beforeEach の中身を以下のように徹底的に固めます
+  let mockAuditSheet: any;
+  let mockRequestSheet: any;
+
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // 1. MimeTypeオブジェクトを定義
     const mimeTypeMock = {
       PLAIN_TEXT: 'text/plain',
       GOOGLE_SHEETS: 'application/vnd.google-apps.spreadsheet',
     };
 
-    // 2. グローバル(Node.jsのglobal)に注入
     (global as any).MimeType = mimeTypeMock;
-
-    // 3. 各種GASサービスのモックを注入
     (global as any).AdminReports = mockAdminReports;
     (global as any).DriveApp = {
       ...mockDriveApp,
-      MimeType: mimeTypeMock, // 万が一 DriveApp.MimeType で呼ばれてもいいように
+      MimeType: mimeTypeMock,
     };
     (global as any).SpreadsheetApp = mockSpreadsheetApp;
     (global as any).Utilities = mockUtilities;
     (global as any).PropertiesService = mockPropertiesService;
+
+    // シートのモック作成関数
+    const createMockSheet = (name: string) => ({
+      getName: jest.fn().mockReturnValue(name),
+      appendRow: jest.fn(),
+      getRange: jest.fn().mockReturnValue({
+        setValues: jest.fn(),
+        setFontWeight: jest.fn().mockReturnThis(),
+        setBackground: jest.fn().mockReturnThis(),
+        setFontColor: jest.fn().mockReturnThis(),
+        setFontStyle: jest.fn().mockReturnThis(),
+      }),
+      getLastRow: jest.fn().mockReturnValue(1),
+      setFrozenRows: jest.fn(),
+    });
+
+    mockAuditSheet = createMockSheet('監査ログ');
+    mockRequestSheet = createMockSheet('アクセス権リクエスト');
+
+    // SpreadsheetAppのモック
+    const mockSs = {
+      // getSheetByName と insertSheet の両方で、名前に応じたモックシートを返す
+      getSheetByName: jest.fn((name: string) => {
+        if (name === '監査ログ') return mockAuditSheet;
+        if (name === 'アクセス権リクエスト') return mockRequestSheet;
+        return null;
+      }),
+      insertSheet: jest.fn((name: string) => {
+        if (name === '監査ログ') return mockAuditSheet;
+        if (name === 'アクセス権リクエスト') return mockRequestSheet;
+        return mockAuditSheet; // デフォルト
+      }),
+    };
+    mockSpreadsheetApp.getActiveSpreadsheet.mockReturnValue(mockSs);
   });
 
   describe('fetchAndSaveAuditLogsRaw_', () => {
     it('nextPageTokenがある場合に複数回APIを呼び出し、ファイルを保存すること', () => {
-      // 1回目のレスポンス
-      mockAdminReports.Activities.list.mockReturnValueOnce({
-        items: [
-          {
-            id: { time: '2026-05-13T00:00:00Z' },
-            actor: { email: 'a@ex.com' },
-            events: [{ name: 'download', parameters: [] }],
-          },
-        ],
-        nextPageToken: 'next_token',
-      });
-      // 2回目のレスポンス
-      mockAdminReports.Activities.list.mockReturnValueOnce({
-        items: [
-          {
-            id: { time: '2026-05-13T00:01:00Z' },
-            actor: { email: 'b@ex.com' },
-            events: [{ name: 'download', parameters: [] }],
-          },
-        ],
-        nextPageToken: null,
-      });
+      mockAdminReports.Activities.list
+        .mockReturnValueOnce({
+          items: [
+            {
+              id: { time: '2026-05-13T00:00:00Z' },
+              actor: { email: 'a@ex.com' },
+              events: [{ name: 'download', parameters: [] }],
+            },
+          ],
+          nextPageToken: 'next_token',
+        })
+        .mockReturnValueOnce({
+          items: [
+            {
+              id: { time: '2026-05-13T00:01:00Z' },
+              actor: { email: 'b@ex.com' },
+              events: [{ name: 'download', parameters: [] }],
+            },
+          ],
+          nextPageToken: null,
+        });
 
       fetchAndSaveAuditLogsRaw_();
 
@@ -103,43 +137,65 @@ describe('DriveAuditManager Tests', () => {
   });
 
   describe('writeLogsToSheet_', () => {
-    it('除外ドメインのダウンロードイベントがスキップされること', () => {
-      const mockFileContent = JSON.stringify([
-        {
-          id: { time: '2026-05-13T00:00:00Z' },
-          actor: { email: 'user@nagoya.hosp.go.jp' },
-          events: [{ name: 'download', parameters: [] }],
-        },
-      ]);
-
-      const mockFile = {
-        getBlob: () => ({ getDataAsString: () => mockFileContent }),
-      };
-
+    it('データが0件の場合、各シートに「レコードなし」のメッセージを出力すること', () => {
+      // ファイルはあるが中身が空、あるいは除外対象のみのケース
       const mockFileIterator = {
         hasNext: jest.fn().mockReturnValueOnce(true).mockReturnValue(false),
-        next: jest.fn().mockReturnValue(mockFile),
-      };
-
-      mockDriveApp.searchFiles.mockReturnValue(mockFileIterator);
-
-      const mockSheet = {
-        appendRow: jest.fn(),
-        getRange: jest.fn().mockReturnValue({
-          setValues: jest.fn(),
-          setFontWeight: jest.fn(),
-          setBackground: jest.fn(),
+        next: jest.fn().mockReturnValue({
+          getBlob: () => ({ getDataAsString: () => JSON.stringify([]) }),
         }),
-        getLastRow: jest.fn().mockReturnValue(1),
-        setFrozenRows: jest.fn(),
       };
-      const mockSs = { getSheetByName: jest.fn().mockReturnValue(mockSheet) };
-      mockSpreadsheetApp.getActiveSpreadsheet.mockReturnValue(mockSs);
+      mockDriveApp.searchFiles.mockReturnValue(mockFileIterator);
 
       writeLogsToSheet_();
 
-      // 除外ドメインなので、setValuesは呼ばれないはず
-      expect(mockSheet.getRange().setValues).not.toHaveBeenCalled();
+      // どちらのシートにも appendRow でメッセージが書かれたか確認
+      const expectedMessage =
+        '対象期間内に該当するレコードはありませんでした。';
+      expect(mockAuditSheet.appendRow).toHaveBeenCalledWith(
+        expect.arrayContaining([expectedMessage])
+      );
+      expect(mockRequestSheet.appendRow).toHaveBeenCalledWith(
+        expect.arrayContaining([expectedMessage])
+      );
+    });
+
+    it('request_accessイベントが専用のシートに振り分けられること', () => {
+      const mockActivities = [
+        {
+          id: { time: '2026-05-13T00:00:00Z' },
+          actor: { email: 'external@gmail.com' },
+          events: [
+            {
+              name: 'request_access',
+              parameters: [
+                { name: 'doc_title', value: '重要書類' },
+                { name: 'primary_event', value: true },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const mockFileIterator = {
+        hasNext: jest.fn().mockReturnValueOnce(true).mockReturnValue(false),
+        next: jest.fn().mockReturnValue({
+          getBlob: () => ({
+            getDataAsString: () => JSON.stringify(mockActivities),
+          }),
+        }),
+      };
+      mockDriveApp.searchFiles.mockReturnValue(mockFileIterator);
+
+      writeLogsToSheet_();
+
+      // リクエストシートにはデータが書き込まれ、監査ログシートにはメッセージが書かれる
+      expect(mockRequestSheet.getRange().setValues).toHaveBeenCalled();
+      expect(mockAuditSheet.appendRow).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          '対象期間内に該当するレコードはありませんでした。',
+        ])
+      );
     });
   });
 });

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 /**
- * 1. 監査ログを取得し、1ページごとにJSONファイルとして保存する
+ * 監査ログを取得し、1ページごとにJSONファイルとして保存する
  */
 export function fetchAndSaveAuditLogsRaw_(): void {
   const userKey = 'all';
   const applicationName = 'drive';
   const now = new Date();
-  const startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-
+  // --- 開始時間を 25時間前（25 * 60 * 60 * 1000）に設定 ---
+  const startTime = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
   try {
     if (typeof AdminReports === 'undefined') {
       throw new Error('Admin SDK API サービスを有効にしてください。');
@@ -86,30 +86,15 @@ function getEventDisplayName_(eventName: string): string {
   return eventMap[eventName] || eventName;
 }
 /**
- * 2. 保存されたJSONファイルを読み込み、スプレッドシートへ出力する
+ * 指定した名前のシートを取得、または作成して見出しを設定する
  */
-
-export function writeLogsToSheet_(): void {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  // スクリプトプロパティから除外ドメインを取得し、配列化する
-  if (!scriptProperties.getProperty('EXCLUDED_DOMAINS')) {
-    throw new Error(
-      'スクリプトプロパティに「EXCLUDED_DOMAINS」を設定してください。'
-    );
-  }
-  const excludedDomainsStr =
-    scriptProperties.getProperty('EXCLUDED_DOMAINS') || '';
-  const excludedDomains = excludedDomainsStr
-    .split(',')
-    .map(d => d.trim().toLowerCase());
-
-  const SHEET_NAME = '監査ログ';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-
-  // シート準備（存在しなければ作成）
+function getOrCreateSheet_(
+  ss: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  sheetName: string
+): GoogleAppsScript.Spreadsheet.Sheet {
+  let sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(sheetName);
     const header = [
       '発生日時',
       'イベント名',
@@ -128,46 +113,66 @@ export function writeLogsToSheet_(): void {
       .setBackground('#d9ead3');
     sheet.setFrozenRows(1);
   }
+  return sheet;
+}
 
-  // https://developers.google.com/workspace/admin/reports/v1/appendix/activity/drive?hl=ja
-  // 除外したいイベント名を指定する
+/**
+ * 保存したJSONファイルを読み込み、監査ログとアクセス権リクエストに振り分けてスプレッドシートに書き込む
+ */
+export function writeLogsToSheet_(): void {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  if (!scriptProperties.getProperty('EXCLUDED_DOMAINS')) {
+    throw new Error(
+      'スクリプトプロパティに「EXCLUDED_DOMAINS」を設定してください。'
+    );
+  }
+  const excludedDomainsStr =
+    scriptProperties.getProperty('EXCLUDED_DOMAINS') || '';
+  const excludedDomains = excludedDomainsStr
+    .split(',')
+    .map(d => d.trim().toLowerCase());
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // 2つのシートを準備
+  const auditSheet = getOrCreateSheet_(ss, 'その他の監査ログ');
+  const requestSheet = getOrCreateSheet_(ss, 'アクセス権リクエスト');
+
   const excludedEvents = [
-    'accept_suggestion', // 提案の承認
-    'create', // 作成
-    'create_comment', // コメントの作成
-    'create_suggestion', // 提案の作成
-    'delete', // 削除
-    'delete_comment', // コメントの削除
-    'delete_suggestion', // 提案の削除
-    'edit', // 編集
-    'edit_comment', // コメントの編集
-    'move', // 移動
-    'reject_suggestion', // 提案の拒否
-    'rename', // 名前の変更
-    'resolve_comment', // コメントの解決
-    'search', // 検索
-    'sheets_import_range', // シートの範囲インポート
-    'sheets_import_url', // シートのURLインポート
-    'source_copy', // ソースのコピー
-    'sync_item_content', // アイテムのコンテンツの同期
-    'trash', // ゴミ箱に移動
-    'untrash', // ゴミ箱から復元
-    'view', // 閲覧
-    'access_url', // URLへのアクセス
-    'access_item_content', // アプリケーションがユーザーに代わってアイテムのコンテンツにアクセスしました
-    'prefetch_item_content', // アプリケーションがユーザーの代わりにアイテムのコンテンツをプリフェッチしました,
+    'accept_suggestion',
+    'create',
+    'create_comment',
+    'create_suggestion',
+    'delete',
+    'delete_comment',
+    'delete_suggestion',
+    'edit',
+    'edit_comment',
+    'move',
+    'reject_suggestion',
+    'rename',
+    'resolve_comment',
+    'search',
+    'sheets_import_range',
+    'sheets_import_url',
+    'source_copy',
+    'sync_item_content',
+    'trash',
+    'untrash',
+    'view',
+    'access_url',
+    'access_item_content',
+    'prefetch_item_content',
   ];
 
-  // マイドライブから本日作成された audit_raw_*.json ファイルを検索
   const todayStr = Utilities.formatDate(new Date(), 'JST', 'yyyyMMdd');
-
   const mimeTypeStr = MimeType.PLAIN_TEXT;
-
   const files = DriveApp.searchFiles(
     `title contains 'audit_raw_${todayStr}' and mimeType = '${mimeTypeStr}'`
   );
 
-  const allLogData: (string | number)[][] = [];
+  // 振り分け用の配列
+  const auditLogData: (string | number)[][] = [];
+  const requestLogData: (string | number)[][] = [];
 
   while (files.hasNext()) {
     const file = files.next();
@@ -178,30 +183,20 @@ export function writeLogsToSheet_(): void {
       const event = activity.events[0];
       const eventName = event.name;
       const actorEmail = activity.actor?.email?.toLowerCase() || '';
-      // 1. 基本的な除外イベント（閲覧等）のチェック
+
       if (excludedEvents.includes(eventName)) return;
-      // 2. ダウンロードイベントかつ特定ドメインのチェック
+
       if (eventName === 'download') {
-        // メールのドメイン部分を抽出 (@以降)
         const emailDomain = actorEmail.split('@')[1];
-        // 除外ドメインリストに含まれている場合は業務内とみなしてスキップ
-        if (excludedDomains.includes(emailDomain)) {
-          return;
-        }
+        if (excludedDomains.includes(emailDomain)) return;
       }
-      // プライマリイベント以外のイベントはスキップ
+
       const isPrimary = event.parameters?.find(
         (p: any) => p.name === 'primary_event'
       )?.value;
+      if (isPrimary === false) return;
 
-      // 明示的に false と設定されている場合のみ除外
-      // (undefined や true の場合は通過する)
-      if (isPrimary === false) {
-        return;
-      }
-      // 日本語名に変換
       const eventDisplayName = getEventDisplayName_(eventName);
-
       const timestamp = Utilities.formatDate(
         new Date(activity.id.time),
         'JST',
@@ -218,12 +213,10 @@ export function writeLogsToSheet_(): void {
       const owner = params.find((p: any) => p.name === 'owner')?.value || '---';
       const fileType =
         params.find((p: any) => p.name === 'doc_type')?.value || '---';
-      // 1. 公開設定の変更パラメータを取得
+
       const visibilityRaw = params.find(
         (p: any) => p.name === 'visibility_change'
       )?.value;
-
-      // 2. 値に応じた変換ロジック
       let visibilityDisplayName: string;
       switch (visibilityRaw) {
         case 'none':
@@ -236,10 +229,10 @@ export function writeLogsToSheet_(): void {
           visibilityDisplayName = '外部 → 内部';
           break;
         default:
-          visibilityDisplayName = visibilityRaw || '---'; // 想定外の値や空の場合
+          visibilityDisplayName = visibilityRaw || '---';
       }
-      // 変換した eventDisplayName を配列に入れる
-      allLogData.push([
+
+      const row = [
         timestamp,
         eventDisplayName,
         actorEmail,
@@ -249,27 +242,57 @@ export function writeLogsToSheet_(): void {
         owner,
         fileType,
         visibilityDisplayName,
-      ]);
+      ];
+
+      // イベント名によって振り分け
+      if (eventName === 'request_access') {
+        requestLogData.push(row);
+      } else {
+        auditLogData.push(row);
+      }
     });
   }
 
-  if (allLogData.length > 0) {
-    // 複数のファイルから読み込むため、最後に全体を時間順でソート
-    allLogData.sort(
-      (a, b) =>
-        new Date(a[0] as string).getTime() - new Date(b[0] as string).getTime()
+  // データ書き込み処理のヘルパー
+  const writeToSheet = (
+    targetSheet: GoogleAppsScript.Spreadsheet.Sheet,
+    data: (string | number)[][]
+  ) => {
+    const nowStr = Utilities.formatDate(
+      new Date(),
+      'JST',
+      'yyyy/MM/dd HH:mm:ss'
     );
 
-    sheet
-      .getRange(
-        sheet.getLastRow() + 1,
-        1,
-        allLogData.length,
-        allLogData[0].length
-      )
-      .setValues(allLogData);
-    console.log(`合計 ${allLogData.length} 件のログをシートに書き込みました。`);
-  } else {
-    console.log('書き込むデータが見つかりませんでした。');
-  }
+    if (data.length > 0) {
+      // データがある場合はソートして書き込み
+      data.sort(
+        (a, b) =>
+          new Date(a[0] as string).getTime() -
+          new Date(b[0] as string).getTime()
+      );
+      targetSheet
+        .getRange(targetSheet.getLastRow() + 1, 1, data.length, data[0].length)
+        .setValues(data);
+      console.log(`${targetSheet.getName()}: ${data.length} 件書き込み完了`);
+    } else {
+      // データが0件の場合の処理
+      const message = '対象期間内に該当するレコードはありませんでした。';
+      targetSheet.appendRow([nowStr, message]);
+
+      // メッセージ行を少し目立たせる（任意）
+      targetSheet
+        .getRange(targetSheet.getLastRow(), 1, 1, 2)
+        .setFontColor('#666666')
+        .setFontStyle('italic');
+
+      console.log(
+        `${targetSheet.getName()}: 対象データなし（通知メッセージを記録）`
+      );
+    }
+  };
+
+  // 実行
+  writeToSheet(auditSheet, auditLogData);
+  writeToSheet(requestSheet, requestLogData);
 }
