@@ -15,7 +15,11 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { setupQueue_, runNextArchiving_ } from './folderArchiver';
+import { runReportGeneration_ } from './folderReportGenerator';
 
+function runReportGeneration() {
+  runReportGeneration_();
+}
 function setupQueue() {
   setupQueue_();
 }

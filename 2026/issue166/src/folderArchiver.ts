@@ -31,8 +31,12 @@ export class FolderArchiver {
 
   private readonly MAX_RETRIES = 3;
   private readonly SLEEP_MS = 500;
+  // 親フォルダの名前を使い回すためのキャッシュ
+  private folderNameCache: Map<string, string> = new Map();
+  // パス計算用のキャッシュ (ID -> フルパス)
+  private pathCache: Map<string, string> = new Map();
 
-  // --- 追加: テスト用フラグ ---
+  // テスト用フラグ
   // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
   private readonly limitToFirstPage: boolean = true;
 
@@ -124,27 +128,99 @@ export class FolderArchiver {
     let pageToken: string | undefined = undefined;
     let batchNumber = 1;
 
+    const driveName = this.getSharedDriveName(driveId);
+    // ルートとなる共有ドライブ自体のパスをキャッシュに登録
+    this.pathCache.set(driveId, driveName);
+
     do {
       const response: { files?: any[]; nextPageToken?: string } =
         this.fetchFolders(driveId, pageToken);
       const folders = response.files;
 
       if (folders && folders.length > 0) {
-        const fileName = this.generateFileName(driveId, batchNumber, date);
-        const content = JSON.stringify(folders, null, 2);
+        // 各フォルダに対してフルパスを構築
+        const enrichedFolders = folders.map(folder => {
+          const fullPath = this.resolveFullPath(folder);
+          return {
+            ...folder,
+            fullPath: fullPath,
+          };
+        });
+
+        const fileName = this.generateFileName(driveName, batchNumber, date);
+        const content = JSON.stringify(enrichedFolders, null, 2);
         saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
         batchNumber++;
       }
 
-      // --- 修正箇所: フラグ判定を追加 ---
-      if (this.limitToFirstPage) {
-        console.log('[Test Mode] 最初の1ページのみ保存して終了します。');
-        break;
-      }
-
+      if (this.limitToFirstPage) break;
       pageToken = response.nextPageToken;
       if (pageToken) Utilities.sleep(this.SLEEP_MS);
     } while (pageToken);
+
+    // 次のドライブ処理のためにキャッシュをクリア
+    this.pathCache.clear();
+  }
+
+  /**
+   * 親を遡ってフルパスを構築する
+   */
+  private resolveFullPath(folder: any): string {
+    const parentId =
+      folder.parents && folder.parents.length > 0 ? folder.parents[0] : null;
+
+    if (!parentId) return folder.name;
+
+    // 親のパスが既にキャッシュにあれば、それに自分の名前を足すだけ
+    if (this.pathCache.has(parentId)) {
+      const path = `${this.pathCache.get(parentId)} / ${folder.name}`;
+      this.pathCache.set(folder.id, path);
+      return path;
+    }
+
+    // キャッシュにない場合、親の名前を取得して再帰的に構築（基本は上から順に取得されるため、ここに来ることは稀）
+    try {
+      const parentFolder = DriveApp.getFolderById(parentId);
+      const parentPath = this.resolveFullPath({
+        id: parentId,
+        name: parentFolder.getName(),
+        parents: (parentFolder as any).getParents().hasNext()
+          ? [(parentFolder as any).getParents().next().getId()]
+          : [],
+      });
+      const path = `${parentPath} / ${folder.name}`;
+      this.pathCache.set(folder.id, path);
+      return path;
+    } catch (e) {
+      return `Unknown / ${folder.name}`;
+    }
+  }
+
+  /**
+   * 共有ドライブの名称を取得する
+   */
+  private getSharedDriveName(driveId: string): string {
+    try {
+      const driveApi = (globalThis as any).Drive;
+      const drive = driveApi.Drives.get(driveId);
+      // 特殊文字をファイル名に使えないため、一部置換
+      return drive.name.replace(/[\\/:*?"<>|]/g, '_');
+    } catch (e) {
+      console.warn(`Drive名取得失敗(ID: ${driveId}): ${e}`);
+      return `UnknownDrive_${driveId.slice(-4)}`;
+    }
+  }
+
+  // 引数を driveName に変更
+  private generateFileName(
+    driveName: string,
+    batch: number,
+    date: Date
+  ): string {
+    const dateStr = Utilities.formatDate(date, 'JST', 'yyyyMMdd_HHmm');
+    const part = batch.toString().padStart(3, '0');
+    // ファイル名: フォルダ構成_ドライブ名_yyyyMMdd_HHmm_p001.json
+    return `フォルダ構成_${driveName}_${dateStr}_p${part}.json`;
   }
 
   private fetchFolders(
@@ -176,13 +252,6 @@ export class FolderArchiver {
       }
     }
     throw new Error('API Max Retries Exceeded');
-  }
-
-  private generateFileName(driveId: string, batch: number, date: Date): string {
-    const dateStr = Utilities.formatDate(date, 'JST', 'yyyyMMdd_HHmm');
-    const suffix = driveId.slice(-4);
-    const part = batch.toString().padStart(3, '0');
-    return `folder_hierarchy_id-${suffix}_${dateStr}_p${part}.json`;
   }
 
   private updateStatus(): void {
