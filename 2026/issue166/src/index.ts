@@ -14,35 +14,11 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { executeExport_ } from './sharedFolderAudit';
-/**
- * 「内部共有のみ」フォルダの情報を出力
- */
-function outputInternalFolderPermissions() {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  const folderId = scriptProperties.getProperty('INTERNAL_FOLDER_ID');
+import { setupQueue_, runNextArchiving_ } from './folderArchiver';
 
-  if (!folderId) {
-    console.error("プロパティ 'INTERNAL_FOLDER_ID' が未設定です。");
-    return;
-  }
-
-  // 第2引数はシート名のプレフィックス（任意に変更可能）
-  executeExport_(folderId, '内部共有のみ', 1);
+function setupQueue() {
+  setupQueue_();
 }
-
-/**
- * 「外部共有あり」フォルダの情報を出力
- */
-function outputExternalFolderPermissions() {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  const folderId = scriptProperties.getProperty('EXTERNAL_FOLDER_ID');
-
-  if (!folderId) {
-    console.error("プロパティ 'EXTERNAL_FOLDER_ID' が未設定です。");
-    return;
-  }
-
-  // 第2引数はシート名のプレフィックス（任意に変更可能）
-  executeExport_(folderId, '外部共有あり', 2);
+function runNextArchiving() {
+  runNextArchiving_();
 }
