@@ -81,6 +81,7 @@ function getEventDisplayName_(eventName: string): string {
     change_document_access_scope:
       'ドキュメントのリンク共有アクセスタイプの変更',
     unmovable_item_reparented: '移動できないドキュメントの親が変更されました',
+    publish_change: 'ドライブの公開ステータスの変更',
   };
   return eventMap[eventName] || eventName;
 }
@@ -116,6 +117,9 @@ export function writeLogsToSheet_(): void {
       '対象ユーザー',
       'ファイル名',
       'ファイルID',
+      'オーナー',
+      'ドキュメントタイプ',
+      '公開設定の変更',
     ];
     sheet.appendRow(header);
     sheet
@@ -126,19 +130,6 @@ export function writeLogsToSheet_(): void {
   }
 
   // https://developers.google.com/workspace/admin/reports/v1/appendix/activity/drive?hl=ja
-  /*const targetEvents = [
-    'request_access',
-    'shared_drive_membership_change',
-    'shared_drive_settings_change',
-    'change_user_access',
-    'change_user_access_hierarchy_reconciled',
-    'download',
-    'change_document_visibility_hierarchy_reconciled',
-    'change_document_visibility',
-    'change_document_access_scope',
-    'access_item_content',
-    'prefetch_item_content',
-  ];*/
   // 除外したいイベント名を指定する
   const excludedEvents = [
     'accept_suggestion', // 提案の承認
@@ -224,7 +215,29 @@ export function writeLogsToSheet_(): void {
         params.find((p: any) => p.name === 'doc_id')?.value || '---';
       const targetUser =
         params.find((p: any) => p.name === 'target_user')?.value || '---';
+      const owner = params.find((p: any) => p.name === 'owner')?.value || '---';
+      const fileType =
+        params.find((p: any) => p.name === 'doc_type')?.value || '---';
+      // 1. 公開設定の変更パラメータを取得
+      const visibilityRaw = params.find(
+        (p: any) => p.name === 'visibility_change'
+      )?.value;
 
+      // 2. 値に応じた変換ロジック
+      let visibilityDisplayName: string;
+      switch (visibilityRaw) {
+        case 'none':
+          visibilityDisplayName = '---';
+          break;
+        case 'external':
+          visibilityDisplayName = '内部 → 外部';
+          break;
+        case 'internal':
+          visibilityDisplayName = '外部 → 内部';
+          break;
+        default:
+          visibilityDisplayName = visibilityRaw || '---'; // 想定外の値や空の場合
+      }
       // 変換した eventDisplayName を配列に入れる
       allLogData.push([
         timestamp,
@@ -233,6 +246,9 @@ export function writeLogsToSheet_(): void {
         targetUser,
         fileName,
         fileId,
+        owner,
+        fileType,
+        visibilityDisplayName,
       ]);
     });
   }
