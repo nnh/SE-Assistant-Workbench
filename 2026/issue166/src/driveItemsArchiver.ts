@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 /**
- * FolderArchiver.ts
+ * DriveItemsArchiver.ts
  * 共有ドライブのフォルダ階層を抽出し、JSONとして保存。
  */
 
-export class FolderArchiver {
+export class DriveItemsArchiver {
   private readonly PROP_SAVE_DEST = 'SAVE_DESTINATION_FOLDER_ID';
   private readonly PROP_TARGET_DRIVES = 'TARGET_SHARED_DRIVE_IDS';
   private readonly PROP_TODO = 'TODO_DRIVE_IDS';
@@ -31,8 +31,6 @@ export class FolderArchiver {
 
   private readonly MAX_RETRIES = 3;
   private readonly SLEEP_MS = 500;
-  // 親フォルダの名前を使い回すためのキャッシュ
-  private folderNameCache: Map<string, string> = new Map();
   // パス計算用のキャッシュ (ID -> フルパス)
   private pathCache: Map<string, string> = new Map();
 
@@ -54,8 +52,8 @@ export class FolderArchiver {
       'SET_DRIVE_ID_1,SET_DRIVE_ID_2'
     );
 
-    const todoRaw = props.getProperty(this.PROP_TODO) || '';
-    const doneRaw = props.getProperty(this.PROP_DONE) || '';
+    const todoRaw: string = props.getProperty(this.PROP_TODO) || '';
+    const doneRaw: string = props.getProperty(this.PROP_DONE) || '';
 
     this.todoDriveIds = todoRaw
       ? todoRaw
@@ -127,28 +125,32 @@ export class FolderArchiver {
   ): void {
     let pageToken: string | undefined = undefined;
     let batchNumber = 1;
-
     const driveName = this.getSharedDriveName(driveId);
-    // ルートとなる共有ドライブ自体のパスをキャッシュに登録
     this.pathCache.set(driveId, driveName);
 
     do {
       const response: { files?: any[]; nextPageToken?: string } =
-        this.fetchFolders(driveId, pageToken);
-      const folders = response.files;
+        this.fetchItems(driveId, pageToken);
+      const items = response.files;
 
-      if (folders && folders.length > 0) {
-        // 各フォルダに対してフルパスを構築
-        const enrichedFolders = folders.map(folder => {
-          const fullPath = this.resolveFullPath(folder);
+      if (items && items.length > 0) {
+        const enrichedItems = items.map(item => {
+          const fullPath = this.resolveFullPath(item);
+
+          const type =
+            item.mimeType === 'application/vnd.google-apps.folder'
+              ? 'フォルダ'
+              : 'ファイル';
+
           return {
-            ...folder,
+            ...item,
             fullPath: fullPath,
+            itemType: type,
           };
         });
 
         const fileName = this.generateFileName(driveName, batchNumber, date);
-        const content = JSON.stringify(enrichedFolders, null, 2);
+        const content = JSON.stringify(enrichedItems, null, 2);
         saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
         batchNumber++;
       }
@@ -158,8 +160,47 @@ export class FolderArchiver {
       if (pageToken) Utilities.sleep(this.SLEEP_MS);
     } while (pageToken);
 
-    // 次のドライブ処理のためにキャッシュをクリア
     this.pathCache.clear();
+  }
+
+  private fetchItems(
+    driveId: string,
+    pageToken?: string
+  ): { files?: any[]; nextPageToken?: string } {
+    let retryCount = 0;
+    const optionalArgs: {
+      pageSize: number;
+      q: string;
+      supportsAllDrives: boolean;
+      includeItemsFromAllDrives: boolean;
+      corpora: string;
+      driveId: string;
+      fields: string;
+      pageToken: string | undefined;
+    } = {
+      pageSize: 1000,
+      q: 'trashed = false',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'drive',
+      driveId: driveId,
+      fields: 'nextPageToken, files(id, name, parents, createdTime, mimeType)',
+      pageToken: pageToken,
+    };
+
+    while (retryCount < this.MAX_RETRIES) {
+      try {
+        const driveApi = (globalThis as any).Drive;
+        const result = driveApi.Files.list(optionalArgs);
+        if (!result) throw new Error('API response is null');
+        return result;
+      } catch (e) {
+        retryCount++;
+        if (retryCount >= this.MAX_RETRIES) throw e;
+        Utilities.sleep(10000);
+      }
+    }
+    throw new Error('API Max Retries Exceeded');
   }
 
   /**
@@ -223,37 +264,6 @@ export class FolderArchiver {
     return `フォルダ構成_${driveName}_${dateStr}_p${part}.json`;
   }
 
-  private fetchFolders(
-    driveId: string,
-    pageToken?: string
-  ): { files?: any[]; nextPageToken?: string } {
-    let retryCount = 0;
-    const optionalArgs: any = {
-      pageSize: 1000,
-      q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      corpora: 'drive',
-      driveId: driveId,
-      fields: 'nextPageToken, files(id, name, parents, createdTime)',
-      pageToken: pageToken,
-    };
-
-    while (retryCount < this.MAX_RETRIES) {
-      try {
-        const driveApi = (globalThis as any).Drive;
-        const result = driveApi.Files.list(optionalArgs);
-        if (!result) throw new Error('API response is null');
-        return result;
-      } catch (e) {
-        retryCount++;
-        if (retryCount >= this.MAX_RETRIES) throw e;
-        Utilities.sleep(10000);
-      }
-    }
-    throw new Error('API Max Retries Exceeded');
-  }
-
   private updateStatus(): void {
     const props = PropertiesService.getScriptProperties();
     props.setProperties({
@@ -279,5 +289,5 @@ export class FolderArchiver {
   }
 }
 
-export const setupQueue_ = () => new FolderArchiver().initQueue();
-export const runNextArchiving_ = () => new FolderArchiver().executeNext();
+export const setupQueue_ = () => new DriveItemsArchiver().initQueue();
+export const runNextArchiving_ = () => new DriveItemsArchiver().executeNext();

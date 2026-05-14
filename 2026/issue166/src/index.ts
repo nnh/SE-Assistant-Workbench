@@ -14,15 +14,32 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { setupQueue_, runNextArchiving_ } from './folderArchiver';
-import { runReportGeneration_ } from './folderReportGenerator';
+import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
+import { runReportGeneration_ } from './driveItemsReportGenerator';
+import { debugFetchPermissions_ } from './permissionArchiver';
 
+function testGetFolderPermissions() {
+  debugFetchPermissions_('test_file_id_123');
+}
+/**
+ * 2. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
+ */
 function runReportGeneration() {
   runReportGeneration_();
 }
+/**
+ * 1. 共有ドライブのアイテムを取得し、JSONファイルとして保存する処理
+ */
+
+/**
+ * 1.1. 初期処理
+ */
 function setupQueue() {
   setupQueue_();
 }
+/**
+ * 1.2. 主処理
+ */
 function runNextArchiving() {
   runNextArchiving_();
 }

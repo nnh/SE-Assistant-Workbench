@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { FolderArchiver } from '../src/folderArchiver';
+import { DriveItemsArchiver } from '../src/driveItemsArchiver';
 
 // Google Apps Scriptのグローバルオブジェクトをモック化
 const mockGetProperty = jest.fn();
@@ -38,7 +38,7 @@ global.console = {
   error: jest.fn(),
 } as any;
 
-describe('FolderArchiver', () => {
+describe('DriveItemsArchiver', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -47,7 +47,7 @@ describe('FolderArchiver', () => {
     // getPropertyがすべてnullを返す（プロパティ未設定）状態をシミュレート
     mockGetProperty.mockReturnValue(null);
 
-    new FolderArchiver();
+    new DriveItemsArchiver();
 
     // 必要なキーがデフォルト値で作成されたか確認
     expect(mockSetProperty).toHaveBeenCalledWith(
@@ -68,7 +68,7 @@ describe('FolderArchiver', () => {
       return null;
     });
 
-    const archiver = new FolderArchiver();
+    const archiver = new DriveItemsArchiver();
 
     // validateAndThrowがprivateの場合は、外部から呼べるメソッド経由でテスト
     expect(() => {
@@ -84,7 +84,7 @@ describe('FolderArchiver', () => {
       return null;
     });
 
-    const archiver = new FolderArchiver();
+    const archiver = new DriveItemsArchiver();
     archiver.executeNext();
 
     expect(global.console.log).toHaveBeenCalledWith(
