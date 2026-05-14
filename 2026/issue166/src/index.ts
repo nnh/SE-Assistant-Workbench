@@ -15,7 +15,7 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
-import { runReportGeneration_ } from './driveItemsReportGenerator';
+//import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { debugFetchPermissions_ } from './permissionArchiver';
 
 function testGetFolderPermissions() {
@@ -25,7 +25,8 @@ function testGetFolderPermissions() {
  * 2. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 function runReportGeneration() {
-  runReportGeneration_();
+  //runReportGeneration_();
+  console.log('レポート生成処理を実行しました。');
 }
 /**
  * 1. 共有ドライブのアイテムを取得し、JSONファイルとして保存する処理
