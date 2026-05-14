@@ -34,12 +34,13 @@ function runReportGeneration() {
 /**
  * 1.1. 初期処理
  */
-function setupQueue() {
+function initializeSharedDriveArchivingQueue() {
   setupQueue_();
 }
 /**
  * 1.2. 主処理
+ * キューから未処理の共有ドライブを取り出し、アイテムと権限情報をJSONとして保存します。
  */
-function runNextArchiving() {
+function executeJsonArchivingProcess() {
   runNextArchiving_();
 }

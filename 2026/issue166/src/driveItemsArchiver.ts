@@ -53,7 +53,11 @@ export class DriveItemsArchiver {
     );
 
     const todoRaw: string = props.getProperty(this.PROP_TODO) || '';
-    const doneRaw: string = props.getProperty(this.PROP_DONE) || '';
+    let doneRaw: string = props.getProperty(this.PROP_DONE) || '';
+    // doneRawが"dummy"の場合は、初回実行後の状態なので、doneDriveIdsは空にする
+    if (doneRaw === 'dummy') {
+      doneRaw = '';
+    }
 
     this.todoDriveIds = todoRaw
       ? todoRaw
@@ -89,7 +93,7 @@ export class DriveItemsArchiver {
     this.validateAndThrow();
     const props = PropertiesService.getScriptProperties();
     props.setProperty(this.PROP_TODO, this.targetSharedDriveIdsRaw);
-    props.setProperty(this.PROP_DONE, 'dummy');
+    props.setProperty(this.PROP_DONE, 'dummy'); // 空だと他のプロパティを登録する際にエラーになる
     console.log('キューの初期化が完了しました。');
   }
 
