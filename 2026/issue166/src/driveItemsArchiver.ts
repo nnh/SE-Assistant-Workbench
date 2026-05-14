@@ -89,7 +89,7 @@ export class DriveItemsArchiver {
     this.validateAndThrow();
     const props = PropertiesService.getScriptProperties();
     props.setProperty(this.PROP_TODO, this.targetSharedDriveIdsRaw);
-    props.setProperty(this.PROP_DONE, '');
+    props.setProperty(this.PROP_DONE, 'dummy');
     console.log('キューの初期化が完了しました。');
   }
 
