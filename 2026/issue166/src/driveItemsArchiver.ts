@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 import * as Const from './const';
-import { DateUtils } from './utils';
+import { getFolderById_ } from './utils';
+import { FileUtils } from './fileUtils';
+import { DriveApiService, ListFilesOptions } from './driveApiService';
 /**
  * DriveItemsArchiver.ts
  * 共有ドライブのフォルダ階層を抽出し、JSONとして保存。
@@ -26,10 +28,11 @@ export class DriveItemsArchiver {
   private readonly PROP_TODO = Const.PROPERTY_KEYS.TODO_DRIVE_IDS;
   private readonly PROP_DONE = Const.PROPERTY_KEYS.DONE_DRIVE_IDS;
 
-  private saveFolderId: string;
   private targetSharedDriveIdsRaw: string;
   private todoDriveIds: string[];
   private doneDriveIds: string[];
+  private saveFolderId: string;
+  private saveFolder: GoogleAppsScript.Drive.Folder;
 
   private readonly MAX_RETRIES = 3;
   private readonly SLEEP_MS = 500;
@@ -43,11 +46,13 @@ export class DriveItemsArchiver {
   constructor() {
     const props = PropertiesService.getScriptProperties();
 
-    this.saveFolderId = this.getOrSetDefault(
+    const saveFolderId = this.getOrSetDefault(
       props,
       this.PROP_SAVE_DEST,
       'SET_YOUR_FOLDER_ID_HERE'
     );
+    this.saveFolder = getFolderById_(saveFolderId);
+    this.saveFolderId = saveFolderId;
     this.targetSharedDriveIdsRaw = this.getOrSetDefault(
       props,
       this.PROP_TARGET_DRIVES,
@@ -108,11 +113,10 @@ export class DriveItemsArchiver {
     }
 
     const currentDriveId = this.todoDriveIds.shift() as string;
-    const saveFolder = DriveApp.getFolderById(this.saveFolderId);
     const now = new Date();
 
     try {
-      this.processSingleDrive(currentDriveId, saveFolder, now);
+      this.processSingleDrive(currentDriveId, this.saveFolder, now);
       this.doneDriveIds.push(currentDriveId);
       this.updateStatus();
       console.log(`Successfully archived: ${currentDriveId}`);
@@ -133,12 +137,23 @@ export class DriveItemsArchiver {
     let batchNumber = 1;
     const driveName = this.getSharedDriveName(driveId);
     this.pathCache.set(driveId, driveName);
+    const options: ListFilesOptions = {
+      pageSize: 1000,
+      q: 'trashed = false',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'drive',
+      driveId: driveId,
+      fields:
+        'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
+      pageToken: pageToken,
+    };
 
     do {
       const response: {
         files?: Const.ArchivedItem[] | undefined;
         nextPageToken?: string;
-      } = this.fetchItems(driveId, pageToken);
+      } = DriveApiService.fetchFiles({ options, pageToken });
       const items: Const.ArchivedItem[] | undefined = response.files;
       if (!items) {
         console.warn(
@@ -151,7 +166,8 @@ export class DriveItemsArchiver {
         break;
       }
       const enrichedItems = items.map(item => {
-        const fullPath = this.resolveFullPath(item);
+        // 自分自身が含まれるパスではなく、存在場所（親フォルダのパス）を取得
+        const parentPath = this.resolveParentPath(item);
 
         const type =
           item.mimeType === Const.MIME_TYPES.FOLDER
@@ -160,12 +176,17 @@ export class DriveItemsArchiver {
 
         return {
           ...item,
-          fullPath: fullPath,
+          parentPath: parentPath, // これで「フォルダの場所」になります
           itemType: type,
         };
       });
 
-      const fileName = this.generateFileName(driveName, batchNumber, date);
+      const fileName = FileUtils.generateJsonFileName(
+        Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM,
+        driveName,
+        batchNumber,
+        date
+      );
       const content = JSON.stringify(enrichedItems, null, 2);
       saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
       batchNumber++;
@@ -177,7 +198,7 @@ export class DriveItemsArchiver {
 
     this.pathCache.clear();
   }
-
+  /*
   private fetchItems(
     driveId: string,
     pageToken?: string
@@ -199,7 +220,8 @@ export class DriveItemsArchiver {
       includeItemsFromAllDrives: true,
       corpora: 'drive',
       driveId: driveId,
-      fields: 'nextPageToken, files(id, name, parents, createdTime, mimeType)',
+      fields:
+        'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
       pageToken: pageToken,
     };
 
@@ -217,39 +239,49 @@ export class DriveItemsArchiver {
     }
     throw new Error('API Max Retries Exceeded');
   }
-
+*/
   /**
-   * 親を遡ってフルパスを構築する
+   * アイテムが存在する「親フォルダ」のフルパスを構築する
    */
-  private resolveFullPath(folder: any): string {
+  private resolveParentPath(folder: any): string {
     const parentId =
       folder.parents && folder.parents.length > 0 ? folder.parents[0] : null;
 
-    if (!parentId) return folder.name;
+    // 親がいない（ドライブ直下など）場合は空文字、またはドライブ名のみにする
+    if (!parentId) return '';
 
-    // 親のパスが既にキャッシュにあれば、それに自分の名前を足すだけ
+    // 親のパスが既にキャッシュにあればそれを返す
     if (this.pathCache.has(parentId)) {
-      const path = `${this.pathCache.get(parentId)} / ${folder.name}`;
-      this.pathCache.set(folder.id, path);
-      return path;
+      return this.pathCache.get(parentId) as string;
     }
 
-    // キャッシュにない場合、親の名前を取得して再帰的に構築（基本は上から順に取得されるため、ここに来ることは稀）
+    // キャッシュにない場合（再帰的に親を辿る）
     try {
       const parentFolder: GoogleAppsScript.Drive.Folder =
         DriveApp.getFolderById(parentId);
-      const parentPath = this.resolveFullPath({
+
+      // 親自身のフルパスを構築
+      const parentName = parentFolder.getName();
+      const grandParentId = parentFolder.getParents().hasNext()
+        ? parentFolder.getParents().next().getId()
+        : null;
+
+      // 再帰呼び出し：親の親のパス + 親の名前
+      const grandParentPath = this.resolveParentPath({
         id: parentId,
-        name: parentFolder.getName(),
-        parents: parentFolder.getParents().hasNext()
-          ? [parentFolder.getParents().next().getId()]
-          : [],
+        name: parentName,
+        parents: grandParentId ? [grandParentId] : [],
       });
-      const path = `${parentPath} / ${folder.name}`;
-      this.pathCache.set(folder.id, path);
-      return path;
+
+      const fullParentPath = grandParentPath
+        ? `${grandParentPath} / ${parentName}`
+        : parentName;
+
+      // キャッシュに保存
+      this.pathCache.set(parentId, fullParentPath);
+      return fullParentPath;
     } catch (e) {
-      return `Unknown / ${folder.name}`;
+      return 'Unknown';
     }
   }
 
@@ -261,23 +293,12 @@ export class DriveItemsArchiver {
       const driveApi = (globalThis as any).Drive;
       const drive = driveApi.Drives.get(driveId);
       // 特殊文字をファイル名に使えないため、一部置換
-      return drive.name.replace(/[\\/:*?"<>|]/g, '_');
+      const replaceDriveName = FileUtils.sanitizeFileName(drive.name);
+      return replaceDriveName;
     } catch (e) {
       console.warn(`Drive名取得失敗(ID: ${driveId}): ${e}`);
       return `UnknownDrive_${driveId.slice(-4)}`;
     }
-  }
-
-  // 引数を driveName に変更
-  private generateFileName(
-    driveName: string,
-    batch: number,
-    date: Date
-  ): string {
-    const dateStr = DateUtils.getFormattedDate(date, 'yyyyMMdd_HHmm');
-    const part = batch.toString().padStart(3, '0');
-    // ファイル名: フォルダ構成_ドライブ名_yyyyMMdd_HHmm_p001.json
-    return `${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}_${driveName}_${dateStr}_p${part}.json`;
   }
 
   private updateStatus(): void {

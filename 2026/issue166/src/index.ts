@@ -15,8 +15,14 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
-//import { runReportGeneration_ } from './driveItemsReportGenerator';
+import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { debugFetchPermissions_ } from './permissionArchiver';
+import { sharedDrivePolicyReportGenerator_ } from './sharedDrivePolicyReportGenerator';
+import * as Const from './const';
+
+function sharedDrivePolicyReportGenerator() {
+  sharedDrivePolicyReportGenerator_();
+}
 
 function testGetFolderPermissions() {
   debugFetchPermissions_('test_file_id_123');
@@ -25,8 +31,7 @@ function testGetFolderPermissions() {
  * 2. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 function runReportGeneration() {
-  //runReportGeneration_();
-  console.log('レポート生成処理を実行しました。');
+  runReportGeneration_(Const.SHARED_DRIVE_NAME.EXTERNAL);
 }
 /**
  * 1. 共有ドライブのアイテムを取得し、JSONファイルとして保存する処理

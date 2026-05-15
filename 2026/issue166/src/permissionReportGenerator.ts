@@ -13,24 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/**
- * DriveItemsReportGenerator.ts
- */
 import { BaseReport } from './baseReport';
 import * as Const from './const';
-class DriveItemsReportGenerator extends BaseReport {
+class PermissionReportGenerator extends BaseReport {
   constructor() {
     super();
   }
   public generateReport(targetDriveName: string): void {
-    const sheetName = `${targetDriveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+    const sheetName = `${targetDriveName}_フォルダ構成`;
+    /*const header = [
+      'ID',
+      'アイテム種別',
+      '親フォルダパス',
+      '名前',
+      '作成日時',
+      '更新日時',
+    ];
     const sheet: GoogleAppsScript.Spreadsheet.Sheet = this.getOutputSheet(
       this.outputSpreadsheet,
       sheetName,
-      Const.REPORT_HEADERS.DRIVE_ITEM as string[]
-    );
+      header
+    );*/
     const data: string[][] = this.getInputData(targetDriveName);
-    this.addDataToSheet(data, sheet);
+    console.log(data);
+    //this.addDataToSheet(data, sheet);
   }
 
   private getInputData(targetDriveName: string): string[][] {
@@ -48,6 +54,3 @@ class DriveItemsReportGenerator extends BaseReport {
     );
   }
 }
-
-export const runReportGeneration_ = (targetDriveName: string) =>
-  new DriveItemsReportGenerator().generateReport(targetDriveName);
