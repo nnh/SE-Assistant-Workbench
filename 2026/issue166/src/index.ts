@@ -17,11 +17,26 @@
 import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
 import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { debugFetchPermissions_ } from './permissionArchiver';
-import { sharedDrivePolicyReportGenerator_ } from './sharedDrivePolicyReportGenerator';
+import {
+  archiveSharedDrivePoliciesDriveGet_,
+  sharedDrivePolicyReportGenerator_,
+} from './sharedDrivePolicyReportGenerator';
 import * as Const from './const';
 
+/**
+ * 共有ドライブ自体の設定を取得
+ */
+// 共有ドライブ自体の設定をスプレッドシートへ出力する処理
 function sharedDrivePolicyReportGenerator() {
   sharedDrivePolicyReportGenerator_();
+}
+// 「共有ドライブのメンバー」を取得
+function dummy_() {
+  console.log('0');
+}
+// 「共有ドライブの設定」を取得
+function archiveSharedDrivePoliciesDriveGet() {
+  archiveSharedDrivePoliciesDriveGet_();
 }
 
 function testGetFolderPermissions() {

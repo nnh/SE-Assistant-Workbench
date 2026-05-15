@@ -70,6 +70,7 @@ export const OUTPUT_FILE_NAME = {
   PREFIX: {
     DRIVE_ITEM: 'フォルダ構成',
     PERMISSION: 'アクセス権限',
+    SHARED_DRIVE_POLICY: '共有ドライブ設定',
   },
 } as const;
 
