@@ -19,6 +19,7 @@ import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { debugFetchPermissions_ } from './permissionArchiver';
 import {
   archiveSharedDrivePoliciesDriveGet_,
+  archiveSharedDrivePoliciesPermissions_,
   sharedDrivePolicyReportGenerator_,
 } from './sharedDrivePolicyReportGenerator';
 import * as Const from './const';
@@ -31,8 +32,8 @@ function sharedDrivePolicyReportGenerator() {
   sharedDrivePolicyReportGenerator_();
 }
 // 「共有ドライブのメンバー」を取得
-function dummy_() {
-  console.log('0');
+function archiveSharedDrivePoliciesPermissions() {
+  archiveSharedDrivePoliciesPermissions_();
 }
 // 「共有ドライブの設定」を取得
 function archiveSharedDrivePoliciesDriveGet() {

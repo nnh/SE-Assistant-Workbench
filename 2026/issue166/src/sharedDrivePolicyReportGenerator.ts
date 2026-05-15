@@ -17,31 +17,35 @@ import { BaseReport } from './baseReport';
 import { DriveApiService } from './driveApiService';
 import * as Const from './const';
 import { FileUtils } from './fileUtils';
+import { PermissionArchiver } from './permissionArchiver';
 
 class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {
     super();
   }
-
-  /**
-   * 1. 【保存フェーズ】
-   * プロパティのドライブIDに基づき、APIからデータを取得してJSONとして保存する
-   */
-  public fetchAndSaveDriveGet(): void {
+  private getTargetDriveIds(): string[] {
     const props = PropertiesService.getScriptProperties();
     const driveIdsRaw: string =
       props.getProperty(Const.PROPERTY_KEYS.POLICY_REPORT_TARGET_DRIVE_IDS) ||
       '';
 
     if (!driveIdsRaw) {
-      console.warn('対象ドライブIDが設定されていません。');
-      return;
+      throw new Error(
+        '共有ドライブ設定レポートの対象ドライブIDが設定されていません。'
+      );
     }
 
-    const driveIds = driveIdsRaw
+    return driveIdsRaw
       .split(',')
       .map(id => id.trim())
       .filter(id => id !== '');
+  }
+  /**
+   * 1. 【保存フェーズ】
+   * プロパティのドライブIDに基づき、APIから共有ドライブの設定を取得してJSONとして保存する
+   */
+  public fetchAndSaveDriveGet(): void {
+    const driveIds: string[] = this.getTargetDriveIds();
 
     // データの取得
     const rawResults = driveIds.map(id => {
@@ -71,6 +75,26 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       MimeType.PLAIN_TEXT
     );
     console.log(`JSONを保存しました: ${fileName}`);
+  }
+  /**
+   * プロパティのドライブIDに基づき、APIからパーミッションを取得する
+   */
+  public fetchAndSavePermissions(): void {
+    const targetDriveIds: string[] = this.getTargetDriveIds();
+    const permissionArchiver = new PermissionArchiver();
+    const saveFolder = permissionArchiver.getSaveFolder();
+    targetDriveIds.forEach(driveId => {
+      const permissionsData = permissionArchiver.fetchPermissions(driveId);
+      const fileName = FileUtils.generateJsonFileName(
+        Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
+        driveId,
+        1
+      );
+      permissionArchiver.saveAsJsonFile(saveFolder, fileName, permissionsData);
+      console.log(
+        `Permissions JSON saved for drive ID ${driveId} as ${fileName}`
+      );
+    });
   }
 
   /**
@@ -159,5 +183,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
 
 export const archiveSharedDrivePoliciesDriveGet_ = () =>
   new SharedDrivePolicyReportGenerator().fetchAndSaveDriveGet();
+export const archiveSharedDrivePoliciesPermissions_ = () =>
+  new SharedDrivePolicyReportGenerator().fetchAndSavePermissions();
 export const sharedDrivePolicyReportGenerator_ = () =>
   new SharedDrivePolicyReportGenerator().generateReport();

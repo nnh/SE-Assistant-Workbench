@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-class PermissionArchiver {
+export class PermissionArchiver {
   private readonly PROP_JSON_FOLDER = 'SAVE_DESTINATION_FOLDER_ID';
   private jsonFolderId: string;
 
@@ -68,7 +68,7 @@ class PermissionArchiver {
     return jsonOutputFolder;
   }
   // JSONファイルとして保存するためのユーティリティ関数
-  private saveAsJsonFile(
+  public saveAsJsonFile(
     saveFolder: GoogleAppsScript.Drive.Folder,
     fileName: string,
     data: any
