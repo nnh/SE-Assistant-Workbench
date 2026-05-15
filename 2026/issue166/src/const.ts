@@ -21,6 +21,8 @@
 export const PROPERTY_KEYS = {
   // フォルダID関連
   JSON_FOLDER_ID: 'SAVE_DESTINATION_FOLDER_ID', // アーカイブJSONの保存先
+  POLICY_REPORT_JSON_FOLDER_ID: 'SAVE_DESTINATION_FOLDER_ID', // 共有ドライブ設定レポートのJSON保存先はアーカイブJSONと同じ
+  PERMISSION_JSON_FOLDER_ID: 'PERMISSION_SAVE_DESTINATION_FOLDER_ID', // アクセス権限JSONの保存先
 
   // レポート関連
   OUTPUT_SPREADSHEET_ID: 'OUTPUT_SPREADSHEET_ID', // レポート出力先のスプレッドシートID
@@ -69,7 +71,7 @@ export const SHARED_DRIVE_NAME = {
 export const OUTPUT_FILE_NAME = {
   PREFIX: {
     DRIVE_ITEM: 'フォルダ構成',
-    PERMISSION: 'アクセス権限',
+    PERMISSION: 'permission',
     SHARED_DRIVE_POLICY: '共有ドライブ設定',
   },
 } as const;

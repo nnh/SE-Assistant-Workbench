@@ -16,8 +16,8 @@
 import { BaseReport } from './baseReport';
 import * as Const from './const';
 export class PermissionReportGenerator extends BaseReport {
-  constructor() {
-    super();
+  constructor(jsonFolderKey: string, outputSpreadsheetKey: string) {
+    super(jsonFolderKey, outputSpreadsheetKey);
   }
   public generateReport(targetDriveName: string): void {
     const sheetName = `${targetDriveName}_フォルダ構成`;

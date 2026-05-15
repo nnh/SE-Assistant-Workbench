@@ -13,18 +13,109 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import * as Const from './const';
 export class PermissionArchiver {
-  private readonly PROP_JSON_FOLDER = 'SAVE_DESTINATION_FOLDER_ID';
   private jsonFolderId: string;
+  public jsonFolder: GoogleAppsScript.Drive.Folder;
+  private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
+  private workSheetName = '作業用_パーミッション未取得IDリスト';
 
   constructor() {
     const props = PropertiesService.getScriptProperties();
-    this.jsonFolderId = props.getProperty(this.PROP_JSON_FOLDER) || '';
-    if (!this.jsonFolderId) {
+
+    // インフラ準備
+    this.jsonFolderId =
+      props.getProperty(Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID) || '';
+    this.jsonFolder = this.getSaveFolder(this.jsonFolderId);
+
+    const outputSsId =
+      props.getProperty(Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID) || '';
+    this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
+  }
+  /**
+   *
+   * @returns
+   */
+  private getExistingPermissionFileNameSet(): Set<string> {
+    const fileNamePrefix = Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION;
+    const files = this.jsonFolder.getFiles();
+    const existingFileNameSet = new Set<string>();
+    while (files.hasNext()) {
+      const file = files.next();
+      if (file.getName().startsWith(`${fileNamePrefix}_`)) {
+        existingFileNameSet.add(file.getName());
+      }
+    }
+    return existingFileNameSet;
+  }
+  private getTargetIdsFromSpreadsheet(): string[][] {
+    const sheetName = `${Const.SHARED_DRIVE_NAME.EXTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+    const sheet = this.inputSpreadsheet.getSheetByName(sheetName);
+    const index = {
+      id: 0,
+      modifiedTime: 5,
+    };
+
+    if (!sheet) {
       throw new Error(
-        `プロパティ「${this.PROP_JSON_FOLDER}」に保存先フォルダIDが設定されていません。`
+        `スプレッドシートに「${sheetName}」シートが見つかりません。`
       );
     }
+    const data: string[][] = sheet.getDataRange().getValues();
+    // 1行目はヘッダーの想定なのでスキップ
+    const targetIds: string[][] = data
+      .slice(1)
+      .map(row => [row[index.id], row[index.modifiedTime]])
+      .filter(id => typeof id[0] === 'string' && typeof id[1] === 'string');
+    return targetIds;
+  }
+  public archivePermissionsForTargetIds(): void {
+    const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
+    if (!workSheet) {
+      throw new Error(
+        `スプレッドシートに「${this.workSheetName}」シートが見つかりません。`
+      );
+    }
+    workSheet.clear(); // 前回の内容をクリア
+    const targetIds: string[][] = this.getTargetIdsFromSpreadsheet();
+    const existingFileNameSet: Set<string> =
+      this.getExistingPermissionFileNameSet();
+    const outputIds: string[][] = [];
+
+    targetIds.forEach(([id, modifiedTime]) => {
+      // JSONファイルが存在しない場合は必ず取得対象とする
+      const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
+      if (!existingFileNameSet.has(fileName)) {
+        console.log(`新規取得対象: ${id}`);
+        outputIds.push([id]);
+        return;
+      }
+      const file = this.jsonFolder.getFilesByName(fileName).next();
+      const jsonLastUpdated = file.getLastUpdated();
+
+      // ファイルの更新日時がJSONより後の場合は取得対象とする
+      const fileLastUpdated = new Date(modifiedTime);
+      if (fileLastUpdated.getTime() > jsonLastUpdated.getTime()) {
+        console.log(`更新あり。再取得対象: ${id}`);
+        outputIds.push([id]);
+      } else {
+        console.log(`更新なし（スキップ）: ${id}`);
+      }
+    });
+    if (outputIds.length === 0) {
+      console.log('取得対象がありませんでした。');
+      return;
+    }
+    // 取得対象がある場合はスプレッドシートに出力
+    workSheet.getRange(1, 1, outputIds.length, 1).setValues(outputIds);
+  }
+  /**
+   * パーミッション取得が必要かどうかを判定し、必要であれば取得して保存する
+   * @param fileId 対象のファイル/フォルダID
+   * @param fileLastUpdated 対象ファイルの最終更新日時
+   */
+  public archiveIfUpdated(fileId: string, fileLastUpdated: Date): void {
+    console.log('0');
   }
   /**
    * Drive API V3 で詳細権限を取得
@@ -58,20 +149,20 @@ export class PermissionArchiver {
       };
     }
   }
-  public getSaveFolder(): GoogleAppsScript.Drive.Folder {
-    const jsonOutputFolder = DriveApp.getFolderById(this.jsonFolderId);
+  public getSaveFolder(folderId: string): GoogleAppsScript.Drive.Folder {
+    const jsonOutputFolder = DriveApp.getFolderById(folderId);
     if (!jsonOutputFolder) {
       throw new Error(
-        `プロパティ「${this.PROP_JSON_FOLDER}」に設定されたフォルダIDが無効です。`
+        `プロパティ「${folderId}」に設定されたフォルダIDが無効です。`
       );
     }
     return jsonOutputFolder;
   }
   // JSONファイルとして保存するためのユーティリティ関数
   public saveAsJsonFile(
-    saveFolder: GoogleAppsScript.Drive.Folder,
     fileName: string,
-    data: any
+    data: any,
+    saveFolder: GoogleAppsScript.Drive.Folder
   ): void {
     const content = JSON.stringify(data, null, 2);
     saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
@@ -81,15 +172,18 @@ export class PermissionArchiver {
     saveFolder: GoogleAppsScript.Drive.Folder
   ): void {
     const permissionsData = this.fetchPermissions(fileId);
-    const fileName = `permissions_${fileId}.json`;
-    this.saveAsJsonFile(saveFolder, fileName, permissionsData);
+    const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${fileId}.json`;
+    this.saveAsJsonFile(fileName, permissionsData, saveFolder);
   }
 }
+
 /**
  * デバッグ用エントリーポイント：単一IDの権限をJSON出力
  */
 export const debugFetchPermissions_ = (testId = 'YOUR_TEST_ID_HERE'): void => {
   const permissionArchiver = new PermissionArchiver();
-  const saveFolder = permissionArchiver.getSaveFolder();
-  permissionArchiver.fetchPermissionsAndSave(testId, saveFolder);
+  permissionArchiver.fetchPermissionsAndSave(
+    testId,
+    permissionArchiver.jsonFolder
+  );
 };

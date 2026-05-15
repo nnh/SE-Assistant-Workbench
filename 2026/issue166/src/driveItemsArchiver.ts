@@ -198,48 +198,6 @@ export class DriveItemsArchiver {
 
     this.pathCache.clear();
   }
-  /*
-  private fetchItems(
-    driveId: string,
-    pageToken?: string
-  ): { files?: Const.ArchivedItem[]; nextPageToken?: string } {
-    let retryCount = 0;
-    const optionalArgs: {
-      pageSize: number;
-      q: string;
-      supportsAllDrives: boolean;
-      includeItemsFromAllDrives: boolean;
-      corpora: string;
-      driveId: string;
-      fields: string;
-      pageToken: string | undefined;
-    } = {
-      pageSize: 1000,
-      q: 'trashed = false',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      corpora: 'drive',
-      driveId: driveId,
-      fields:
-        'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
-      pageToken: pageToken,
-    };
-
-    while (retryCount < this.MAX_RETRIES) {
-      try {
-        const driveApi = (globalThis as any).Drive;
-        const result = driveApi.Files.list(optionalArgs);
-        if (!result) throw new Error('API response is null');
-        return result;
-      } catch (e) {
-        retryCount++;
-        if (retryCount >= this.MAX_RETRIES) throw e;
-        Utilities.sleep(10000);
-      }
-    }
-    throw new Error('API Max Retries Exceeded');
-  }
-*/
   /**
    * アイテムが存在する「親フォルダ」のフルパスを構築する
    */

@@ -23,7 +23,10 @@ import { DateUtils } from './utils';
 
 class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {
-    super();
+    super(
+      Const.PROPERTY_KEYS.POLICY_REPORT_JSON_FOLDER_ID,
+      Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
+    );
   }
   private getTargetDriveIds(): string[] {
     const props = PropertiesService.getScriptProperties();
@@ -84,7 +87,6 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
   public fetchAndSavePermissions(): void {
     const targetDriveIds: string[] = this.getTargetDriveIds();
     const permissionArchiver = new PermissionArchiver();
-    const saveFolder = permissionArchiver.getSaveFolder();
     targetDriveIds.forEach(driveId => {
       const permissionsData = permissionArchiver.fetchPermissions(driveId);
       const fileName = FileUtils.generateJsonFileName(
@@ -92,7 +94,11 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
         driveId,
         1
       );
-      permissionArchiver.saveAsJsonFile(saveFolder, fileName, permissionsData);
+      permissionArchiver.saveAsJsonFile(
+        fileName,
+        permissionsData,
+        this.jsonFolder
+      );
       console.log(
         `Permissions JSON saved for drive ID ${driveId} as ${fileName}`
       );
@@ -106,11 +112,12 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
     const sheetName = '共有ドライブ自体の設定';
-    let sheet = this.outputSpreadsheet.getSheetByName(sheetName);
-    if (!sheet) sheet = this.outputSpreadsheet.insertSheet(sheetName);
-    sheet.clear();
+    const sheet = this.getOutputSheet(
+      this.outputSpreadsheet,
+      sheetName,
+      Const.REPORT_HEADERS.SHARED_DRIVE_POLICY as string[]
+    );
 
-    const headers = Const.REPORT_HEADERS.SHARED_DRIVE_POLICY;
     // 共有ドライブの設定
     const allRawData = this.fetchAndCombineJsonData<any>(
       Const.OUTPUT_FILE_NAME.PREFIX.SHARED_DRIVE_POLICY,
@@ -119,13 +126,21 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
     const targetDriveIds: string[] = this.getTargetDriveIds();
 
     // 共有ドライブのメンバー
-    const perGenerator = new PermissionReportGenerator();
+    const perGenerator = new PermissionReportGenerator(
+      Const.PROPERTY_KEYS.JSON_FOLDER_ID,
+      Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
+    );
+    const index = {
+      displayName: 2,
+      emailAddress: 4,
+      role: 3,
+    };
     const allPermissionsData = targetDriveIds.map(id => {
       const members: string[][] = perGenerator.getInputData(id);
       // 必要な要素だけ抽出して整形
       const res = members.map(member => [
         id,
-        `${member[2]}(${member[4]})：${member[3]}`,
+        `${member[index.displayName]}(${member[index.emailAddress]})：${member[index.role]}`,
       ]);
       return res;
     });
@@ -188,22 +203,17 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
         ]);
       });
     });
+    if (outputData.length === 0) {
+      console.log('出力するデータがありません。');
+      return;
+    }
     // 出力日時を最後の列に追加
     outputData.forEach(row => row.push(outputDate));
 
-    // 3. シートへの一括書き出し
-    if (outputData.length > 0) {
-      sheet
-        .getRange(1, 1, 1, headers.length)
-        .setValues([headers] as string[][])
-        .setFontWeight('bold');
-      sheet
-        .getRange(2, 1, outputData.length, headers.length)
-        .setValues(outputData);
-
-      sheet.setFrozenRows(1);
-      sheet.autoResizeColumns(1, headers.length);
-    }
+    this.addDataToSheet(outputData, sheet);
+    console.log(
+      `共有ドライブの設定レポートを生成しました。出力行数: ${outputData.length}`
+    );
   }
 }
 
