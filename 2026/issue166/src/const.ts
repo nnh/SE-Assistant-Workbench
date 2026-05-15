@@ -46,7 +46,7 @@ export const REPORT_HEADERS: {
     '作成日時',
     '更新日時',
   ],
-  SHARED_DRIVE_POLICY: ['ドライブID', 'ドライブ名', '設定'],
+  SHARED_DRIVE_POLICY: ['ドライブID', 'ドライブ名', '設定', '出力日時'],
 } as const;
 
 // MIME_TYPE
@@ -77,6 +77,7 @@ export const OUTPUT_FILE_NAME = {
 /**
  * アーカイブJSONの1アイテム（ファイルまたはフォルダ）の構造
  */
+// フォルダ構造
 export interface ArchivedItem {
   id: string;
   name: string;
@@ -86,4 +87,27 @@ export interface ArchivedItem {
   createdTime: string;
   parents: string[];
   modifiedTime: string;
+}
+// アクセス権限
+export interface PermissionResponse {
+  kind: string;
+  permissions: PermissionItem[];
+}
+// https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions?hl=ja#Permission
+export interface PermissionItem {
+  id: string;
+  displayName?: string;
+  type: string;
+  permissionDetails?: Array<{
+    permissionType?: string;
+    inheritedFrom?: string;
+    role?: string;
+    inherited: boolean;
+  }>;
+  emailAddress?: string;
+  role?: string;
+  allowFileDiscovery?: boolean;
+  domain?: string;
+  deleted?: boolean;
+  view?: string;
 }

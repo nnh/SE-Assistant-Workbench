@@ -15,7 +15,7 @@
  */
 import { BaseReport } from './baseReport';
 import * as Const from './const';
-class PermissionReportGenerator extends BaseReport {
+export class PermissionReportGenerator extends BaseReport {
   constructor() {
     super();
   }
@@ -39,18 +39,58 @@ class PermissionReportGenerator extends BaseReport {
     //this.addDataToSheet(data, sheet);
   }
 
-  private getInputData(targetDriveName: string): string[][] {
-    return this.getOutputDataFromJsons<Const.ArchivedItem>(
-      Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM,
-      targetDriveName,
-      item => [
-        item.id ? String(item.id) : '',
-        item.itemType ? String(item.itemType) : '',
-        item.parentPath ? String(item.parentPath) : '',
-        item.name ? String(item.name) : '',
-        item.createdTime ? String(item.createdTime) : '',
-        item.modifiedTime ? String(item.modifiedTime) : '',
-      ]
+  public getInputData(targetDriveName: string): string[][] {
+    // 1. JSONファイルをすべて読み込む
+    const rawDataList: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
+      Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
+      targetDriveName
     );
+    const rawData: Const.PermissionResponse[] = rawDataList
+      .map(file => this.loadJsonFile<Const.PermissionResponse>(file))
+      .filter(
+        Boolean as unknown as (
+          item: Const.PermissionResponse | null
+        ) => item is Const.PermissionResponse
+      ); // null を除外
+
+    const outputData: string[][] = [];
+
+    rawData.forEach(data => {
+      if (!data?.permissions) return; // response 自体や permissions がない場合をガード
+      data.permissions.forEach(item => {
+        if (!item?.permissionDetails) return;
+        const roleJp =
+          item.role === 'owner'
+            ? 'オーナー'
+            : item.role === 'organizer'
+              ? '管理者'
+              : item.role === 'fileOrganizer'
+                ? 'コンテンツ管理者'
+                : item.role === 'writer'
+                  ? '投稿者'
+                  : item.role === 'reader'
+                    ? '閲覧者'
+                    : item.role === 'commenter'
+                      ? '閲覧者（コメント可）'
+                      : (item.role ?? '');
+        item.permissionDetails.forEach(detail => {
+          outputData.push([
+            String(item.id ?? ''),
+            String(item.type ?? ''),
+            String(item.displayName ?? ''),
+            String(roleJp ?? item.role ?? ''),
+            String(item.emailAddress ?? ''),
+            item.deleted !== undefined && item.deleted !== null
+              ? String(item.deleted)
+              : '',
+            String(detail.permissionType ?? ''),
+            String(detail.inheritedFrom ?? ''),
+            String(detail.role ?? ''),
+            String(detail.inherited ?? ''),
+          ]);
+        });
+      });
+    });
+    return outputData;
   }
 }

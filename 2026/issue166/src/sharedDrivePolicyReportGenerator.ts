@@ -18,6 +18,8 @@ import { DriveApiService } from './driveApiService';
 import * as Const from './const';
 import { FileUtils } from './fileUtils';
 import { PermissionArchiver } from './permissionArchiver';
+import { PermissionReportGenerator } from './permissionReportGenerator';
+import { DateUtils } from './utils';
 
 class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {
@@ -102,17 +104,31 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
    * 保存されている最新のJSONファイルを読み込み、スプレッドシートに出力する
    */
   public generateReport(): void {
+    const outputDate = DateUtils.getNowStr();
     const sheetName = '共有ドライブ自体の設定';
     let sheet = this.outputSpreadsheet.getSheetByName(sheetName);
     if (!sheet) sheet = this.outputSpreadsheet.insertSheet(sheetName);
     sheet.clear();
 
     const headers = Const.REPORT_HEADERS.SHARED_DRIVE_POLICY;
-
+    // 共有ドライブの設定
     const allRawData = this.fetchAndCombineJsonData<any>(
       Const.OUTPUT_FILE_NAME.PREFIX.SHARED_DRIVE_POLICY,
       'ALL_TARGETS'
     );
+    const targetDriveIds: string[] = this.getTargetDriveIds();
+
+    // 共有ドライブのメンバー
+    const perGenerator = new PermissionReportGenerator();
+    const allPermissionsData = targetDriveIds.map(id => {
+      const members: string[][] = perGenerator.getInputData(id);
+      // 必要な要素だけ抽出して整形
+      const res = members.map(member => [
+        id,
+        `${member[2]}(${member[4]})：${member[3]}`,
+      ]);
+      return res;
+    });
 
     // 2. 独自のデータ整形ロジック（1要素 -> 複数行への展開）
     const outputData: string[][] = [];
@@ -122,6 +138,14 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       if (drive.error) {
         outputData.push([drive.id, drive.name, `取得失敗: ${drive.error}`]);
         return;
+      }
+      const permission = allPermissionsData.find(p => p[0][0] === drive.id);
+      if (permission) {
+        permission.forEach(p => {
+          outputData.push([p[0], drive.name, p[1]]);
+        });
+      } else {
+        outputData.push([drive.id, drive.name, 'メンバー情報の取得に失敗']);
       }
 
       const res = drive.restrictions;
@@ -164,6 +188,8 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
         ]);
       });
     });
+    // 出力日時を最後の列に追加
+    outputData.forEach(row => row.push(outputDate));
 
     // 3. シートへの一括書き出し
     if (outputData.length > 0) {
