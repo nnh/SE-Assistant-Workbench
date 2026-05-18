@@ -61,25 +61,26 @@ function fetchPermissionsAndSaveForTargetIds() {
 }
 
 /**
- * 2. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
+ * 1. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
+ */
+
+/**
+ * 1.3. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 function runReportGeneration() {
   runReportGeneration_(Const.SHARED_DRIVE_NAME.EXTERNAL);
 }
-/**
- * 1. 共有ドライブのアイテムを取得し、JSONファイルとして保存する処理
- */
 
-/**
- * 1.1. 初期処理
- */
-function initializeSharedDriveArchivingQueue() {
-  setupQueue_();
-}
 /**
  * 1.2. 主処理
  * キューから未処理の共有ドライブを取り出し、アイテムと権限情報をJSONとして保存します。
  */
 function executeJsonArchivingProcess() {
   runNextArchiving_();
+}
+/**
+ * 1.1. 初期処理
+ */
+function initializeSharedDriveArchivingQueue() {
+  setupQueue_();
 }

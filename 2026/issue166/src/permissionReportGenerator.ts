@@ -80,7 +80,7 @@ export class PermissionReportGenerator extends BaseReport {
    * 処理対象とするJSONファイルを取得します。
    * * @description
    * JSONファイルの保存先フォルダ内から、今日更新されたJSONファイルを対象とします。
-   * ファイル名の形式は「permission_YYYYMMDD_HHMMSS.json」とし、拡張子がJSONであることを条件に抽出します。
+   * ファイル名の形式は「permission_${FileId}.json」とし、拡張子がJSONであることを条件に抽出します。
    * 取得したファイルは、パーミッション情報の出力に使用します。
    * * @private
    * @returns 今日更新されたJSONファイルの配列
@@ -112,7 +112,23 @@ export class PermissionReportGenerator extends BaseReport {
         targetJsonList.push(file);
       }
     }
-    return targetJsonList;
+    // 同じファイル名のファイルが複数存在する場合は更新日時が最新の1ファイルだけ残す
+    const uniqueFilesMap = new Map<string, GoogleAppsScript.Drive.File>();
+    targetJsonList.forEach(file => {
+      const fileName = file.getName();
+      if (!uniqueFilesMap.has(fileName)) {
+        uniqueFilesMap.set(fileName, file);
+      } else {
+        const existingFile = uniqueFilesMap.get(fileName);
+        if (
+          existingFile &&
+          file.getLastUpdated() > existingFile.getLastUpdated()
+        ) {
+          uniqueFilesMap.set(fileName, file);
+        }
+      }
+    });
+    return Array.from(uniqueFilesMap.values());
   }
   private setRoleJapanese(role: string): string {
     const roleJp =

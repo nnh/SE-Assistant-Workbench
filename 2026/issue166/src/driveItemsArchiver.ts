@@ -41,7 +41,7 @@ export class DriveItemsArchiver {
 
   // テスト用フラグ
   // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
-  private readonly limitToFirstPage: boolean = true;
+  private readonly limitToFirstPage: boolean = false;
 
   constructor() {
     const props = PropertiesService.getScriptProperties();

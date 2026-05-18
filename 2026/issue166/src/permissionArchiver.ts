@@ -159,12 +159,20 @@ export class PermissionArchiver {
         const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
         this.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
         // 処理が成功したIDはシートから削除
-        workSheet.deleteRow(index + 1); // indexは0ベース、行番号は1ベースのため+1
+        workSheet.getRange(index + 1, 1).clearContent(); // IDをクリア
       } catch (e) {
         console.error(`ID: ${id} の処理中にエラーが発生しました: ${e}`);
         // エラーが発生しても処理を続行するため、ここでは何もしない
       }
     });
+    const outputValues: string[][] = workSheet
+      .getDataRange()
+      .getValues()
+      .filter((row: string[]) => row[0] !== ''); // 空の行を除外
+    if (outputValues.length > 0) {
+      workSheet.clear(); // シートをクリア
+      workSheet.getRange(1, 1, outputValues.length, 1).setValues(outputValues); // 残ったIDを上に詰める
+    }
   }
   /**
    * Drive API V3 で詳細権限を取得
