@@ -18,7 +18,6 @@ import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
 import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { runPermissionReportGeneration_ } from './permissionReportGenerator';
 import {
-  debugFetchPermissions_,
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
 } from './permissionArchiver';
@@ -27,23 +26,24 @@ import {
   archiveSharedDrivePoliciesPermissions_,
   sharedDrivePolicyReportGenerator_,
 } from './sharedDrivePolicyReportGenerator';
+import { runDrivePermissionMatrixReportGeneration_ } from './driveDataMerger';
 import * as Const from './const';
 
+function runDrivePermissionMatrixReportGeneration() {
+  runDrivePermissionMatrixReportGeneration_();
+}
+
 /**
- * 共有ドライブ自体の設定を取得
+ * 共有ドライブ自体の設定を保存・レポート出力する一連の処理
  */
-// 共有ドライブ自体の設定をスプレッドシートへ出力する処理
-function sharedDrivePolicyReportGenerator() {
+function runSharedDrivePolicyReportGeneration() {
+  // 設定を取得
+  archiveSharedDrivePoliciesDriveGet_();
+  archiveSharedDrivePoliciesPermissions_();
+  // スプレッドシートに出力
   sharedDrivePolicyReportGenerator_();
 }
-// 「共有ドライブのメンバー」を取得
-function archiveSharedDrivePoliciesPermissions() {
-  archiveSharedDrivePoliciesPermissions_();
-}
-// 「共有ドライブの設定」を取得
-function archiveSharedDrivePoliciesDriveGet() {
-  archiveSharedDrivePoliciesDriveGet_();
-}
+
 /**
  * パーミッション情報取得
  */
@@ -60,9 +60,6 @@ function fetchPermissionsAndSaveForTargetIds() {
   fetchPermissionsAndSaveForTargetIds_();
 }
 
-function testGetFolderPermissions() {
-  debugFetchPermissions_('test_file_id_123');
-}
 /**
  * 2. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */

@@ -20,22 +20,13 @@ export class PermissionReportGenerator extends BaseReport {
     super(jsonFolderKey, outputSpreadsheetKey);
   }
   public generateReport(): void {
-    const sheetName = `権限一覧`;
+    const sheetName = Const.SHEET_NAME.PERMISSION;
     const ss: GoogleAppsScript.Spreadsheet.Spreadsheet = this.outputSpreadsheet;
     let sheet: GoogleAppsScript.Spreadsheet.Sheet | null =
       ss.getSheetByName(sheetName);
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
     }
-    /*const header = [
-      'ID',
-      'アイテム種別',
-      '親フォルダパス',
-      '名前',
-      '作成日時',
-      '更新日時',
-    ];
-    );*/
     const data: GoogleAppsScript.Drive.File[] = this.getInputData();
     const updateIds: Set<string> = new Set();
     const outputData: string[][] = this.editOutputData(data);
@@ -45,12 +36,13 @@ export class PermissionReportGenerator extends BaseReport {
         .replace('.json', '');
       fileId && updateIds.add(fileId);
       const nameAndEmailAddress =
-        row[Const.INDEX.PERMISSION_ARRAY.TYPE] === 'anyoneWithLink'
+        row[Const.INDEX.PERMISSION_ARRAY.ID] === 'anyoneWithLink'
           ? 'リンクを知っている全員'
           : row[Const.INDEX.PERMISSION_ARRAY.TYPE] === 'domain'
             ? row[Const.INDEX.PERMISSION_ARRAY.DISPLAY_NAME]
-            : `${row[Const.INDEX.PERMISSION_ARRAY.DISPLAY_NAME]}(${row[Const.INDEX.PERMISSION_ARRAY.EMAIL_ADDRESS]})`;
-      //const type = row[Const.INDEX.PERMISSION_ARRAY.TYPE];
+            : row[Const.INDEX.PERMISSION_ARRAY.DELETED] === 'true'
+              ? '【削除されたアカウント】'
+              : `${row[Const.INDEX.PERMISSION_ARRAY.DISPLAY_NAME]}(${row[Const.INDEX.PERMISSION_ARRAY.EMAIL_ADDRESS]})`;
       const role = this.setRoleJapanese(
         row[Const.INDEX.PERMISSION_ARRAY.DETAIL_ROLE] ?? ''
       );
@@ -58,17 +50,7 @@ export class PermissionReportGenerator extends BaseReport {
         role !== row[Const.INDEX.PERMISSION_ARRAY.ROLE]
           ? `${role}（${row[Const.INDEX.PERMISSION_ARRAY.ROLE]}）`
           : role; // role と displayName が異なる場合は両方表示する
-      const deleted =
-        row[Const.INDEX.PERMISSION_ARRAY.DELETED] === 'true'
-          ? '【アカウント削除済み】'
-          : ''; // deleted が true の場合は「削除済み」、そうでない場合は「有効」とする
-      const nameAndEmailAndRole = `${deleted}${nameAndEmailAddress}：${outputRole}`; // 名前とメールアドレスとロールを結合して1列にする
-      /*const permissionType =
-        row[Const.INDEX.PERMISSION_ARRAY.DETAIL_PERMISSION_TYPE] === 'file'
-          ? 'ファイル固有の権限'
-          : row[Const.INDEX.PERMISSION_ARRAY.DETAIL_PERMISSION_TYPE] === 'member' && row[Const.INDEX.PERMISSION_ARRAY.DETAIL_INHERITED_FROM] !== ''
-            ? 'ドライブ全体の権限'
-            : row[Const.INDEX.PERMISSION_ARRAY.DETAIL_PERMISSION_TYPE];*/
+      const nameAndEmailAndRole = `${nameAndEmailAddress}：${outputRole}`; // 名前とメールアドレスとロールを結合して1列にする
       const inheritedFrom =
         row[Const.INDEX.PERMISSION_ARRAY.INHERITED] === 'true'
           ? `（上位フォルダから継承）`
@@ -83,7 +65,7 @@ export class PermissionReportGenerator extends BaseReport {
       saveValues.length > 0 && saveValues[0].some(cell => cell !== '');
 
     const filteredValues = hasData
-      ? saveValues.filter(row => {
+      ? saveValues.slice(1).filter(row => {
           const fileId = row[0];
           return !updateIds.has(fileId);
         })

@@ -52,6 +52,12 @@ export const REPORT_HEADERS: {
   SHARED_DRIVE_POLICY: ['ドライブID', 'ドライブ名', '設定', '出力日時'],
   PERMISSION: ['アイテムID', '権限', '継承'],
 } as const;
+// シート名
+export const SHEET_NAME = {
+  PERMISSION: '権限一覧',
+  PERMISSION_ARCHIVE_WORK: '作業用_パーミッション未取得IDリスト',
+  SHARED_DRIVE: '共有ドライブ自体の設定',
+} as const;
 
 // MIME_TYPE
 export const MIME_TYPES = {
@@ -92,6 +98,11 @@ export const INDEX = {
     DETAIL_INHERITED_FROM: 8,
     DETAIL_ROLE: 9,
     INHERITED: 10,
+  },
+  MERGE_DRIVE_PERMISSION: {
+    DRIVE_SHEET_KEY: 0,
+    PERMISSION_SHEET_KEY: 0,
+    PERMISSION_PERMISSION: 1,
   },
 } as const;
 

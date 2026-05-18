@@ -18,7 +18,7 @@ export class PermissionArchiver {
   private jsonFolderId: string;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
   private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
-  private workSheetName = '作業用_パーミッション未取得IDリスト';
+  private workSheetName = Const.SHEET_NAME.PERMISSION_ARCHIVE_WORK;
 
   constructor() {
     const props = PropertiesService.getScriptProperties();
@@ -152,7 +152,7 @@ export class PermissionArchiver {
     const targetIds: string[][] = workSheet
       .getRange(1, 1, lastRow, 1)
       .getValues() as string[][];
-    const idsToProcess = targetIds.slice(0, 10); // 一度に処理する件数を10件に制限
+    const idsToProcess = targetIds.slice(0, 100); // 一度に処理する件数を100件に制限
     idsToProcess.forEach(([id], index) => {
       try {
         const permissionsData = this.fetchPermissions(id);
@@ -226,16 +226,6 @@ export class PermissionArchiver {
   }
 }
 
-/**
- * デバッグ用エントリーポイント：単一IDの権限をJSON出力
- */
-export const debugFetchPermissions_ = (testId = 'YOUR_TEST_ID_HERE'): void => {
-  const permissionArchiver = new PermissionArchiver();
-  permissionArchiver.fetchPermissionsAndSave(
-    testId,
-    permissionArchiver.jsonFolder
-  );
-};
 export const archivePermissionsForTargetIds_ = (): void => {
   const permissionArchiver = new PermissionArchiver();
   permissionArchiver.archivePermissionsForTargetIds();

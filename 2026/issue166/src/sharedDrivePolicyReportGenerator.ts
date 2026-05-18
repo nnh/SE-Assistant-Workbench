@@ -130,7 +130,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
   }
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
-    const sheetName = '共有ドライブ自体の設定';
+    const sheetName = Const.SHEET_NAME.SHARED_DRIVE;
     const sheet = this.getOutputSheet(
       this.outputSpreadsheet,
       sheetName,
