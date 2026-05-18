@@ -33,8 +33,13 @@ export class PermissionArchiver {
     this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
   }
   /**
-   *
-   * @returns
+   * 既存のJSONファイルが存在するか確認し、ファイル名のセットを取得します。
+   * * @description
+   * JSONファイルが存在しない場合は新規取得対象、存在する場合はスプレッドシートの更新日時が
+   * JSONファイルの更新日時より新しい場合に再取得対象とする判定のために、
+   * すでにフォルダー内に存在する対象ファイルの名称一覧を収集します。
+   * * @private
+   * @returns {Set<string>} 既存のJSONファイル名のセット
    */
   private getExistingPermissionFileNameSet(): Set<string> {
     const fileNamePrefix = Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION;
@@ -48,6 +53,13 @@ export class PermissionArchiver {
     }
     return existingFileNameSet;
   }
+  /**
+   * フォルダ構成シートからパーミッション取得対象のIDを取得します。
+   * * @description
+   * 指定されたシートからIDと最終更新日時を取得し、取得対象のIDを抽出します。
+   * * @private
+   * @returns {string[][]} 取得対象のIDと最終更新日時の配列
+   */
   private getTargetIdsFromSpreadsheet(): string[][] {
     const sheetName = `${Const.SHARED_DRIVE_NAME.EXTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
     const sheet = this.inputSpreadsheet.getSheetByName(sheetName);
@@ -69,6 +81,13 @@ export class PermissionArchiver {
       .filter(id => typeof id[0] === 'string' && typeof id[1] === 'string');
     return targetIds;
   }
+  /**
+   * パーミッション取得対象のIDをスプレッドシートに出力します。
+   * * @description
+   * 取得対象のIDが存在する場合は、指定されたシートに出力します。
+   * 指定シート名は「作業用_パーミッション未取得IDリスト」とし、前回の内容はクリアしてから出力します。
+   * * @public
+   */
   public archivePermissionsForTargetIds(): void {
     const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
     if (!workSheet) {
@@ -110,12 +129,42 @@ export class PermissionArchiver {
     workSheet.getRange(1, 1, outputIds.length, 1).setValues(outputIds);
   }
   /**
-   * パーミッション取得が必要かどうかを判定し、必要であれば取得して保存する
-   * @param fileId 対象のファイル/フォルダID
-   * @param fileLastUpdated 対象ファイルの最終更新日時
+   * 作業用_パーミッション未取得IDリストシートからIDを取得し、パーミッション情報をJSONファイルとして保存します。
+   * * @description
+   * 作業用_パーミッション未取得IDリストシートからIDを取得し、Drive APIを使用して各IDのパーミッション情報を取得します。
+   * 作業用_パーミッション未取得IDリストシートの最後の行から1行目に向かってループを回し、IDを取得していきます。
+   * JSONファイルを取得したら、そのIDをシートから削除していきます。一度の処理につき、１０件まで取得することとします。
+   * 取得した情報はJSONファイルとして保存します。ファイル名は「permission_{ID}.json」とし、保存先はプロパティで指定されたフォルダとします。
+   * * @public
    */
-  public archiveIfUpdated(fileId: string, fileLastUpdated: Date): void {
-    console.log('0');
+  public fetchPermissionsAndSaveForTargetIds(): void {
+    const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
+    if (!workSheet) {
+      throw new Error(
+        `スプレッドシートに「${this.workSheetName}」シートが見つかりません。`
+      );
+    }
+    const lastRow = workSheet.getLastRow();
+    if (lastRow === 0) {
+      console.log('取得対象がありませんでした。');
+      return;
+    }
+    const targetIds: string[][] = workSheet
+      .getRange(1, 1, lastRow, 1)
+      .getValues() as string[][];
+    const idsToProcess = targetIds.slice(0, 10); // 一度に処理する件数を10件に制限
+    idsToProcess.forEach(([id], index) => {
+      try {
+        const permissionsData = this.fetchPermissions(id);
+        const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
+        this.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
+        // 処理が成功したIDはシートから削除
+        workSheet.deleteRow(index + 1); // indexは0ベース、行番号は1ベースのため+1
+      } catch (e) {
+        console.error(`ID: ${id} の処理中にエラーが発生しました: ${e}`);
+        // エラーが発生しても処理を続行するため、ここでは何もしない
+      }
+    });
   }
   /**
    * Drive API V3 で詳細権限を取得
@@ -186,4 +235,12 @@ export const debugFetchPermissions_ = (testId = 'YOUR_TEST_ID_HERE'): void => {
     testId,
     permissionArchiver.jsonFolder
   );
+};
+export const archivePermissionsForTargetIds_ = (): void => {
+  const permissionArchiver = new PermissionArchiver();
+  permissionArchiver.archivePermissionsForTargetIds();
+};
+export const fetchPermissionsAndSaveForTargetIds_ = (): void => {
+  const permissionArchiver = new PermissionArchiver();
+  permissionArchiver.fetchPermissionsAndSaveForTargetIds();
 };

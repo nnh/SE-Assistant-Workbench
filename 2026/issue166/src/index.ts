@@ -16,7 +16,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
 import { runReportGeneration_ } from './driveItemsReportGenerator';
-import { debugFetchPermissions_ } from './permissionArchiver';
+import { runPermissionReportGeneration_ } from './permissionReportGenerator';
+import {
+  debugFetchPermissions_,
+  archivePermissionsForTargetIds_,
+  fetchPermissionsAndSaveForTargetIds_,
+} from './permissionArchiver';
 import {
   archiveSharedDrivePoliciesDriveGet_,
   archiveSharedDrivePoliciesPermissions_,
@@ -38,6 +43,21 @@ function archiveSharedDrivePoliciesPermissions() {
 // 「共有ドライブの設定」を取得
 function archiveSharedDrivePoliciesDriveGet() {
   archiveSharedDrivePoliciesDriveGet_();
+}
+/**
+ * パーミッション情報取得
+ */
+// 権限一覧の出力
+function runPermissionReportGeneration() {
+  runPermissionReportGeneration_();
+}
+// 取得対象になるファイルのIDをスプレッドシートに出力する
+function archivePermissionsForTargetIds() {
+  archivePermissionsForTargetIds_();
+}
+// 取得対象のIDをもとにパーミッション情報を取得し、JSONファイルとして保存する
+function fetchPermissionsAndSaveForTargetIds() {
+  fetchPermissionsAndSaveForTargetIds_();
 }
 
 function testGetFolderPermissions() {

@@ -109,6 +109,25 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
    * 2. 【出力フェーズ】
    * 保存されている最新のJSONファイルを読み込み、スプレッドシートに出力する
    */
+  /**
+   * パーミッションデータをドライブIDごとに取得する
+   * * @description
+   * 対象ドライブIDごとに、保存されている最新のJSONファイルを読み込み、パーミッションデータを抽出して返します。
+   * 取得したパーミッションデータは、共有ドライブの設定と組み合わせてスプレッドシートに出力する際に使用します。
+   * * @private
+   * @param targetDriveName
+   * @returns
+   */
+  private getPermissionsDataForDrive(
+    targetDriveName: string
+  ): GoogleAppsScript.Drive.File[] {
+    // 1. JSONファイルをすべて読み込む
+    const rawDataList: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
+      Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
+      targetDriveName
+    );
+    return rawDataList;
+  }
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
     const sheetName = '共有ドライブ自体の設定';
@@ -136,11 +155,13 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       role: 3,
     };
     const allPermissionsData = targetDriveIds.map(id => {
-      const members: string[][] = perGenerator.getInputData(id);
+      const targetJson: GoogleAppsScript.Drive.File[] =
+        this.getPermissionsDataForDrive(id);
+      const members: string[][] = perGenerator.editOutputData(targetJson);
       // 必要な要素だけ抽出して整形
       const res = members.map(member => [
         id,
-        `${member[index.displayName]}(${member[index.emailAddress]})：${member[index.role]}`,
+        `${member[Const.INDEX.PERMISSION_ARRAY.DISPLAY_NAME]}(${member[Const.INDEX.PERMISSION_ARRAY.EMAIL_ADDRESS]})：${member[Const.INDEX.PERMISSION_ARRAY.ROLE]}`,
       ]);
       return res;
     });

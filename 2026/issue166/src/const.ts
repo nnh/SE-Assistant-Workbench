@@ -39,6 +39,7 @@ export const PROPERTY_KEYS = {
 export const REPORT_HEADERS: {
   DRIVE_ITEM: readonly string[];
   SHARED_DRIVE_POLICY: readonly string[];
+  PERMISSION: readonly string[];
 } = {
   DRIVE_ITEM: [
     'ID',
@@ -49,6 +50,7 @@ export const REPORT_HEADERS: {
     '更新日時',
   ],
   SHARED_DRIVE_POLICY: ['ドライブID', 'ドライブ名', '設定', '出力日時'],
+  PERMISSION: ['アイテムID', '権限', '継承'],
 } as const;
 
 // MIME_TYPE
@@ -73,6 +75,23 @@ export const OUTPUT_FILE_NAME = {
     DRIVE_ITEM: 'フォルダ構成',
     PERMISSION: 'permission',
     SHARED_DRIVE_POLICY: '共有ドライブ設定',
+  },
+} as const;
+
+// インデックス
+export const INDEX = {
+  PERMISSION_ARRAY: {
+    FILENAME: 0,
+    ID: 1,
+    TYPE: 2,
+    DISPLAY_NAME: 3,
+    ROLE: 4,
+    EMAIL_ADDRESS: 5,
+    DELETED: 6,
+    DETAIL_PERMISSION_TYPE: 7,
+    DETAIL_INHERITED_FROM: 8,
+    DETAIL_ROLE: 9,
+    INHERITED: 10,
   },
 } as const;
 

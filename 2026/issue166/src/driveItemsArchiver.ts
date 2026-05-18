@@ -137,23 +137,27 @@ export class DriveItemsArchiver {
     let batchNumber = 1;
     const driveName = this.getSharedDriveName(driveId);
     this.pathCache.set(driveId, driveName);
-    const options: ListFilesOptions = {
-      pageSize: 1000,
-      q: 'trashed = false',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      corpora: 'drive',
-      driveId: driveId,
-      fields:
-        'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
-      pageToken: pageToken,
-    };
 
     do {
+      // 💡 ループの直前で毎回最新の pageToken を含んだ options を生成する
+      const options: ListFilesOptions = {
+        pageSize: 1000,
+        q: 'trashed = false',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        corpora: 'drive',
+        driveId: driveId,
+        fields:
+          'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
+        pageToken: pageToken, // 2回目以降は前回の nextPageToken が入る
+      };
+
+      // 💡 オブジェクトで包まず、options をそのまま渡す
       const response: {
         files?: Const.ArchivedItem[] | undefined;
         nextPageToken?: string;
-      } = DriveApiService.fetchFiles({ options, pageToken });
+      } = DriveApiService.fetchFiles(options);
+
       const items: Const.ArchivedItem[] | undefined = response.files;
       if (!items) {
         console.warn(
@@ -165,10 +169,9 @@ export class DriveItemsArchiver {
         console.log(`Drive ID: ${driveId} にアイテムが存在しません。`);
         break;
       }
-      const enrichedItems = items.map(item => {
-        // 自分自身が含まれるパスではなく、存在場所（親フォルダのパス）を取得
-        const parentPath = this.resolveParentPath(item);
 
+      const enrichedItems = items.map(item => {
+        const parentPath = this.resolveParentPath(item);
         const type =
           item.mimeType === Const.MIME_TYPES.FOLDER
             ? Const.FOLDER_JP
@@ -176,7 +179,7 @@ export class DriveItemsArchiver {
 
         return {
           ...item,
-          parentPath: parentPath, // これで「フォルダの場所」になります
+          parentPath: parentPath,
           itemType: type,
         };
       });
@@ -192,6 +195,8 @@ export class DriveItemsArchiver {
       batchNumber++;
 
       if (this.limitToFirstPage) break;
+
+      // 次のページのトークンを更新
       pageToken = response.nextPageToken;
       if (pageToken) Utilities.sleep(this.SLEEP_MS);
     } while (pageToken);

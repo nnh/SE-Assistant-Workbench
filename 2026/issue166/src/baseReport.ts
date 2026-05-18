@@ -68,6 +68,13 @@ export abstract class BaseReport {
   }
 
   // --- Spreadsheet 系の委譲メソッド ---
+  protected setHeader(
+    sheet: GoogleAppsScript.Spreadsheet.Sheet,
+    headers: string[]
+  ) {
+    this.ssHandler.setHeader(sheet, headers);
+  }
+
   protected getOutputSheet(ss: any, sheetName: string, headers: string[]) {
     return this.ssHandler.getOutputSheet(sheetName, headers);
   }

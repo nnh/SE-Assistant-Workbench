@@ -16,23 +16,29 @@
 export class SpreadsheetHandler {
   constructor(private ss: GoogleAppsScript.Spreadsheet.Spreadsheet) {}
 
-  /** 出力用シートを取得・初期化 */
-  public getOutputSheet(
-    sheetName: string,
+  /** ヘッダー行を設定 */
+  public setHeader(
+    sheet: GoogleAppsScript.Spreadsheet.Sheet,
     headers: string[]
-  ): GoogleAppsScript.Spreadsheet.Sheet {
-    let sheet = this.ss.getSheetByName(sheetName);
-    if (sheet) {
-      sheet.clear();
-    } else {
-      sheet = this.ss.insertSheet(sheetName);
-    }
+  ): void {
+    sheet.clearContents(); // 既存の内容をクリア
     sheet
       .getRange(1, 1, 1, headers.length)
       .setValues([headers])
       .setBackground('#d9ead3')
       .setFontWeight('bold');
     sheet.setFrozenRows(1);
+  }
+  /** 出力用シートを取得・初期化 */
+  public getOutputSheet(
+    sheetName: string,
+    headers: string[]
+  ): GoogleAppsScript.Spreadsheet.Sheet {
+    let sheet = this.ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = this.ss.insertSheet(sheetName);
+    }
+    this.setHeader(sheet, headers);
     return sheet;
   }
 
