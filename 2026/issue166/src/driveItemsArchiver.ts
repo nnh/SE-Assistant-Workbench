@@ -127,12 +127,25 @@ export class DriveItemsArchiver {
     this.pathCache.set(driveId, driveName);
 
     const queryParts: string[] = ['trashed = false'];
-
-    // 💡 ドライブ名（driveName）に応じて、フォルダのみに限定するかどうかを判定
+    // 今日から1年前の日付を計算し、API用のフォーマット（RFC 3339）に変換する
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    // GASの Utilities.formatDate を使って「YYYY-MM-DDTHH:mm:ssZ」形式にする
+    const formattedOneYearAgo = Utilities.formatDate(
+      oneYearAgo,
+      'GMT',
+      "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    );
     if (driveName === Const.SHARED_DRIVE_NAME.INTERNAL) {
+      // フォルダのみ抽出する場合
+      /*
       queryParts.push(`mimeType = '${Const.MIME_TYPES.FOLDER}'`);
       console.log(
         `[Query Settings] ${driveName} は【フォルダのみ】を抽出対象にします。`
+      );*/
+      queryParts.push(`modifiedTime > '${formattedOneYearAgo}'`);
+      console.log(
+        `[Query Settings] ${driveName} は【1年以内に更新されたアイテムのみ】を抽出対象にします。`
       );
     } else {
       console.log(

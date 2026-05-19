@@ -27,7 +27,11 @@ import {
   sharedDrivePolicyReportGenerator_,
 } from './sharedDrivePolicyReportGenerator';
 import { runDrivePermissionMatrixReportGeneration_ } from './driveDataMerger';
-import { runInternalDriveExcludeCheck } from './InternalDriveProcessor';
+import {
+  runInternalDriveExcludeCheck_,
+  runExternalAccountPermissionReport_,
+} from './InternalDriveProcessor';
+import { setupProjectProperties_ } from './Initializer';
 
 function runDrivePermissionMatrixReportGeneration() {
   runDrivePermissionMatrixReportGeneration_();
@@ -64,9 +68,14 @@ function archivePermissionsForTargetIds() {
  * 1. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 
+// aro.staff以外の権限情報を抽出する処理
+function externalAccountPermissionReport() {
+  runExternalAccountPermissionReport_();
+}
+
 // 内部のみ共有ドライブの権限取得対象外フォルダを洗い出す処理
 function internalDriveExcludeCheck() {
-  runInternalDriveExcludeCheck();
+  runInternalDriveExcludeCheck_();
 }
 
 /**
@@ -82,4 +91,10 @@ function runReportGeneration() {
  */
 function executeJsonArchivingProcess() {
   runNextArchiving_();
+}
+/**
+ * 初期処理
+ */
+function setupProjectProperties() {
+  setupProjectProperties_();
 }

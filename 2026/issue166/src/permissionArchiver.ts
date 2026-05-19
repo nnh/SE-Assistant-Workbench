@@ -197,7 +197,7 @@ export class PermissionArchiver {
     const targetIds: string[][] = workSheet
       .getRange(1, 1, lastRow, 1)
       .getValues() as string[][];
-    const idsToProcess = targetIds.slice(0, 100); // 一度に処理する件数を100件に制限
+    const idsToProcess = targetIds.slice(0, 200); // 一度に処理する件数を200件に制限
     idsToProcess.forEach(([id], index) => {
       try {
         const permissionsData = this.fetchPermissions(id);
