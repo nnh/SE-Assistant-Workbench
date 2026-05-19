@@ -19,24 +19,43 @@
 import { BaseReport } from './baseReport';
 import * as Const from './const';
 class DriveItemsReportGenerator extends BaseReport {
+  private targetDriveId: string | null;
+  private targetDriveName: string;
+
   constructor() {
     super();
+    const props = PropertiesService.getScriptProperties();
+    this.targetDriveId = props.getProperty(
+      Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID
+    );
+    if (!this.targetDriveId) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID} が設定されていません。スクリプトプロパティに共有ドライブ設定レポートの対象ドライブIDを設定してください。`
+      );
+    }
+    this.targetDriveName =
+      props.getProperty(Const.PROPERTY_KEYS.DRIVE_NAME) || '';
+    if (!this.targetDriveName) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.DRIVE_NAME} が設定されていません。`
+      );
+    }
   }
-  public generateReport(targetDriveName: string): void {
-    const sheetName = `${targetDriveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+  public generateReport(): void {
+    const sheetName = `${this.targetDriveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
     const sheet: GoogleAppsScript.Spreadsheet.Sheet = this.getOutputSheet(
       this.outputSpreadsheet,
       sheetName,
       Const.REPORT_HEADERS.DRIVE_ITEM as string[]
     );
-    const data: string[][] = this.getInputData(targetDriveName);
+    const data: string[][] = this.getInputData();
     this.addDataToSheet(data, sheet);
   }
 
-  private getInputData(targetDriveName: string): string[][] {
+  private getInputData(): string[][] {
     return this.getOutputDataFromJsons<Const.ArchivedItem>(
       Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM,
-      targetDriveName,
+      this.targetDriveName,
       item => [
         item.id ? String(item.id) : '',
         item.itemType ? String(item.itemType) : '',
@@ -49,5 +68,5 @@ class DriveItemsReportGenerator extends BaseReport {
   }
 }
 
-export const runReportGeneration_ = (targetDriveName: string) =>
-  new DriveItemsReportGenerator().generateReport(targetDriveName);
+export const runReportGeneration_ = () =>
+  new DriveItemsReportGenerator().generateReport();

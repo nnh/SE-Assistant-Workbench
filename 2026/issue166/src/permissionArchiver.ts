@@ -15,22 +15,43 @@
  */
 import * as Const from './const';
 export class PermissionArchiver {
-  private jsonFolderId: string;
+  private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
-  private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
+  private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet | null;
   private workSheetName = Const.SHEET_NAME.PERMISSION_ARCHIVE_WORK;
 
   constructor() {
     const props = PropertiesService.getScriptProperties();
 
     // インフラ準備
-    this.jsonFolderId =
-      props.getProperty(Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID) || '';
-    this.jsonFolder = this.getSaveFolder(this.jsonFolderId);
+    this.jsonFolderId = props.getProperty(
+      Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID
+    );
+    if (!this.jsonFolderId) {
+      props.setProperty(
+        Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID,
+        'SET_YOUR_PERMISSION_JSON_FOLDER_ID_HERE'
+      );
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID} が設定されていません。スクリプトプロパティにアクセス権限JSONの保存先フォルダIDを設定してください。`
+      );
+    }
 
-    const outputSsId =
-      props.getProperty(Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID) || '';
+    const outputSsId = props.getProperty(
+      Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
+    );
+    if (!outputSsId) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID} が設定されていません。スクリプトプロパティに出力先スプレッドシートIDを設定してください。`
+      );
+    }
+    this.jsonFolder = this.getSaveFolder(this.jsonFolderId);
     this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
+    if (!this.inputSpreadsheet) {
+      throw new Error(
+        `スプレッドシートID ${outputSsId} のスプレッドシートが見つかりません。`
+      );
+    }
   }
   /**
    * 既存のJSONファイルが存在するか確認し、ファイル名のセットを取得します。
@@ -61,8 +82,24 @@ export class PermissionArchiver {
    * @returns {string[][]} 取得対象のIDと最終更新日時の配列
    */
   private getTargetIdsFromSpreadsheet(): string[][] {
-    const sheetName = `${Const.SHARED_DRIVE_NAME.EXTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+    if (!this.inputSpreadsheet) {
+      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
+    }
+    const driveName = PropertiesService.getScriptProperties().getProperty(
+      Const.PROPERTY_KEYS.DRIVE_NAME
+    );
+    if (!driveName) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.DRIVE_NAME} が設定されていません。`
+      );
+    }
+    const sheetName = `${driveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
     const sheet = this.inputSpreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      throw new Error(
+        `スプレッドシートに「${sheetName}」シートが見つかりません。`
+      );
+    }
     const index = {
       id: 0,
       modifiedTime: 5,
@@ -77,6 +114,8 @@ export class PermissionArchiver {
     // 1行目はヘッダーの想定なのでスキップ
     const targetIds: string[][] = data
       .slice(1)
+      // G列が空の行だけ抽出する（内部のみドライブの権限取得対象外判定のため）
+      .filter(row => row[6] === '')
       .map(row => [row[index.id], row[index.modifiedTime]])
       .filter(id => typeof id[0] === 'string' && typeof id[1] === 'string');
     return targetIds;
@@ -89,6 +128,9 @@ export class PermissionArchiver {
    * * @public
    */
   public archivePermissionsForTargetIds(): void {
+    if (!this.inputSpreadsheet) {
+      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
+    }
     const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
     if (!workSheet) {
       throw new Error(
@@ -138,6 +180,9 @@ export class PermissionArchiver {
    * * @public
    */
   public fetchPermissionsAndSaveForTargetIds(): void {
+    if (!this.inputSpreadsheet) {
+      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
+    }
     const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
     if (!workSheet) {
       throw new Error(

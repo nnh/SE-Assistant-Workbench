@@ -23,6 +23,7 @@ export const PROPERTY_KEYS = {
   JSON_FOLDER_ID: 'SAVE_DESTINATION_FOLDER_ID', // アーカイブJSONの保存先
   POLICY_REPORT_JSON_FOLDER_ID: 'SAVE_DESTINATION_FOLDER_ID', // 共有ドライブ設定レポートのJSON保存先はアーカイブJSONと同じ
   PERMISSION_JSON_FOLDER_ID: 'PERMISSION_SAVE_DESTINATION_FOLDER_ID', // アクセス権限JSONの保存先
+  DRIVE_NAME: 'DRIVE_NAME', // 直近で処理したドライブの名前を保存するプロパティキー
 
   // レポート関連
   OUTPUT_SPREADSHEET_ID: 'OUTPUT_SPREADSHEET_ID', // レポート出力先のスプレッドシートID
@@ -30,9 +31,7 @@ export const PROPERTY_KEYS = {
   // システムの状態・キャッシュ
 
   // キュー管理（共有ドライブのIDなど）
-  TARGET_SHARED_DRIVE_IDS: 'TARGET_SHARED_DRIVE_IDS', // 対象の共有ドライブIDリスト（カンマ区切り）
-  TODO_DRIVE_IDS: 'TODO_DRIVE_IDS', // 処理待ちドライブのリスト
-  DONE_DRIVE_IDS: 'DONE_DRIVE_IDS', // 処理完了済みのドライブID
+  TARGET_SHARED_DRIVE_ID: 'TARGET_SHARED_DRIVE_ID', // 対象の共有ドライブIDリスト（カンマ区切り）
   POLICY_REPORT_TARGET_DRIVE_IDS: 'POLICY_REPORT_TARGET_DRIVE_IDS', // 共有ドライブ設定レポートの対象ドライブID（カンマ区切り）
 } as const;
 

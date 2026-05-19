@@ -24,17 +24,16 @@ import { DriveApiService, ListFilesOptions } from './driveApiService';
 export class DriveItemsArchiver {
   private readonly PROP_SAVE_DEST = Const.PROPERTY_KEYS.JSON_FOLDER_ID;
   private readonly PROP_TARGET_DRIVES =
-    Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_IDS;
-  private readonly PROP_TODO = Const.PROPERTY_KEYS.TODO_DRIVE_IDS;
-  private readonly PROP_DONE = Const.PROPERTY_KEYS.DONE_DRIVE_IDS;
+    Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID;
+  // 進捗保存用のプロパティキーを追加
+  private readonly PROP_PAGE_TOKEN = 'CURRENT_PAGE_TOKEN';
+  private readonly PROP_BATCH_NUM = 'CURRENT_BATCH_NUMBER';
 
-  private targetSharedDriveIdsRaw: string;
-  private todoDriveIds: string[];
-  private doneDriveIds: string[];
+  private targetSharedDriveId: string;
   private saveFolderId: string;
   private saveFolder: GoogleAppsScript.Drive.Folder;
-
-  private readonly MAX_RETRIES = 3;
+  private storedPageToken: string | null;
+  private storedBatchNumber: number;
   private readonly SLEEP_MS = 500;
   // パス計算用のキャッシュ (ID -> フルパス)
   private pathCache: Map<string, string> = new Map();
@@ -53,31 +52,15 @@ export class DriveItemsArchiver {
     );
     this.saveFolder = getFolderById_(saveFolderId);
     this.saveFolderId = saveFolderId;
-    this.targetSharedDriveIdsRaw = this.getOrSetDefault(
+    this.targetSharedDriveId = this.getOrSetDefault(
       props,
       this.PROP_TARGET_DRIVES,
-      'SET_DRIVE_ID_1,SET_DRIVE_ID_2'
+      'SET_YOUR_SHARED_DRIVE_ID_HERE'
     );
-
-    const todoRaw: string = props.getProperty(this.PROP_TODO) || '';
-    let doneRaw: string = props.getProperty(this.PROP_DONE) || '';
-    // doneRawが"dummy"の場合は、初回実行後の状態なので、doneDriveIdsは空にする
-    if (doneRaw === Const.DUMMY_VALUE) {
-      doneRaw = '';
-    }
-
-    this.todoDriveIds = todoRaw
-      ? todoRaw
-          .split(',')
-          .filter(Boolean)
-          .map(id => id.trim())
-      : [];
-    this.doneDriveIds = doneRaw
-      ? doneRaw
-          .split(',')
-          .filter(Boolean)
-          .map(id => id.trim())
-      : [];
+    // 保存されているページトークンとバッチ番号（ページ数）を読み込む
+    this.storedPageToken = props.getProperty(this.PROP_PAGE_TOKEN);
+    const savedBatchNum = props.getProperty(this.PROP_BATCH_NUM);
+    this.storedBatchNumber = savedBatchNum ? parseInt(savedBatchNum, 10) : 1;
   }
 
   private getOrSetDefault(
@@ -96,63 +79,83 @@ export class DriveItemsArchiver {
     return val;
   }
 
-  public initQueue(): void {
-    this.validateAndThrow();
-    const props = PropertiesService.getScriptProperties();
-    props.setProperty(this.PROP_TODO, this.targetSharedDriveIdsRaw);
-    props.setProperty(this.PROP_DONE, Const.DUMMY_VALUE); // 空だと他のプロパティを登録する際にエラーになる
-    console.log('キューの初期化が完了しました。');
-  }
-
-  public executeNext(): void {
+  public execute(): void {
     this.validateAndThrow();
 
-    if (this.todoDriveIds.length === 0) {
-      console.log('TODOリストが空です。全ての処理が完了しています。');
-      return;
-    }
-
-    const currentDriveId = this.todoDriveIds.shift() as string;
     const now = new Date();
-
-    try {
-      this.processSingleDrive(currentDriveId, this.saveFolder, now);
-      this.doneDriveIds.push(currentDriveId);
-      this.updateStatus();
-      console.log(`Successfully archived: ${currentDriveId}`);
-    } catch (e) {
-      this.updateStatus();
-      throw new Error(
-        `Drive [${currentDriveId}] の処理中にエラーが発生しました: ${e}`
+    const driveId = this.targetSharedDriveId;
+    // 続きからの再開か、新規スタートかをログに出力
+    if (this.storedPageToken) {
+      console.log(
+        `Drive [${driveId}] の処理をページトークン: ${this.storedPageToken} (バッチ: ${this.storedBatchNumber}) から再開します。`
       );
+    } else {
+      console.log(`Drive [${driveId}] の処理を新規に開始します。`);
+    }
+    try {
+      // 💡 引数の末尾にトークンとバッチ番号を追加して呼び出す
+      this.processSingleDrive(
+        driveId,
+        this.saveFolder,
+        now,
+        this.storedPageToken || undefined,
+        this.storedBatchNumber
+      );
+      console.log(`Successfully processed batch segment for: ${driveId}`);
+    } catch (e) {
+      console.error(
+        `Drive [${driveId}] の処理中にエラーが発生しました。現在の進捗は保存されています。エラー: ${e}`
+      );
+      throw e;
     }
   }
 
   private processSingleDrive(
     driveId: string,
     saveFolder: GoogleAppsScript.Drive.Folder,
-    date: Date
+    date: Date,
+    initialPageToken?: string, // 💡 追加：開始時のトークン
+    initialBatchNumber = 1 // 💡 追加：開始時のバッチ番号
   ): void {
-    let pageToken: string | undefined = undefined;
-    let batchNumber = 1;
-    const driveName = this.getSharedDriveName(driveId);
+    let pageToken: string | undefined = initialPageToken;
+    let batchNumber = initialBatchNumber;
+
+    const driveName = DriveApiService.fetchSharedDriveName(driveId);
+    // ドライブ名をプロパティにセットする
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty(Const.PROPERTY_KEYS.DRIVE_NAME, driveName);
     this.pathCache.set(driveId, driveName);
 
+    const queryParts: string[] = ['trashed = false'];
+
+    // 💡 ドライブ名（driveName）に応じて、フォルダのみに限定するかどうかを判定
+    if (driveName === Const.SHARED_DRIVE_NAME.INTERNAL) {
+      queryParts.push(`mimeType = '${Const.MIME_TYPES.FOLDER}'`);
+      console.log(
+        `[Query Settings] ${driveName} は【フォルダのみ】を抽出対象にします。`
+      );
+    } else {
+      console.log(
+        `[Query Settings] ${driveName} は【ファイルとフォルダ両方】を抽出対象にします。`
+      );
+    }
+
+    // 配列に溜まった条件を ' and ' で結合する（例: "trashed = false and mimeType = '...'"）
+    const baseQuery = queryParts.join(' and ');
+
     do {
-      // 💡 ループの直前で毎回最新の pageToken を含んだ options を生成する
       const options: ListFilesOptions = {
         pageSize: 1000,
-        q: 'trashed = false',
+        q: baseQuery,
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
         corpora: 'drive',
         driveId: driveId,
         fields:
           'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
-        pageToken: pageToken, // 2回目以降は前回の nextPageToken が入る
+        pageToken: pageToken,
       };
 
-      // 💡 オブジェクトで包まず、options をそのまま渡す
       const response: {
         files?: Const.ArchivedItem[] | undefined;
         nextPageToken?: string;
@@ -176,12 +179,7 @@ export class DriveItemsArchiver {
           item.mimeType === Const.MIME_TYPES.FOLDER
             ? Const.FOLDER_JP
             : Const.FILE_JP;
-
-        return {
-          ...item,
-          parentPath: parentPath,
-          itemType: type,
-        };
+        return { ...item, parentPath, itemType: type };
       });
 
       const fileName = FileUtils.generateJsonFileName(
@@ -192,14 +190,34 @@ export class DriveItemsArchiver {
       );
       const content = JSON.stringify(enrichedItems, null, 2);
       saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+
+      // 💡 次のループ（ページ）のための準備
       batchNumber++;
+      pageToken = response.nextPageToken;
 
       if (this.limitToFirstPage) break;
 
-      // 次のページのトークンを更新
-      pageToken = response.nextPageToken;
-      if (pageToken) Utilities.sleep(this.SLEEP_MS);
+      // 💡 1ページ出力するごとに、次のページの情報をプロパティに保存（上書き）する
+      if (pageToken) {
+        props.setProperties({
+          [this.PROP_PAGE_TOKEN]: pageToken,
+          [this.PROP_BATCH_NUM]: batchNumber.toString(),
+        });
+        console.log(
+          `ページ ${batchNumber - 1} の出力を保存しました。次のトークンを記憶しました。`
+        );
+        Utilities.sleep(this.SLEEP_MS);
+      }
     } while (pageToken);
+
+    // 💡 ループを抜けた ＝ 次のページがない（すべての処理が正常終了した）場合
+    if (!pageToken) {
+      props.deleteProperty(this.PROP_PAGE_TOKEN);
+      props.deleteProperty(this.PROP_BATCH_NUM);
+      console.log(
+        `Drive [${driveId}] の全ページの出力が正常に完了したため、進捗プロパティをクリアしました。`
+      );
+    }
 
     this.pathCache.clear();
   }
@@ -248,37 +266,13 @@ export class DriveItemsArchiver {
     }
   }
 
-  /**
-   * 共有ドライブの名称を取得する
-   */
-  private getSharedDriveName(driveId: string): string {
-    try {
-      const driveApi = (globalThis as any).Drive;
-      const drive = driveApi.Drives.get(driveId);
-      // 特殊文字をファイル名に使えないため、一部置換
-      const replaceDriveName = FileUtils.sanitizeFileName(drive.name);
-      return replaceDriveName;
-    } catch (e) {
-      console.warn(`Drive名取得失敗(ID: ${driveId}): ${e}`);
-      return `UnknownDrive_${driveId.slice(-4)}`;
-    }
-  }
-
-  private updateStatus(): void {
-    const props = PropertiesService.getScriptProperties();
-    props.setProperties({
-      [this.PROP_TODO]: this.todoDriveIds.join(','),
-      [this.PROP_DONE]: this.doneDriveIds.join(','),
-    });
-  }
-
   private validateAndThrow(): void {
     const isDummy = (val: string) =>
       !val || val.includes('SET_YOUR_') || val.includes('SET_DRIVE_ID_');
     const missingKeys: string[] = [];
 
     if (isDummy(this.saveFolderId)) missingKeys.push(this.PROP_SAVE_DEST);
-    if (isDummy(this.targetSharedDriveIdsRaw))
+    if (isDummy(this.targetSharedDriveId))
       missingKeys.push(this.PROP_TARGET_DRIVES);
 
     if (missingKeys.length > 0) {
@@ -289,5 +283,4 @@ export class DriveItemsArchiver {
   }
 }
 
-export const setupQueue_ = () => new DriveItemsArchiver().initQueue();
-export const runNextArchiving_ = () => new DriveItemsArchiver().executeNext();
+export const runNextArchiving_ = () => new DriveItemsArchiver().execute();

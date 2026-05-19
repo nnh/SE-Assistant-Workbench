@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { setupQueue_, runNextArchiving_ } from './driveItemsArchiver';
+import { runNextArchiving_ } from './driveItemsArchiver';
 import { runReportGeneration_ } from './driveItemsReportGenerator';
 import { runPermissionReportGeneration_ } from './permissionReportGenerator';
 import {
@@ -27,7 +27,7 @@ import {
   sharedDrivePolicyReportGenerator_,
 } from './sharedDrivePolicyReportGenerator';
 import { runDrivePermissionMatrixReportGeneration_ } from './driveDataMerger';
-import * as Const from './const';
+import { runInternalDriveExcludeCheck } from './InternalDriveProcessor';
 
 function runDrivePermissionMatrixReportGeneration() {
   runDrivePermissionMatrixReportGeneration_();
@@ -51,24 +51,29 @@ function runSharedDrivePolicyReportGeneration() {
 function runPermissionReportGeneration() {
   runPermissionReportGeneration_();
 }
-// 取得対象になるファイルのIDをスプレッドシートに出力する
-function archivePermissionsForTargetIds() {
-  archivePermissionsForTargetIds_();
-}
 // 取得対象のIDをもとにパーミッション情報を取得し、JSONファイルとして保存する
 function fetchPermissionsAndSaveForTargetIds() {
   fetchPermissionsAndSaveForTargetIds_();
+}
+// 取得対象になるファイルのIDをスプレッドシートに出力する
+function archivePermissionsForTargetIds() {
+  archivePermissionsForTargetIds_();
 }
 
 /**
  * 1. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 
+// 内部のみ共有ドライブの権限取得対象外フォルダを洗い出す処理
+function internalDriveExcludeCheck() {
+  runInternalDriveExcludeCheck();
+}
+
 /**
  * 1.3. 共有ドライブのアイテムを保存したJSONをもとに、フォルダ構成レポートをスプレッドシートへ出力する処理
  */
 function runReportGeneration() {
-  runReportGeneration_(Const.SHARED_DRIVE_NAME.EXTERNAL);
+  runReportGeneration_();
 }
 
 /**
@@ -77,10 +82,4 @@ function runReportGeneration() {
  */
 function executeJsonArchivingProcess() {
   runNextArchiving_();
-}
-/**
- * 1.1. 初期処理
- */
-function initializeSharedDriveArchivingQueue() {
-  setupQueue_();
 }

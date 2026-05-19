@@ -32,9 +32,21 @@ export abstract class BaseReport {
 
     // プロパティキーを使用してIDを取得
     const jsonFolderId = props.getProperty(jsonFolderKey) || '';
+    if (!jsonFolderId) {
+      props.setProperty(jsonFolderKey, 'SET_YOUR_JSON_FOLDER_ID_HERE');
+      throw new Error(
+        `プロパティ ${jsonFolderKey} が設定されていません。スクリプトプロパティにJSON保存先のフォルダIDを設定してください。`
+      );
+    }
     this.jsonFolder = getFolderById_(jsonFolderId);
 
     const outputSsId = props.getProperty(outputSpreadsheetKey) || '';
+    if (!outputSsId) {
+      props.setProperty(outputSpreadsheetKey, 'SET_YOUR_SPREADSHEET_ID_HERE');
+      throw new Error(
+        `プロパティ ${outputSpreadsheetKey} が設定されていません。スクリプトプロパティに出力先のスプレッドシートIDを設定してください。`
+      );
+    }
     this.outputSpreadsheet = SpreadsheetApp.openById(outputSsId);
 
     // ハンドラーの初期化

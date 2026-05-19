@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import * as Const from './const';
+import { FileUtils } from './fileUtils';
 
 export interface ListFilesOptions {
   driveId?: string;
@@ -78,6 +79,21 @@ export const DriveApiService = {
         if (++retryCount >= maxRetries) throw e;
         Utilities.sleep(Math.pow(2, retryCount) * 1000);
       }
+    }
+  },
+
+  /**
+   * 共有ドライブの名称を取得し、ファイル名向けにサニタイズして返す
+   */
+  fetchSharedDriveName(driveId: string): string {
+    try {
+      const driveApi = (globalThis as any).Drive;
+      const drive = driveApi.Drives.get(driveId);
+      // 特殊文字をファイル名に使えないため、一部置換
+      return FileUtils.sanitizeFileName(drive.name);
+    } catch (e) {
+      console.warn(`Drive名取得失敗(ID: ${driveId}): ${e}`);
+      return `UnknownDrive_${driveId.slice(-4)}`;
     }
   },
 };
