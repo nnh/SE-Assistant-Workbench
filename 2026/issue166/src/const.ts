@@ -109,6 +109,39 @@ export const INDEX = {
  * アーカイブJSONの1アイテム（ファイルまたはフォルダ）の構造
  */
 // フォルダ構造
+/**
+ * Permission（権限）の詳細構造の型定義
+ */
+export interface DrivePermission {
+  id: string;
+  displayName?: string;
+  type: 'user' | 'group' | 'domain' | 'anyone' | string;
+  emailAddress?: string;
+  role:
+    | 'organizer'
+    | 'fileOrganizer'
+    | 'writer'
+    | 'commenter'
+    | 'reader'
+    | string;
+  allowFileDiscovery?: boolean;
+  domain?: string;
+  deleted?: boolean;
+  view?: string;
+  inherited?: boolean;
+  inheritedPermissionsDisabled?: boolean;
+  permissionDetails?: Array<{
+    permissionType: string;
+    role: string;
+    inherited: boolean;
+    inheritedFrom: string;
+  }>;
+}
+
+/**
+ * アーカイブJSONの1アイテム（ファイルまたはフォルダ）の構造
+ */
+
 export interface ArchivedItem {
   id: string;
   name: string;
@@ -119,6 +152,7 @@ export interface ArchivedItem {
   parents: string[];
   modifiedTime: string;
 }
+
 // アクセス権限
 export interface PermissionResponse {
   kind: string;

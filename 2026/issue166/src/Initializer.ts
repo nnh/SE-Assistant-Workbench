@@ -24,14 +24,16 @@ class ProjectInitializer {
       console.log('スクリプトプロパティの初期化処理を開始します。');
       const props = PropertiesService.getScriptProperties();
 
-      // 💡 登録したいプロパティのキーと、開発者に設定してもらうための雛形値（デフォルト値）の定義
+      // 登録したいプロパティのキーと、開発者に設定してもらうための雛形値（デフォルト値）の定義
       const propertyTemplates: Record<string, string> = {
         [Const.PROPERTY_KEYS.JSON_FOLDER_ID]:
           'SET_YOUR_JSON_SAVE_FOLDER_ID_HERE',
         [Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID]:
           'SET_YOUR_TARGET_SHARED_DRIVE_ID_HERE',
-        // 他にも必要なキーがあればここに追加するだけで自動登録されます
-        // 'ANOTHER_REQUIRED_KEY': 'SET_VALUE_HERE'
+        [Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID]:
+          'SET_YOUR_OUTPUT_SPREADSHEET_ID_HERE',
+        [Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID]:
+          'SET_YOUR_PERMISSION_JSON_FOLDER_ID_HERE',
       };
 
       let createdCount = 0;
@@ -71,7 +73,7 @@ class ProjectInitializer {
 }
 
 /**
- * 💡 GASのエディタ画面から手動で実行するためのエントリーポイント
+ * GASのエディタ画面から手動で実行するためのエントリーポイント
  * スクリプトエディタの関数一覧から「setupProjectProperties」を選択して実行します。
  */
 export const setupProjectProperties_ = () =>

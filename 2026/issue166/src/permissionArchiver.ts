@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import * as Const from './const';
+import { SpreadsheetHandler } from './spreadsheetHandler';
 export class PermissionArchiver {
   private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
@@ -114,8 +115,8 @@ export class PermissionArchiver {
     // 1行目はヘッダーの想定なのでスキップ
     const targetIds: string[][] = data
       .slice(1)
-      // G列が空の行だけ抽出する（内部のみドライブの権限取得対象外判定のため）
-      .filter(row => row[6] === '')
+      // G列（row[6]）が空文字、または要素自体がない場合（undefinedなど）にtrueにする（内部のみドライブの権限取得対象外判定のため）
+      .filter(row => !row[6] || row[6] === '')
       .map(row => [row[index.id], row[index.modifiedTime]])
       .filter(id => typeof id[0] === 'string' && typeof id[1] === 'string');
     return targetIds;
@@ -131,13 +132,10 @@ export class PermissionArchiver {
     if (!this.inputSpreadsheet) {
       throw new Error('スプレッドシートオブジェクトが初期化されていません。');
     }
-    const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
-    if (!workSheet) {
-      throw new Error(
-        `スプレッドシートに「${this.workSheetName}」シートが見つかりません。`
-      );
-    }
-    workSheet.clear(); // 前回の内容をクリア
+    const workSheet = new SpreadsheetHandler(
+      this.inputSpreadsheet
+    ).getOutputSheet(this.workSheetName, ['']);
+
     const targetIds: string[][] = this.getTargetIdsFromSpreadsheet();
     const existingFileNameSet: Set<string> =
       this.getExistingPermissionFileNameSet();

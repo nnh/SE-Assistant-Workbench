@@ -93,7 +93,7 @@ export class DriveItemsArchiver {
       console.log(`Drive [${driveId}] の処理を新規に開始します。`);
     }
     try {
-      // 💡 引数の末尾にトークンとバッチ番号を追加して呼び出す
+      // 引数の末尾にトークンとバッチ番号を追加して呼び出す
       this.processSingleDrive(
         driveId,
         this.saveFolder,
@@ -114,8 +114,8 @@ export class DriveItemsArchiver {
     driveId: string,
     saveFolder: GoogleAppsScript.Drive.Folder,
     date: Date,
-    initialPageToken?: string, // 💡 追加：開始時のトークン
-    initialBatchNumber = 1 // 💡 追加：開始時のバッチ番号
+    initialPageToken?: string, // 開始時のトークン
+    initialBatchNumber = 1 // 開始時のバッチ番号
   ): void {
     let pageToken: string | undefined = initialPageToken;
     let batchNumber = initialBatchNumber;
@@ -126,36 +126,37 @@ export class DriveItemsArchiver {
     props.setProperty(Const.PROPERTY_KEYS.DRIVE_NAME, driveName);
     this.pathCache.set(driveId, driveName);
 
+    // 1. ベースとなる必須条件（ゴミ箱除外）
     const queryParts: string[] = ['trashed = false'];
-    // 今日から1年前の日付を計算し、API用のフォーマット（RFC 3339）に変換する
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    // GASの Utilities.formatDate を使って「YYYY-MM-DDTHH:mm:ssZ」形式にする
-    const formattedOneYearAgo = Utilities.formatDate(
-      oneYearAgo,
+
+    // 範囲を指定する変数を定義（例：9年前〜10年前）
+    const startYearsAgo = 2; // より過去の古い時点（10年前）
+    const endYearsAgo = 1; // より現在に近い時点（9年前）
+
+    // 10年前（ここより後）の日付を計算
+    const fromDate = new Date();
+    fromDate.setFullYear(fromDate.getFullYear() - startYearsAgo);
+    const formattedFromDate = Utilities.formatDate(
+      fromDate,
       'GMT',
       "yyyy-MM-dd'T'HH:mm:ss'Z'"
     );
-    if (driveName === Const.SHARED_DRIVE_NAME.INTERNAL) {
-      // フォルダのみ抽出する場合
-      /*
-      queryParts.push(`mimeType = '${Const.MIME_TYPES.FOLDER}'`);
-      console.log(
-        `[Query Settings] ${driveName} は【フォルダのみ】を抽出対象にします。`
-      );*/
-      queryParts.push(`modifiedTime > '${formattedOneYearAgo}'`);
-      console.log(
-        `[Query Settings] ${driveName} は【1年以内に更新されたアイテムのみ】を抽出対象にします。`
-      );
-    } else {
-      console.log(
-        `[Query Settings] ${driveName} は【ファイルとフォルダ両方】を抽出対象にします。`
-      );
-    }
 
-    // 配列に溜まった条件を ' and ' で結合する（例: "trashed = false and mimeType = '...'"）
+    // 9年前（ここより前）の日付を計算
+    const toDate = new Date();
+    toDate.setFullYear(toDate.getFullYear() - endYearsAgo);
+    const formattedToDate = Utilities.formatDate(
+      toDate,
+      'GMT',
+      "yyyy-MM-dd'T'HH:mm:ss'Z'"
+    );
+    queryParts.push(`modifiedTime > '${formattedFromDate}'`);
+    queryParts.push(`modifiedTime < '${formattedToDate}'`);
     const baseQuery = queryParts.join(' and ');
-
+    // 指定したい permissions の詳細フィールド
+    //const permissionFields =
+    //  'permissions(id,displayName,type,permissionDetails,emailAddress,role,allowFileDiscovery,domain,deleted,view,inheritedPermissionsDisabled)';
+    const fields = `nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime, permissionIds)`;
     do {
       const options: ListFilesOptions = {
         pageSize: 1000,
@@ -164,8 +165,7 @@ export class DriveItemsArchiver {
         includeItemsFromAllDrives: true,
         corpora: 'drive',
         driveId: driveId,
-        fields:
-          'nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime)',
+        fields: fields,
         pageToken: pageToken,
       };
 
@@ -204,13 +204,13 @@ export class DriveItemsArchiver {
       const content = JSON.stringify(enrichedItems, null, 2);
       saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
 
-      // 💡 次のループ（ページ）のための準備
+      // 次のループ（ページ）のための準備
       batchNumber++;
       pageToken = response.nextPageToken;
 
       if (this.limitToFirstPage) break;
 
-      // 💡 1ページ出力するごとに、次のページの情報をプロパティに保存（上書き）する
+      // 1ページ出力するごとに、次のページの情報をプロパティに保存（上書き）する
       if (pageToken) {
         props.setProperties({
           [this.PROP_PAGE_TOKEN]: pageToken,
@@ -223,7 +223,7 @@ export class DriveItemsArchiver {
       }
     } while (pageToken);
 
-    // 💡 ループを抜けた ＝ 次のページがない（すべての処理が正常終了した）場合
+    // ループを抜けた ＝ 次のページがない（すべての処理が正常終了した）場合
     if (!pageToken) {
       props.deleteProperty(this.PROP_PAGE_TOKEN);
       props.deleteProperty(this.PROP_BATCH_NUM);
