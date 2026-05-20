@@ -126,36 +126,59 @@ export class DriveItemsArchiver {
     props.setProperty(Const.PROPERTY_KEYS.DRIVE_NAME, driveName);
     this.pathCache.set(driveId, driveName);
 
+    // ================= [設定エリア] =================
+    // 日付による絞り込みを行うかどうか（true: 行う / false: 行わない・全期間対象）
+    const useDateFilter = true;
+
+    // 期間の範囲指定（useDateFilter が true の場合のみ有効）
+    const startYearsAgo = 1;
+    const endYearsAgo = 0; // 0にすると今日までになります
+    // =================================================
+
     // 1. ベースとなる必須条件（ゴミ箱除外）
     const queryParts: string[] = ['trashed = false'];
 
-    // 範囲を指定する変数を定義（例：9年前〜10年前）
-    const startYearsAgo = 2; // より過去の古い時点（10年前）
-    const endYearsAgo = 1; // より現在に近い時点（9年前）
+    // 2. フラグが true の場合のみ、日付の計算とクエリへの追加を行う
+    if (useDateFilter) {
+      // 開始日（〇年前）の日付を計算
+      const fromDate = new Date();
+      fromDate.setFullYear(fromDate.getFullYear() - startYearsAgo);
+      const formattedFromDate = Utilities.formatDate(
+        fromDate,
+        'GMT',
+        "yyyy-MM-dd'T'HH:mm:ss'Z'"
+      );
 
-    // 10年前（ここより後）の日付を計算
-    const fromDate = new Date();
-    fromDate.setFullYear(fromDate.getFullYear() - startYearsAgo);
-    const formattedFromDate = Utilities.formatDate(
-      fromDate,
-      'GMT',
-      "yyyy-MM-dd'T'HH:mm:ss'Z'"
-    );
+      // 終了日の計算（endYearsAgo が 0 の場合は「今日」にする）
+      const toDate = new Date();
+      if (endYearsAgo > 0) {
+        toDate.setFullYear(toDate.getFullYear() - endYearsAgo);
+      }
+      const formattedToDate = Utilities.formatDate(
+        toDate,
+        'GMT',
+        "yyyy-MM-dd'T'HH:mm:ss'Z'"
+      );
 
-    // 9年前（ここより前）の日付を計算
-    const toDate = new Date();
-    toDate.setFullYear(toDate.getFullYear() - endYearsAgo);
-    const formattedToDate = Utilities.formatDate(
-      toDate,
-      'GMT',
-      "yyyy-MM-dd'T'HH:mm:ss'Z'"
-    );
-    queryParts.push(`modifiedTime > '${formattedFromDate}'`);
-    queryParts.push(`modifiedTime < '${formattedToDate}'`);
+      // クエリパーツに「より新しく」「より古い」の2つの条件を追加
+      queryParts.push(`modifiedTime > '${formattedFromDate}'`);
+      queryParts.push(`modifiedTime < '${formattedToDate}'`);
+
+      const periodText =
+        endYearsAgo === 0 ? '今日まで' : `${endYearsAgo}年前まで`;
+      console.log(
+        `[Query Settings] ${driveName} から【${startYearsAgo}年前 〜 ${periodText}（${formattedFromDate} 〜 ${formattedToDate}）】に更新されたアイテムを抽出します。`
+      );
+    } else {
+      // フラグが false の場合は日付条件を足さない（全期間が対象になる）
+      console.log(
+        `[Query Settings] ${driveName} の【すべての期間】のアイテムを抽出します（日付絞り込み無効）。`
+      );
+    }
+
+    // 3. クエリの結合
     const baseQuery = queryParts.join(' and ');
-    // 指定したい permissions の詳細フィールド
-    //const permissionFields =
-    //  'permissions(id,displayName,type,permissionDetails,emailAddress,role,allowFileDiscovery,domain,deleted,view,inheritedPermissionsDisabled)';
+
     const fields = `nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime, permissionIds)`;
     do {
       const options: ListFilesOptions = {

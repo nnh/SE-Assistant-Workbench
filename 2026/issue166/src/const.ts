@@ -28,8 +28,6 @@ export const PROPERTY_KEYS = {
   // レポート関連
   OUTPUT_SPREADSHEET_ID: 'OUTPUT_SPREADSHEET_ID', // レポート出力先のスプレッドシートID
 
-  // システムの状態・キャッシュ
-
   // キュー管理（共有ドライブのIDなど）
   TARGET_SHARED_DRIVE_ID: 'TARGET_SHARED_DRIVE_ID', // 対象の共有ドライブIDリスト（カンマ区切り）
   POLICY_REPORT_TARGET_DRIVE_IDS: 'POLICY_REPORT_TARGET_DRIVE_IDS', // 共有ドライブ設定レポートの対象ドライブID（カンマ区切り）
