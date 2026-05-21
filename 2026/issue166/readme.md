@@ -1,3 +1,18 @@
+<!--
+Copyright 2025 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
 # SE-Assistant-Workbench / Google Drive 共有ドライブ監査・レポートシステム
 
 Google Workspace の Admin SDK および Drive API を活用し、共有ドライブ内のアイテム（ファイル・フォルダ）の階層構造、設定ポリシー、およびユーザーのアクセス権限（パーミッション）を一括で抽出・解析し、スプレッドシートへマトリクス形式などでレポート出力する Google Apps Script (GAS) システムです。

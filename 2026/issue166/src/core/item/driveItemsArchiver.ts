@@ -20,6 +20,8 @@ import {
   DriveApiService,
   ListFilesOptions,
 } from '../../common/driveApiService';
+import { DriveItemQueryBuilder } from './driveItemQueryBuilder';
+import { DrivePathResolver } from './drivePathResolver';
 /**
  * DriveItemsArchiver.ts
  * 共有ドライブのフォルダ階層を抽出し、JSONとして保存。
@@ -38,8 +40,6 @@ export class DriveItemsArchiver {
   private storedPageToken: string | null;
   private storedBatchNumber: number;
   private readonly SLEEP_MS = 500;
-  // パス計算用のキャッシュ (ID -> フルパス)
-  private pathCache: Map<string, string> = new Map();
 
   // テスト用フラグ
   // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
@@ -127,60 +127,11 @@ export class DriveItemsArchiver {
     // ドライブ名をプロパティにセットする
     const props = PropertiesService.getScriptProperties();
     props.setProperty(Const.PROPERTY_KEYS.DRIVE_NAME, driveName);
-    this.pathCache.set(driveId, driveName);
+    // パス解決用のインスタンスを生成
+    const pathResolver = new DrivePathResolver();
 
-    // ================= [設定エリア] =================
-    // 日付による絞り込みを行うかどうか（true: 行う / false: 行わない・全期間対象）
-    const useDateFilter = true;
-
-    // 期間の範囲指定（useDateFilter が true の場合のみ有効）
-    const startYearsAgo = 1;
-    const endYearsAgo = 0; // 0にすると今日までになります
-    // =================================================
-
-    // 1. ベースとなる必須条件（ゴミ箱除外）
-    const queryParts: string[] = ['trashed = false'];
-
-    // 2. フラグが true の場合のみ、日付の計算とクエリへの追加を行う
-    if (useDateFilter) {
-      // 開始日（〇年前）の日付を計算
-      const fromDate = new Date();
-      fromDate.setFullYear(fromDate.getFullYear() - startYearsAgo);
-      const formattedFromDate = Utilities.formatDate(
-        fromDate,
-        'GMT',
-        "yyyy-MM-dd'T'HH:mm:ss'Z'"
-      );
-
-      // 終了日の計算（endYearsAgo が 0 の場合は「今日」にする）
-      const toDate = new Date();
-      if (endYearsAgo > 0) {
-        toDate.setFullYear(toDate.getFullYear() - endYearsAgo);
-      }
-      const formattedToDate = Utilities.formatDate(
-        toDate,
-        'GMT',
-        "yyyy-MM-dd'T'HH:mm:ss'Z'"
-      );
-
-      // クエリパーツに「より新しく」「より古い」の2つの条件を追加
-      queryParts.push(`modifiedTime > '${formattedFromDate}'`);
-      queryParts.push(`modifiedTime < '${formattedToDate}'`);
-
-      const periodText =
-        endYearsAgo === 0 ? '今日まで' : `${endYearsAgo}年前まで`;
-      console.log(
-        `[Query Settings] ${driveName} から【${startYearsAgo}年前 〜 ${periodText}（${formattedFromDate} 〜 ${formattedToDate}）】に更新されたアイテムを抽出します。`
-      );
-    } else {
-      // フラグが false の場合は日付条件を足さない（全期間が対象になる）
-      console.log(
-        `[Query Settings] ${driveName} の【すべての期間】のアイテムを抽出します（日付絞り込み無効）。`
-      );
-    }
-
-    // 3. クエリの結合
-    const baseQuery = queryParts.join(' and ');
+    const queryBuilder = new DriveItemQueryBuilder();
+    const baseQuery = queryBuilder.build(driveName);
 
     const fields = `nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime, permissionIds)`;
     do {
@@ -213,7 +164,7 @@ export class DriveItemsArchiver {
       }
 
       const enrichedItems = items.map(item => {
-        const parentPath = this.resolveParentPath(item);
+        const parentPath = pathResolver.resolve(item);
         const type =
           item.mimeType === Const.MIME_TYPES.FOLDER
             ? Const.FOLDER_JP
@@ -258,51 +209,7 @@ export class DriveItemsArchiver {
       );
     }
 
-    this.pathCache.clear();
-  }
-  /**
-   * アイテムが存在する「親フォルダ」のフルパスを構築する
-   */
-  private resolveParentPath(folder: any): string {
-    const parentId =
-      folder.parents && folder.parents.length > 0 ? folder.parents[0] : null;
-
-    // 親がいない（ドライブ直下など）場合は空文字、またはドライブ名のみにする
-    if (!parentId) return '';
-
-    // 親のパスが既にキャッシュにあればそれを返す
-    if (this.pathCache.has(parentId)) {
-      return this.pathCache.get(parentId) as string;
-    }
-
-    // キャッシュにない場合（再帰的に親を辿る）
-    try {
-      const parentFolder: GoogleAppsScript.Drive.Folder =
-        DriveApp.getFolderById(parentId);
-
-      // 親自身のフルパスを構築
-      const parentName = parentFolder.getName();
-      const grandParentId = parentFolder.getParents().hasNext()
-        ? parentFolder.getParents().next().getId()
-        : null;
-
-      // 再帰呼び出し：親の親のパス + 親の名前
-      const grandParentPath = this.resolveParentPath({
-        id: parentId,
-        name: parentName,
-        parents: grandParentId ? [grandParentId] : [],
-      });
-
-      const fullParentPath = grandParentPath
-        ? `${grandParentPath} / ${parentName}`
-        : parentName;
-
-      // キャッシュに保存
-      this.pathCache.set(parentId, fullParentPath);
-      return fullParentPath;
-    } catch (e) {
-      return 'Unknown';
-    }
+    pathResolver.clear();
   }
 
   private validateAndThrow(): void {
