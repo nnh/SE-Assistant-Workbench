@@ -94,6 +94,6 @@ function checkIfInSharedDrive_(
       return `マイドライブ`;
     }
   } catch (e: any) {
-    return `[Error] ファイル情報の取得に失敗しました（IDが違うか、権限がありません）: ${e.message}`;
+    return `[Error] ファイル情報の取得に失敗しました（IDが違うか、権限がありません）`;
   }
 }

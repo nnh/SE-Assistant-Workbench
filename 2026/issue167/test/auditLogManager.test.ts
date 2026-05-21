@@ -25,9 +25,21 @@ const mockAdminReports = {
   },
 };
 
+const mockFolder = {
+  getName: jest.fn().mockReturnValue('Mock Folder'),
+  createFile: jest.fn().mockReturnValue({
+    getName: () => 'mock_file.json',
+  }),
+  getFiles: jest.fn().mockReturnValue({
+    hasNext: jest.fn().mockReturnValue(false),
+    next: jest.fn(),
+  }),
+};
+
 const mockDriveApp = {
   createFile: jest.fn(),
   searchFiles: jest.fn(),
+  getFolderById: jest.fn().mockReturnValue(mockFolder),
   MimeType: { PLAIN_TEXT: 'text/plain' },
 };
 
@@ -64,6 +76,7 @@ describe('DriveAuditManager Tests', () => {
     (global as any).AdminReports = mockAdminReports;
     (global as any).DriveApp = {
       ...mockDriveApp,
+      getFolderById: mockDriveApp.getFolderById,
       MimeType: mimeTypeMock,
     };
     (global as any).SpreadsheetApp = mockSpreadsheetApp;
@@ -132,7 +145,7 @@ describe('DriveAuditManager Tests', () => {
       fetchAndSaveAuditLogsRaw_();
 
       expect(mockAdminReports.Activities.list).toHaveBeenCalledTimes(2);
-      expect(mockDriveApp.createFile).toHaveBeenCalledTimes(2);
+      expect(mockFolder.createFile).toHaveBeenCalledTimes(2);
     });
   });
 

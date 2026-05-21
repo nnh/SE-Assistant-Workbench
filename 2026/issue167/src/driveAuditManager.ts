@@ -17,6 +17,23 @@
  * 監査ログを取得し、1ページごとにJSONファイルとして保存する
  */
 export function fetchAndSaveAuditLogsRaw_(): void {
+  // 保存先フォルダの指定
+  const folderId = PropertiesService.getScriptProperties().getProperty(
+    'AUDIT_LOG_FOLDER_ID'
+  );
+  if (!folderId) {
+    PropertiesService.getScriptProperties().setProperty(
+      'AUDIT_LOG_FOLDER_ID',
+      ''
+    ); // 初期化
+    throw new Error(
+      'スクリプトプロパティに「AUDIT_LOG_FOLDER_ID」を設定してください。'
+    );
+  }
+  const saveFolder = DriveApp.getFolderById(folderId);
+  if (!saveFolder) {
+    throw new Error('指定されたフォルダIDが見つかりません: ' + folderId);
+  }
   const userKey = 'all';
   const applicationName = 'drive';
   const now = new Date();
@@ -49,7 +66,7 @@ export function fetchAndSaveAuditLogsRaw_(): void {
         const fileName = `audit_raw_${timestamp}_page${pageCount}.json`;
         const jsonContent = JSON.stringify(activities, null, 2);
 
-        DriveApp.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
+        saveFolder.createFile(fileName, jsonContent, MimeType.PLAIN_TEXT);
         console.log(`保存完了: ${fileName} (${activities.length}件)`);
       }
 
