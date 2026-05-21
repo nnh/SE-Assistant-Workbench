@@ -20,3 +20,9 @@ export const SHEET_NAME = {
   SHARED_DRIVE_ID: '共有ドライブID',
   OUTPUT: '出力',
 } as const;
+
+export const FILE_INFO = {
+  MY_DRIVE: 'マイドライブ',
+  ERROR:
+    '[Error] ファイル情報の取得に失敗しました（IDが違うか、権限がありません）',
+} as const;

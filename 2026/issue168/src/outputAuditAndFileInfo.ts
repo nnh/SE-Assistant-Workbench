@@ -29,6 +29,11 @@ export function outputAuditAndFileInfo_() {
   }
   const auditData: string[][] = auditSheet.getDataRange().getValues();
   const fileData: string[][] = fileSheet.getDataRange().getValues();
+  //
+  const filteredFileData = fileData.filter(
+    row =>
+      row[1] !== Const.FILE_INFO.MY_DRIVE && row[1] !== Const.FILE_INFO.ERROR
+  );
   // ここでauditDataとfileDataを必要に応じて処理して、出力用のデータを作成する
   const outputSheetName = Const.SHEET_NAME.OUTPUT;
   let outputSheet = ss.getSheetByName(outputSheetName);
@@ -43,7 +48,7 @@ export function outputAuditAndFileInfo_() {
   const outputValues: string[][] = [headers]; // ヘッダー行
   auditData.slice(1).forEach(auditRow => {
     const auditFileId = auditRow[auditIdColIndex];
-    const fileInfo = fileData.find(
+    const fileInfo = filteredFileData.find(
       fileRow => fileRow[fileIdColIndex] === auditFileId
     );
     if (fileInfo) {

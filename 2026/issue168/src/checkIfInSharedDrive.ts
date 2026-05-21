@@ -91,9 +91,9 @@ function checkIfInSharedDrive_(
         driveInfo.get(file.driveId) || '？？？不明なドライブ名？？？';
       return `共有ドライブ「${driveName}」`;
     } else {
-      return `マイドライブ`;
+      return Const.FILE_INFO.MY_DRIVE; // マイドライブにある場合
     }
   } catch (e: any) {
-    return `[Error] ファイル情報の取得に失敗しました（IDが違うか、権限がありません）`;
+    return Const.FILE_INFO.ERROR; // エラーが発生した場合
   }
 }
