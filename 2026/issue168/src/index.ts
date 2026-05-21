@@ -15,21 +15,10 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import {
-  runSaveLogsToJson_,
-  resetLogToken_,
-  runExportJsonToSheet_,
-} from './issue168';
+import { runExportJsonToSheet_ } from './issue168';
 
 function exportJsonToSheet() {
   runExportJsonToSheet_();
-}
-
-function main() {
-  runSaveLogsToJson_();
-}
-function resetToken() {
-  resetLogToken_();
 }
 
 console.log(hello());

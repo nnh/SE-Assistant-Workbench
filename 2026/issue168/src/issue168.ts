@@ -18,24 +18,20 @@
  */
 const AuditLogManager = {
   // ================= [設定エリア] =================
-  USER_KEY: 'all',
-  APPLICATION_NAME: 'drive',
   ACCOUNT_SHEET_NAME: '対象アカウント',
-  PROPERTY_TOKEN_KEY: 'DRIVE_AUDIT_NEXT_PAGE_TOKEN', // プロパティの保存キー名
   // =================================================
-  getJsonFolder: function () {
-    const props = PropertiesService.getScriptProperties();
-    const jsonFolderId = props.getProperty('JSON_FOLDER_ID');
-    if (!jsonFolderId) {
-      props.setProperty('JSON_FOLDER_ID', 'SET_YOUR_FOLDER_ID_HERE');
+  getJsonFolder: function (): GoogleAppsScript.Drive.Folder {
+    const folderId =
+      PropertiesService.getScriptProperties().getProperty('JSON_FOLDER_ID');
+    if (!folderId) {
       throw new Error(
-        'JSON_FOLDER_ID がスクリプトプロパティに設定されていません。処理を中断します。'
+        '監査ログが保存されているフォルダIDがプロパティに設定されていません。'
       );
     }
-    const folder = DriveApp.getFolderById(jsonFolderId);
+    const folder = DriveApp.getFolderById(folderId);
     if (!folder) {
       throw new Error(
-        `指定されたフォルダID「${jsonFolderId}」が見つかりません。処理を中断します。`
+        '指定されたフォルダIDに対応するフォルダが見つかりません。プロパティの設定を確認してください。'
       );
     }
     return folder;
@@ -62,134 +58,9 @@ const AuditLogManager = {
     }
     return keywords;
   },
-  /**
-   * 処理A：Reports APIからログを抽出し、指定フォルダにJSONファイルとして保存する（レジューム機能付き）
-   */
-  saveLogsToJson: function () {
-    const folder = this.getJsonFolder();
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    // 2. Admin SDK API の有効化チェック
-    if (typeof AdminReports === 'undefined') {
-      throw new Error('Admin SDK API サービスを有効にしてください。');
-    }
-
-    // 3. プロパティから前回保存した nextPageToken があるか確認
-    const scriptProperties = PropertiesService.getScriptProperties();
-    let pageToken =
-      scriptProperties.getProperty(this.PROPERTY_TOKEN_KEY) || undefined;
-
-    if (pageToken) {
-      console.log(`[Info] 前回の続きから再開します。Token: ${pageToken}`);
-    } else {
-      console.log('[Info] 初回実行、または最初からの取得を開始します。');
-    }
-
-    let pageCount = 1;
-    const startTime = Date.now();
-    const TIME_LIMIT = 4 * 60 * 1000; // 安全のため4分（240,000ミリ秒）を上限とする
-    // 過去1ヶ月前の日時（startTime）を計算
-    const now = new Date();
-    const oneMonthAgo = new Date(
-      now.getFullYear(),
-      now.getMonth() - 1,
-      now.getDate(),
-      now.getHours(),
-      now.getMinutes(),
-      now.getSeconds()
-    );
-    const startTimeString = oneMonthAgo.toISOString(); // 例: "2026-04-20T16:00:00.000Z"
-    console.log(
-      `[Info] 取得対象期間: ${startTimeString} 〜 現在まで（過去1ヶ月分）`
-    );
-    const items: any[] = [];
-    // 4. 監査ログの取得とフィルタリングのループ
-    do {
-      const options = {
-        pageToken: pageToken,
-        maxResults: 1000,
-        startTime: startTimeString,
-      };
-
-      console.log(`[API Fetch] ページ ${pageCount} のログを取得中...`);
-      let response: any;
-      try {
-        response = AdminReports.Activities.list(
-          this.USER_KEY,
-          this.APPLICATION_NAME,
-          options
-        );
-        if (!response || !response.items) {
-          console.warn(
-            `[Warning] ページ ${pageCount} で有効なデータが取得できませんでした。`
-          );
-          break;
-        }
-        // JSONファイル出力
-        const activities = response.items;
-        console.log(
-          `[Info] ページ ${pageCount} で ${activities.length} 件のログを取得しました。`
-        );
-        try {
-          const fileName = `audit_logs_${this._generateTimestamp()}_page${pageCount}.json`;
-          const jsonString = JSON.stringify(activities, null, 2);
-
-          folder.createFile(fileName, jsonString, MimeType.PLAIN_TEXT);
-          console.log(
-            `[Success] この実行で抽出された ${activities.length} 件のログを「${fileName}」に保存しました。`
-          );
-        } catch (e: any) {
-          console.error(`[Error] フォルダへの保存に失敗しました: ${e.message}`);
-        }
-      } catch (e: any) {
-        console.error(
-          `[Error] APIの取得に失敗しました。トークンが失効している可能性があります。一度トークンをクリアしてください。: ${e.message}`
-        );
-        break;
-      }
-
-      // 次のページトークンを更新
-      pageToken = response.nextPageToken;
-      scriptProperties.setProperty(this.PROPERTY_TOKEN_KEY, pageToken || '');
-      console.log(`[Property Saved] 次回再開用トークンを保存しました。`);
-      pageCount++;
-
-      // ⏳ 時間チェック：制限時間（4分）を超えそうなら、ループを抜けて現在の進捗を保存する
-      if (pageToken && Date.now() - startTime > TIME_LIMIT) {
-        console.log(
-          `[Timeout Warning] GASの実行時間制限を考慮し、処理を一時中断します。次の実行時に再開します。`
-        );
-        break;
-      }
-    } while (pageToken);
-
-    // 6. ステータス（nextPageToken）の更新保存
-    if (pageToken) {
-      // まだ続きがある場合：トークンをプロパティに保存
-      scriptProperties.setProperty(this.PROPERTY_TOKEN_KEY, pageToken);
-      console.log(`[Property Saved] 次回再開用トークンを保存しました。`);
-    } else {
-      // すべてのログを最後まで取り切った場合：プロパティからトークンを削除してクリア
-      scriptProperties.deleteProperty(this.PROPERTY_TOKEN_KEY);
-      console.log(
-        `[Finished] すべてのログデータを最後まで取得し終えました。トークンをクリアします。`
-      );
-    }
-  },
 
   /**
-   * 手動用：不調な時や、最初からやり直したい時にトークンを強制リセットする関数
-   */
-  clearPageToken: function () {
-    PropertiesService.getScriptProperties().deleteProperty(
-      this.PROPERTY_TOKEN_KEY
-    );
-    console.log(
-      '[Success] スクリプトプロパティの nextPageToken をクリアしました。次回は最初から取得します。'
-    );
-  },
-
-  /**
-   * 処理B：指定フォルダ内のすべてのJSONファイルを読み込み、スプレッドシートに出力する
+   * 指定フォルダ内のすべてのJSONファイルを読み込み、スプレッドシートに出力する
    */
   exportJsonToSheet: function () {
     const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
@@ -292,18 +163,4 @@ const AuditLogManager = {
 
 export function runExportJsonToSheet_() {
   AuditLogManager.exportJsonToSheet();
-}
-
-/**
- * 実行関数1: ログを取得してJSONとして保存する（時間切れの場合はトークンを保持して中断）
- */
-export function runSaveLogsToJson_() {
-  AuditLogManager.saveLogsToJson();
-}
-
-/**
- * 補助関数: もし最初からやり直したくなった場合にトークンをリセットする
- */
-export function resetLogToken_() {
-  AuditLogManager.clearPageToken();
 }
