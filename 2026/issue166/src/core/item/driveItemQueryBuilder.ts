@@ -28,26 +28,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+import * as Const from '../../common/const';
 export class DriveItemQueryBuilder {
   // ================= [設定エリア] =================
-  private readonly filterMode: 'ALL' | 'PERIOD' | 'RECENT_2_DAYS' =
-    'RECENT_2_DAYS';
-  // 期間の範囲指定（useDateFilter が true の場合のみ有効）
+  // 期間の範囲指定（引数で 'PERIOD' が指定された場合のみ有効）
   private readonly startYearsAgo = 1;
-  private readonly endYearsAgo = 0; // 0にすると今日までになります
+  private readonly endYearsAgo = 0;
   // =================================================
 
   /**
-   * 指定されたドライブ名に応じた、API探索用のクエリ文字列を組み立てる
+   * 指定されたドライブ名と抽出モードに応じた、API探索用のクエリ文字列を組み立てる
+   * @param {string} driveName - 共有ドライブ名
+   * @param {'ALL' | 'PERIOD' | 'RECENT_2_DAYS'} filterMode - 抽出条件
    */
-  public build(driveName: string): string {
+  public build(
+    driveName: string,
+    filterMode: 'ALL' | 'PERIOD' | 'RECENT_2_DAYS'
+  ): string {
     // 1. ベースとなる必須条件（ゴミ箱除外）
     const queryParts: string[] = ['trashed = false'];
 
-    // 2. 選択されたモードに応じて日付クエリを生成
-    if (this.filterMode === 'RECENT_2_DAYS') {
-      // 💡 直近2日以内の計算（今日から2日前を計算）
+    // 2. 引数で受け取った filterMode に応じて日付クエリを生成
+    if (filterMode === Const.FILTER_MODE.RECENT_2_DAYS) {
       const fromDate = new Date();
       fromDate.setDate(fromDate.getDate() - 2);
       const formattedFromDate = Utilities.formatDate(
@@ -60,8 +62,7 @@ export class DriveItemQueryBuilder {
       console.log(
         `[Query Settings] ${driveName} から【直近2日以内（${formattedFromDate} 以降）】に更新されたアイテムを抽出します。`
       );
-    } else if (this.filterMode === 'PERIOD') {
-      // 従来の年数指定処理
+    } else if (filterMode === Const.FILTER_MODE.PERIOD) {
       const fromDate = new Date();
       fromDate.setFullYear(fromDate.getFullYear() - this.startYearsAgo);
       const formattedFromDate = Utilities.formatDate(
@@ -89,7 +90,6 @@ export class DriveItemQueryBuilder {
         `[Query Settings] ${driveName} から【${this.startYearsAgo}年前 〜 ${periodText}（${formattedFromDate} 〜 ${formattedToDate}）】に更新されたアイテムを抽出します。`
       );
     } else {
-      // 全期間対象
       console.log(
         `[Query Settings] ${driveName} の【すべての期間】のアイテムを抽出します（日付絞り込み無効）。`
       );

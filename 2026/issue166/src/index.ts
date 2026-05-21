@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { runNextArchiving_ } from './core/item/driveItemsArchiver';
+import { executeJsonArchivingProcess_ } from './core/item/driveItemsArchiver';
 import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
 import { runPermissionReportGeneration_ } from './core/permission/permissionReportGenerator';
 import {
@@ -106,7 +106,16 @@ function runReportGeneration() {
  * キューから未処理の共有ドライブを取り出し、アイテムと権限情報をJSONとして保存します。
  */
 function executeJsonArchivingProcess() {
-  runNextArchiving_();
+  // テスト用フラグ
+  // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
+  const limitToFirstPage = false;
+  if (limitToFirstPage) {
+    console.warn(
+      'limitToFirstPageフラグがtrueのため、最初の1ページのみ処理して終了します。' +
+        '全件処理する場合はこのフラグをfalseにしてください。'
+    );
+  }
+  executeJsonArchivingProcess_(limitToFirstPage);
 }
 /**
  * 1.1. 初期処理

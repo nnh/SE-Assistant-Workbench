@@ -29,6 +29,18 @@ export function getFolderById_(
     );
   }
 }
+export function getFolderByPropertyKey_(
+  propertyKey: string
+): GoogleAppsScript.Drive.Folder {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty(propertyKey);
+  if (!folderId) {
+    throw new Error(
+      `プロパティ ${propertyKey} が設定されていません。スクリプトプロパティにフォルダIDを設定してください。`
+    );
+  }
+  return getFolderById_(folderId);
+}
 
 export const DateUtils = {
   /**

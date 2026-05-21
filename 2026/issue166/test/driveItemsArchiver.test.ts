@@ -48,7 +48,7 @@ describe('DriveItemsArchiver', () => {
   });
 
   it('コンストラクタ：プロパティからIDを正しく読み込むこと', () => {
-    const archiver = new DriveItemsArchiver();
+    const archiver = new DriveItemsArchiver('TestDrive', false);
     expect(archiver).toBeDefined();
     expect(mockGetProperty).toHaveBeenCalledWith(
       Const.PROPERTY_KEYS.JSON_FOLDER_ID

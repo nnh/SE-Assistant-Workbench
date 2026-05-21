@@ -103,6 +103,12 @@ export const INDEX = {
   },
 } as const;
 
+export const FILTER_MODE = {
+  ALL: 'ALL',
+  PERIOD: 'PERIOD',
+  RECENT_2_DAYS: 'RECENT_2_DAYS',
+} as const;
+
 /**
  * アーカイブJSONの1アイテム（ファイルまたはフォルダ）の構造
  */
