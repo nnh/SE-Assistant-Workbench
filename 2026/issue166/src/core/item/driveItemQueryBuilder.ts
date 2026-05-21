@@ -31,9 +31,8 @@
 
 export class DriveItemQueryBuilder {
   // ================= [設定エリア] =================
-  // 日付による絞り込みを行うかどうか（true: 行う / false: 行わない・全期間対象）
-  private readonly useDateFilter = true;
-
+  private readonly filterMode: 'ALL' | 'PERIOD' | 'RECENT_2_DAYS' =
+    'RECENT_2_DAYS';
   // 期間の範囲指定（useDateFilter が true の場合のみ有効）
   private readonly startYearsAgo = 1;
   private readonly endYearsAgo = 0; // 0にすると今日までになります
@@ -46,8 +45,23 @@ export class DriveItemQueryBuilder {
     // 1. ベースとなる必須条件（ゴミ箱除外）
     const queryParts: string[] = ['trashed = false'];
 
-    // 2. フラグが true の場合のみ、日付の計算とクエリへの追加を行う
-    if (this.useDateFilter) {
+    // 2. 選択されたモードに応じて日付クエリを生成
+    if (this.filterMode === 'RECENT_2_DAYS') {
+      // 💡 直近2日以内の計算（今日から2日前を計算）
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 2);
+      const formattedFromDate = Utilities.formatDate(
+        fromDate,
+        'GMT',
+        "yyyy-MM-dd'T'HH:mm:ss'Z'"
+      );
+
+      queryParts.push(`modifiedTime > '${formattedFromDate}'`);
+      console.log(
+        `[Query Settings] ${driveName} から【直近2日以内（${formattedFromDate} 以降）】に更新されたアイテムを抽出します。`
+      );
+    } else if (this.filterMode === 'PERIOD') {
+      // 従来の年数指定処理
       const fromDate = new Date();
       fromDate.setFullYear(fromDate.getFullYear() - this.startYearsAgo);
       const formattedFromDate = Utilities.formatDate(
@@ -75,6 +89,7 @@ export class DriveItemQueryBuilder {
         `[Query Settings] ${driveName} から【${this.startYearsAgo}年前 〜 ${periodText}（${formattedFromDate} 〜 ${formattedToDate}）】に更新されたアイテムを抽出します。`
       );
     } else {
+      // 全期間対象
       console.log(
         `[Query Settings] ${driveName} の【すべての期間】のアイテムを抽出します（日付絞り込み無効）。`
       );
