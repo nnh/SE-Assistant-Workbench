@@ -14,24 +14,24 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { runNextArchiving_ } from './driveItemsArchiver';
-import { runReportGeneration_ } from './driveItemsReportGenerator';
-import { runPermissionReportGeneration_ } from './permissionReportGenerator';
+import { runNextArchiving_ } from './core/item/driveItemsArchiver';
+import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
+import { runPermissionReportGeneration_ } from './core/permission/permissionReportGenerator';
 import {
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
-} from './permissionArchiver';
+} from './core/permission/permissionArchiver';
 import {
   archiveSharedDrivePoliciesDriveGet_,
   archiveSharedDrivePoliciesPermissions_,
   sharedDrivePolicyReportGenerator_,
-} from './sharedDrivePolicyReportGenerator';
-import { runDrivePermissionMatrixReportGeneration_ } from './driveDataMerger';
+} from './core/policy/sharedDrivePolicyReportGenerator';
+import { runDrivePermissionMatrixReportGeneration_ } from './core/permission/driveDataMerger';
 import {
   runInternalDriveExcludeCheck_,
   runExternalAccountPermissionReport_,
-} from './InternalDriveProcessor';
-import { setupProjectProperties_ } from './Initializer';
+} from './core/permission/InternalDriveProcessor';
+import { setupProjectProperties_ } from './core/app/Initializer';
 
 /**
  * 5.1.

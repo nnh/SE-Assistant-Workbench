@@ -16,8 +16,8 @@
 /**
  * DriveItemsReportGenerator.ts
  */
-import { BaseReport } from './baseReport';
-import * as Const from './const';
+import { BaseReport } from '../../baseReport';
+import * as Const from '../../common/const';
 class DriveItemsReportGenerator extends BaseReport {
   private targetDriveId: string | null;
   private targetDriveName: string;

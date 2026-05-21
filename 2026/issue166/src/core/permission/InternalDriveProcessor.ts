@@ -17,7 +17,7 @@
  * 内部のみ共有ドライブの特別処理をまとめたクラス
  */
 
-import * as Const from './const';
+import * as Const from '../../common/const';
 
 class InternalDriveProcessor {
   private spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet | null = null;

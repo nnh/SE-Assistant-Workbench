@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseReport } from './baseReport'; // ※実際のパスに合わせてください
-import * as Const from './const';
+import { BaseReport } from '../../baseReport'; // ※実際のパスに合わせてください
+import * as Const from '../../common/const';
 
 export class DrivePermissionMatrixReport extends BaseReport {
   constructor(jsonFolderKey: string, outputSpreadsheetKey: string) {

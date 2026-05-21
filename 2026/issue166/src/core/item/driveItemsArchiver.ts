@@ -13,10 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as Const from './const';
-import { getFolderById_ } from './utils';
-import { FileUtils } from './fileUtils';
-import { DriveApiService, ListFilesOptions } from './driveApiService';
+import * as Const from '../../common/const';
+import { getFolderById_ } from '../../common/utils';
+import { FileUtils } from '../../common/fileUtils';
+import {
+  DriveApiService,
+  ListFilesOptions,
+} from '../../common/driveApiService';
 /**
  * DriveItemsArchiver.ts
  * 共有ドライブのフォルダ階層を抽出し、JSONとして保存。

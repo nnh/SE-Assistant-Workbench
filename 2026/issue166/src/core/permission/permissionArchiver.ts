@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as Const from './const';
-import { SpreadsheetHandler } from './spreadsheetHandler';
+import * as Const from '../../common/const';
+import { SpreadsheetHandler } from '../../common/spreadsheetHandler';
 export class PermissionArchiver {
   private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;

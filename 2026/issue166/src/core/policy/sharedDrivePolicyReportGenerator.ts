@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseReport } from './baseReport';
-import { DriveApiService } from './driveApiService';
-import * as Const from './const';
-import { FileUtils } from './fileUtils';
-import { PermissionArchiver } from './permissionArchiver';
-import { PermissionReportGenerator } from './permissionReportGenerator';
-import { DateUtils } from './utils';
+import { BaseReport } from '../../baseReport';
+import { DriveApiService } from '../../common/driveApiService';
+import * as Const from '../../common/const';
+import { FileUtils } from '../../common/fileUtils';
+import { PermissionArchiver } from '../permission/permissionArchiver';
+import { PermissionReportGenerator } from '../permission/permissionReportGenerator';
+import { DateUtils } from '../../common/utils';
 
 class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {

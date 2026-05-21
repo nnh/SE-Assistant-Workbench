@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { DriveItemsArchiver } from '../src/driveItemsArchiver';
-import * as Const from '../src/const';
+import { DriveItemsArchiver } from '../src/core/item/driveItemsArchiver';
+import * as Const from '../src/common/const';
 
 // GASのグローバルオブジェクトをモック化
 const mockGetProperty = jest.fn();

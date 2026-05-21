@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as Const from './const';
-import { getFolderById_ } from './utils';
-import { JsonDataHandler } from './jsonDataHandler';
-import { SpreadsheetHandler } from './spreadsheetHandler';
+import * as Const from './common/const';
+import { getFolderById_ } from './common/utils';
+import { JsonDataHandler } from './common/jsonDataHandler';
+import { SpreadsheetHandler } from './common/spreadsheetHandler';
 
 export abstract class BaseReport {
   protected jsonHandler: JsonDataHandler;
