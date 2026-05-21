@@ -15,7 +15,57 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { hello } from './example-module';
-import { runExportJsonToSheet_ } from './issue168';
+import { runExportJsonToSheet_ } from './exportJsonToSheet';
+import { getFilesInfo_ } from './checkIfInSharedDrive';
+import * as Const from './const';
+
+function outputAuditAndFileInfo() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const auditSheet = ss.getSheetByName(Const.SHEET_NAME.AUDIT_LOG);
+  const fileSheet = ss.getSheetByName(Const.SHEET_NAME.FILE);
+  if (!auditSheet) {
+    throw new Error(
+      `「${Const.SHEET_NAME.AUDIT_LOG}」シートが見つかりません。`
+    );
+  }
+  if (!fileSheet) {
+    throw new Error(`「${Const.SHEET_NAME.FILE}」シートが見つかりません。`);
+  }
+  const auditData: string[][] = auditSheet.getDataRange().getValues();
+  const fileData: string[][] = fileSheet.getDataRange().getValues();
+  // ここでauditDataとfileDataを必要に応じて処理して、出力用のデータを作成する
+  const outputSheetName = Const.SHEET_NAME.OUTPUT;
+  let outputSheet = ss.getSheetByName(outputSheetName);
+  if (!outputSheet) {
+    outputSheet = ss.insertSheet(outputSheetName);
+  } else {
+    outputSheet.clear(); // 既存のデータをクリア
+  }
+  const auditIdColIndex = 1; // 2列目にファイルIDがある想定
+  const fileIdColIndex = 0; // 1列目にファイルIDがある想定
+  const headers = auditData[0].concat(fileData[0].slice(1)); // 例: auditDataのヘッダーとfileDataの2列目以降のヘッダーを結合
+  const outputValues: string[][] = [headers]; // ヘッダー行
+  auditData.slice(1).forEach(auditRow => {
+    const auditFileId = auditRow[auditIdColIndex];
+    const fileInfo = fileData.find(
+      fileRow => fileRow[fileIdColIndex] === auditFileId
+    );
+    if (fileInfo) {
+      // auditRowとfileInfoを組み合わせて出力用の行を作成
+      const outputRow = [...auditRow, ...fileInfo.slice(1)]; // 例: auditRowの全データとfileInfoの2列目以降を結合
+      outputValues.push(outputRow);
+    }
+  });
+  if (outputValues.length > 0) {
+    outputSheet
+      .getRange(1, 1, outputValues.length, outputValues[0].length)
+      .setValues(outputValues);
+  }
+}
+
+function getFilesInfo() {
+  getFilesInfo_();
+}
 
 function exportJsonToSheet() {
   runExportJsonToSheet_();

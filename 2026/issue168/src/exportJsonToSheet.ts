@@ -16,9 +16,12 @@
 /**
  * 監査ログの取得・出力処理を管理するオブジェクト (aside管理用)
  */
+import * as Const from './const';
 const AuditLogManager = {
   // ================= [設定エリア] =================
-  ACCOUNT_SHEET_NAME: '対象アカウント',
+  ACCOUNT_SHEET_NAME: Const.SHEET_NAME.ACCOUNT,
+  AUDIT_SHEET_NAME: Const.SHEET_NAME.AUDIT_LOG,
+  FILE_SHEET_NAME: Const.SHEET_NAME.FILE,
   // =================================================
   getJsonFolder: function (): GoogleAppsScript.Drive.Folder {
     const folderId =
@@ -66,15 +69,14 @@ const AuditLogManager = {
     const ss: GoogleAppsScript.Spreadsheet.Spreadsheet =
       SpreadsheetApp.getActiveSpreadsheet();
     const accountList = this.getTargetInfo(this.getAccountSheet(ss));
-    // 出力用の新しいシートを作成（シート名は現在の処理日時）
-    const outputSheetName = this._generateSheetName();
-    let outputSheet = ss.getSheetByName(outputSheetName);
-    if (!outputSheet) {
-      outputSheet = ss.insertSheet(outputSheetName);
+    // 出力用の新しいシートを作成（既に存在する場合はクリア）
+    let auditSheet = ss.getSheetByName(this.AUDIT_SHEET_NAME);
+    if (!auditSheet) {
+      auditSheet = ss.insertSheet(this.AUDIT_SHEET_NAME);
     } else {
-      outputSheet.clear();
+      auditSheet.clear();
     }
-    outputSheet
+    auditSheet
       .getRange(1, 1, 1, 5)
       .setValues([['タイトル', 'ID', 'イベント', 'アクター', '発生日時']]);
 
@@ -108,6 +110,14 @@ const AuditLogManager = {
         // actorプロパティが存在するアイテムのみを抽出（必要に応じてフィルタ条件を調整）
         const result = jsonArray
           .map(item => {
+            // eventがsync_item_contentまたはaccess_item_contentなら出力対象外とする
+            const eventName = item.events?.[0]?.name || '';
+            if (
+              eventName === 'sync_item_content' ||
+              eventName === 'access_item_content'
+            ) {
+              return null; // 対象外のイベントはnullを返す
+            }
             const actor = item.actor;
             if (!actor?.email) {
               return null; // actorプロパティがない場合はnullを返す
@@ -130,8 +140,8 @@ const AuditLogManager = {
           })
           .filter(item => item !== null); // nullを除外
         if (result.length > 0) {
-          outputSheet
-            .getRange(outputSheet.getLastRow() + 1, 1, result.length, 5)
+          auditSheet
+            .getRange(auditSheet.getLastRow() + 1, 1, result.length, 5)
             .setValues(result as string[][]);
           console.log(
             `[Success] ファイル ${file.getName()} から ${result.length} 件のログをシートに出力しました。`
