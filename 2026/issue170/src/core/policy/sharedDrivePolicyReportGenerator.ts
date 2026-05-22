@@ -122,12 +122,13 @@ export class SharedDrivePolicyReportGenerator extends BaseReport {
   }
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
-    const sheetName = Const.SHEET_NAME.SHARED_DRIVE;
+    const sheetName = DateUtils.getTodayStr();
     const sheet = this.getOutputSheet(
       this.outputSpreadsheet,
       sheetName,
       Const.REPORT_HEADERS.SHARED_DRIVE_POLICY as string[]
     );
+    this.outputSpreadsheet.setActiveSheet(sheet);
 
     // 共有ドライブの設定
     const allRawData = this.fetchAndCombineJsonData<any>(
@@ -219,6 +220,8 @@ export class SharedDrivePolicyReportGenerator extends BaseReport {
     outputData.forEach(row => row.push(outputDate));
 
     this.addDataToSheet(outputData, sheet);
+    sheet.setColumnWidth(2, 120);
+    sheet.setColumnWidth(3, 850);
     console.log(
       `共有ドライブの設定レポートを生成しました。出力行数: ${outputData.length}`
     );
