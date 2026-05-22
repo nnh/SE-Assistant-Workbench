@@ -70,15 +70,6 @@ export abstract class BaseReport {
     return this.jsonHandler.combineJsonData<T>(prefix, targetDriveName);
   }
 
-  protected getOutputDataFromJsons<T>(
-    prefix: string,
-    targetDriveName: string,
-    rowMapper: (item: T) => string[]
-  ) {
-    const allItems = this.fetchAndCombineJsonData<T>(prefix, targetDriveName);
-    return allItems.map(item => rowMapper(item));
-  }
-
   // --- Spreadsheet 系の委譲メソッド ---
   protected setHeader(
     sheet: GoogleAppsScript.Spreadsheet.Sheet,

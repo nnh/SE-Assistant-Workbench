@@ -13,8 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { DateUtils } from './utils';
-
 export class JsonDataHandler {
   constructor(private jsonFolder: GoogleAppsScript.Drive.Folder) {}
 
@@ -29,14 +27,14 @@ export class JsonDataHandler {
     }
   }
 
-  /** 特定の接頭辞を持つJSONファイルを取得 */
+  /** 特定の接頭辞を持つJSONファイルのうち、最新タイムスタンプのものだけを取得 */
   public getTargetJsonFiles(
     prefix: string,
     targetDriveName: string
   ): GoogleAppsScript.Drive.File[] {
     const files = this.jsonFolder.getFiles();
     const targetFiles: GoogleAppsScript.Drive.File[] = [];
-    const searchPrefix = `${prefix}_${targetDriveName}_${DateUtils.getTodayStr()}`;
+    const searchPrefix = `${prefix}_${targetDriveName}_`;
 
     while (files.hasNext()) {
       const file = files.next();
@@ -49,7 +47,17 @@ export class JsonDataHandler {
     }
     if (targetFiles.length === 0)
       throw new Error(`No JSON files found for: ${searchPrefix}`);
-    return targetFiles.sort((a, b) => a.getName().localeCompare(b.getName()));
+
+    // ファイル名降順でソートし、先頭ファイルから最新タイムスタンプ（yyyyMMdd_HHmm = 13文字）を抽出
+    targetFiles.sort((a, b) => b.getName().localeCompare(a.getName()));
+    const latestTimestamp = targetFiles[0]
+      .getName()
+      .substring(searchPrefix.length, searchPrefix.length + 13);
+
+    // 最新タイムスタンプを持つファイルだけをバッチ順（昇順）で返す
+    return targetFiles
+      .filter(f => f.getName().startsWith(`${searchPrefix}${latestTimestamp}`))
+      .sort((a, b) => a.getName().localeCompare(b.getName()));
   }
 
   /** 複数のJSONを統合 */
