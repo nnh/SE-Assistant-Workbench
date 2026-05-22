@@ -110,21 +110,10 @@ export class SharedDrivePolicyReportGenerator extends BaseReport {
    * @param targetDriveName
    * @returns
    */
-  private getPermissionsDataForDrive(
-    targetDriveName: string
-  ): GoogleAppsScript.Drive.File[] {
-    // 1. JSONファイルをすべて読み込む
-    const rawDataList: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
-      Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
-      targetDriveName
-    );
-    return rawDataList;
-  }
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
     const sheetName = DateUtils.getTodayStr();
     const sheet = this.getOutputSheet(
-      this.outputSpreadsheet,
       sheetName,
       Const.REPORT_HEADERS.SHARED_DRIVE_POLICY as string[]
     );
@@ -143,8 +132,10 @@ export class SharedDrivePolicyReportGenerator extends BaseReport {
       Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
     );
     const allPermissionsData = targetDriveIds.map(id => {
-      const targetJson: GoogleAppsScript.Drive.File[] =
-        this.getPermissionsDataForDrive(id);
+      const targetJson: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
+        Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
+        id
+      );
       const members: string[][] = perGenerator.editOutputData(targetJson);
       // 必要な要素だけ抽出して整形
       const res = members.map(member => [

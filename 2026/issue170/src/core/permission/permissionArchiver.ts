@@ -15,13 +15,11 @@
  */
 import * as Const from '../../common/const';
 import { getFolderById_ } from '../../common/utils';
-import { FileUtils } from '../../common/fileUtils';
 /**
  * 各アイテム（ファイル・フォルダ）の詳細なアクセス権限（パーミッション）情報を
  * Drive APIから取得し、JSONファイルとしてアーカイブ保存するクラス。
  */
 export class PermissionArchiver {
-  private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
   /**
    * PermissionArchiver のインスタンスを初期化します。
@@ -31,11 +29,10 @@ export class PermissionArchiver {
   constructor() {
     const props = PropertiesService.getScriptProperties();
 
-    // インフラ準備
-    this.jsonFolderId = props.getProperty(
+    const jsonFolderId = props.getProperty(
       Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID
     );
-    if (!this.jsonFolderId) {
+    if (!jsonFolderId) {
       props.setProperty(
         Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID,
         'SET_YOUR_PERMISSION_JSON_FOLDER_ID_HERE'
@@ -45,7 +42,7 @@ export class PermissionArchiver {
       );
     }
 
-    this.jsonFolder = getFolderById_(this.jsonFolderId);
+    this.jsonFolder = getFolderById_(jsonFolderId);
   }
 
   /**
@@ -86,18 +83,5 @@ export class PermissionArchiver {
         permissions: [],
       };
     }
-  }
-  /**
-   * 指定されたファイルIDのパーミッション情報を取得し、JSONファイルとして保存します。
-   * @param fileId 取得対象のファイルまたはフォルダのID
-   * @param saveFolder 保存先のフォルダオブジェクト
-   */
-  public fetchPermissionsAndSave(
-    fileId: string,
-    saveFolder: GoogleAppsScript.Drive.Folder
-  ): void {
-    const permissionsData = this.fetchPermissions(fileId);
-    const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${fileId}.json`;
-    FileUtils.saveAsJsonFile(fileName, permissionsData, saveFolder);
   }
 }

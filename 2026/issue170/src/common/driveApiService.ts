@@ -13,56 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export interface ListFilesOptions {
-  driveId?: string;
-  pageToken?: string;
-  [key: string]: any;
-}
-
-export interface ListPermissionsOptions {
-  fields: string;
-  supportsAllDrives: boolean;
-  [key: string]: any;
-}
-
 export const DriveApiService = {
-  /** ファイル一覧取得 */
-  fetchFiles(options: ListFilesOptions, maxRetries = 3) {
-    let retryCount = 0;
-    while (retryCount < maxRetries) {
-      try {
-        const driveApi = (globalThis as any).Drive;
-        return driveApi.Files.list(options);
-      } catch (e) {
-        if (++retryCount >= maxRetries) throw e;
-        Utilities.sleep(Math.pow(2, retryCount) * 1000);
-      }
-    }
-  },
-
-  /** 権限一覧取得 */
-  fetchPermissions(
-    fileId: string,
-    options: ListPermissionsOptions,
-    maxRetries = 3
-  ) {
-    let retryCount = 0;
-    while (retryCount < maxRetries) {
-      try {
-        const driveApi = (globalThis as any).Drive;
-        const result = driveApi.Permissions.list(fileId, options);
-        return {
-          kind: result?.kind || 'drive#permissionList',
-          permissions: result?.permissions || [],
-        };
-      } catch (e) {
-        if (++retryCount >= maxRetries)
-          return { kind: 'drive#permissionList', permissions: [] };
-        Utilities.sleep(Math.pow(2, retryCount) * 1000);
-      }
-    }
-    return { kind: 'drive#permissionList', permissions: [] };
-  },
   /** 共有ドライブ自体の情報取得 */
   fetchDriveInfo(driveId: string, maxRetries = 3) {
     let retryCount = 0;
