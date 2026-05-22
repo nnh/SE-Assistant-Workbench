@@ -92,7 +92,8 @@ export class DrivePermissionMatrixReport extends BaseReport {
         return [...row, '権限'];
       }
       const fileId = row[Const.INDEX.MERGE_DRIVE_PERMISSION.DRIVE_SHEET_KEY];
-      const permissions = permissionMap.get(fileId) || '';
+      const excludeCheck = row[6]; // G列（取得対象外判定）
+      const permissions = permissionMap.get(fileId) || excludeCheck || '';
       return [...row, permissions];
     });
 
@@ -113,10 +114,12 @@ export class DrivePermissionMatrixReport extends BaseReport {
 
     const outputSheet = this.initOutputSheet(driveName, headers);
     this.addDataToSheet(bodies, outputSheet);
-    // A列、E列、F列を非表示にする
+    // A列、E列、F列、G列を非表示にする
     outputSheet.hideColumns(1); // A列
     outputSheet.hideColumns(5); // E列
     outputSheet.hideColumns(6); // F列
+    outputSheet.hideColumns(7); // G列（取得対象外判定）
+    outputSheet.setColumnWidth(2, 90); // B列
   }
 }
 
