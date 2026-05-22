@@ -96,45 +96,26 @@ export class PermissionReportGenerator extends BaseReport {
       )
       .map((id: string) => id.trim());
     const targetFileIdSet: Set<string> = new Set(targetFileIds);
-    const targetFolder: GoogleAppsScript.Drive.Folder | undefined =
-      DriveApp.getFolderById(this.jsonFolder.getId());
-    if (!targetFolder) {
-      throw new Error('JSONファイルの保存先フォルダが見つかりません。');
-    }
-
     const targetJsonList: GoogleAppsScript.Drive.File[] = [];
-    const files = targetFolder.getFiles();
+    const files = this.jsonFolder.getFiles();
 
+    const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
+    const fileMap = new Map<string, GoogleAppsScript.Drive.File>();
     while (files.hasNext()) {
       const file = files.next();
-
-      if (
-        file.getName().startsWith(Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION) &&
-        file.getName().endsWith('.json')
-      ) {
-        const fileId = file.getId();
-        if (targetFileIdSet.has(fileId)) {
-          targetJsonList.push(file);
+      const fileName = file.getName();
+      if (fileName.startsWith(prefix) && fileName.endsWith('.json')) {
+        const itemId = fileName.slice(prefix.length, -'.json'.length);
+        if (targetFileIdSet.has(itemId)) {
+          const existing = fileMap.get(fileName);
+          if (!existing || file.getLastUpdated() > existing.getLastUpdated()) {
+            fileMap.set(fileName, file);
+          }
         }
       }
     }
 
-    const uniqueFilesMap = new Map<string, GoogleAppsScript.Drive.File>();
-    targetJsonList.forEach(file => {
-      const fileName = file.getName();
-      if (!uniqueFilesMap.has(fileName)) {
-        uniqueFilesMap.set(fileName, file);
-      } else {
-        const existingFile = uniqueFilesMap.get(fileName);
-        if (
-          existingFile &&
-          file.getLastUpdated() > existingFile.getLastUpdated()
-        ) {
-          uniqueFilesMap.set(fileName, file);
-        }
-      }
-    });
-    return Array.from(uniqueFilesMap.values());
+    return Array.from(fileMap.values());
   }
 
   /**
@@ -156,9 +137,10 @@ export class PermissionReportGenerator extends BaseReport {
           return data ? { fileName: file.getName(), data } : null;
         })
         .filter(
-          Boolean as unknown as (
-            item: { fileName: string; data: Const.PermissionResponse } | null
-          ) => item is { fileName: string; data: Const.PermissionResponse }
+          (
+            item
+          ): item is { fileName: string; data: Const.PermissionResponse } =>
+            item !== null
         );
     const outputData: string[][] = [];
 
@@ -175,9 +157,7 @@ export class PermissionReportGenerator extends BaseReport {
             String(item.displayName ?? ''),
             String(roleJp ?? item.role ?? ''),
             String(item.emailAddress ?? ''),
-            item.deleted !== undefined && item.deleted !== null
-              ? String(item.deleted)
-              : '',
+            item.deleted != null ? String(item.deleted) : '',
             String(detail.permissionType ?? ''),
             String(detail.inheritedFrom ?? ''),
             String(detail.role ?? ''),
@@ -278,7 +258,7 @@ export class PermissionReportGenerator extends BaseReport {
 }
 
 /**
- * 2.2. 権限レポート出力処理のエントリーポイント関数。
+ * 2.4. 権限レポート出力処理のエントリーポイント関数。
  */
 export const runPermissionReportGeneration_ = (): void => {
   const generator = new PermissionReportGenerator(

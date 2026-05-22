@@ -41,13 +41,7 @@ class InternalDriveExcludeChecker {
       );
     }
 
-    const ss = SpreadsheetApp.openById(spreadSheetId);
-    if (!ss) {
-      throw new Error(
-        `スプレッドシートID ${spreadSheetId} のスプレッドシートが見つかりません。`
-      );
-    }
-    this.spreadsheet = ss;
+    this.spreadsheet = SpreadsheetApp.openById(spreadSheetId);
   }
 
   /**
@@ -87,8 +81,7 @@ class InternalDriveExcludeChecker {
       );
 
       // 3. フォルダ構成シートのデータを取得
-      const folderRange = folderSheet.getDataRange();
-      const folderValues = folderRange.getValues() as string[][];
+      const folderValues = folderSheet.getDataRange().getValues() as string[][];
 
       if (folderValues.length <= 1) {
         console.warn(`${folderSheetName}シートにデータ行が存在しません。`);
@@ -105,9 +98,13 @@ class InternalDriveExcludeChecker {
         const row = folderValues[i];
         const parentPath = row[COLUMN_INDEX_PARENT_PATH];
 
-        // マスタ内の除外パスのいずれかに「前方一致」するかを判定
+        // マスタ内の除外パスのいずれかに一致するかを判定（完全一致 or パス区切りを考慮した前方一致）
         const isExcluded = parentPath
-          ? excludePaths.some(excludePath => parentPath.startsWith(excludePath))
+          ? excludePaths.some(
+              excludePath =>
+                parentPath === excludePath ||
+                parentPath.startsWith(excludePath + ' / ')
+            )
           : false;
 
         outputGColumn.push([isExcluded ? '取得対象外' : '']);

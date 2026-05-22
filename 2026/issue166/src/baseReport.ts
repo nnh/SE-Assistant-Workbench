@@ -87,8 +87,8 @@ export abstract class BaseReport {
     this.ssHandler.setHeader(sheet, headers);
   }
 
-  protected getOutputSheet(ss: any, sheetName: string, headers: string[]) {
-    return this.ssHandler.getOutputSheet(sheetName, headers);
+  protected initOutputSheet(sheetName: string, headers: string[]) {
+    return this.ssHandler.initOutputSheet(sheetName, headers);
   }
 
   protected addDataToSheet(

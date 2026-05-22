@@ -41,13 +41,7 @@ export class ExternalAccountPermissionReport {
       );
     }
 
-    const ss = SpreadsheetApp.openById(spreadSheetId);
-    if (!ss) {
-      throw new Error(
-        `スプレッドシートID ${spreadSheetId} のスプレッドシートが見つかりません。`
-      );
-    }
-    this.spreadsheet = ss;
+    this.spreadsheet = SpreadsheetApp.openById(spreadSheetId);
   }
 
   /**
@@ -56,127 +50,118 @@ export class ExternalAccountPermissionReport {
    * @throws {Error} 処理に必要なソースシートが1つでも見つからない場合
    */
   public extractExternalAccountPermissions(): void {
-    try {
-      console.log('外部アカウントの権限抽出処理を開始します。');
+    console.log('外部アカウントの権限抽出処理を開始します。');
 
-      // 1. 各ソースシートをスプレッドシートから取得
-      const accountSheet =
-        this.spreadsheet.getSheetByName('aro.staff以外のアカウント');
-      const permissionSheet = this.spreadsheet.getSheetByName(
-        Const.SHEET_NAME.PERMISSION
-      );
+    // 1. 各ソースシートをスプレッドシートから取得
+    const accountSheet =
+      this.spreadsheet.getSheetByName('aro.staff以外のアカウント');
+    const permissionSheet = this.spreadsheet.getSheetByName(
+      Const.SHEET_NAME.PERMISSION
+    );
 
-      const folderSheetName = `${Const.SHARED_DRIVE_NAME.INTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
-      const folderSheet = this.spreadsheet.getSheetByName(folderSheetName);
+    const folderSheetName = `${Const.SHARED_DRIVE_NAME.INTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+    const folderSheet = this.spreadsheet.getSheetByName(folderSheetName);
 
-      if (!accountSheet) {
-        throw new Error(
-          '「aro.staff以外のアカウント」シートが見つかりません。'
-        );
-      }
-      if (!permissionSheet) {
-        throw new Error(
-          `「${Const.SHEET_NAME.PERMISSION}」シートが見つかりません。`
-        );
-      }
-      if (!folderSheet) {
-        throw new Error(`「${folderSheetName}」シートが見つかりません。`);
-      }
-
-      // 2. 比較対象のメールアドレスをSetに格納して高速化（O(1)検索用）
-      const emailSet = new Set<string>();
-      const accountValues = accountSheet
-        .getDataRange()
-        .getValues() as string[][];
-      const COLUMN_INDEX_ACCOUNT_EMAIL = 3; // D列（メールアドレス）のインデックス番号
-
-      for (const row of accountValues) {
-        const email = row[COLUMN_INDEX_ACCOUNT_EMAIL];
-        if (email && typeof email === 'string') {
-          // @マークより前の文字列（ローカルパート）を抽出してインデックス化
-          const emailPrefix = email.split('@')[0];
-          emailSet.add(emailPrefix.trim());
-        }
-      }
-      console.log(
-        `比較対象の外部メールアドレスを ${emailSet.size} 件読み込みました。`
-      );
-
-      // 3. 権限一覧シートのデータを取得
-      const permissionValues = permissionSheet
-        .getDataRange()
-        .getValues() as string[][];
-      if (permissionValues.length <= 1) {
-        console.warn(
-          `「${Const.SHEET_NAME.PERMISSION}」シートにデータ行が存在しません。`
-        );
-        return;
-      }
-
-      // 4. 「フォルダ構成」シートのデータをMap化して突合処理を高速化
-      const folderMap = new Map<string, string[]>();
-      const folderValues = folderSheet.getDataRange().getValues() as string[][];
-      const COLUMN_INDEX_FOLDER_ID = 0; // A列（アイテムID）のインデックス番号
-
-      // 2行目からループしてIDをキーとしたMapに格納
-      for (let i = 1; i < folderValues.length; i++) {
-        const fRow = folderValues[i];
-        const keyId = fRow[COLUMN_INDEX_FOLDER_ID];
-        if (keyId) {
-          folderMap.set(keyId.toString().trim(), fRow);
-        }
-      }
-
-      // 5. 新しいシートに出力する配列のヘッダー（見出し）を定義
-      const permHeader = permissionValues[0];
-      const folderHeader = folderValues[0] ? folderValues[0].slice(1) : []; // A列(ID)は重複するので除外
-      const outputRows: string[][] = [[...permHeader, ...folderHeader]];
-
-      const COLUMN_INDEX_PERM_KEY_ID = 0; // 権限シートのA列（突合キーID）
-      const COLUMN_INDEX_PERM_TEXT = 1; // 権限シートのB列（外部アカウント文字列）
-
-      // 6. 権限一覧のデータ行をループして部分一致およびIDの突合（マージ）を判定
-      for (let i = 1; i < permissionValues.length; i++) {
-        const row = permissionValues[i];
-        const targetText = row[COLUMN_INDEX_PERM_TEXT];
-        const permKeyId = row[COLUMN_INDEX_PERM_KEY_ID];
-
-        if (targetText && typeof targetText === 'string') {
-          let isEmailMatched = false;
-
-          // アカウント文字列の中にマスタのメールプレフィックスが含まれるか部分一致判定
-          for (const email of emailSet) {
-            if (targetText.includes(email)) {
-              isEmailMatched = true;
-              break;
-            }
-          }
-
-          // メールアドレスがマッチした場合のみマージ処理へ進む
-          if (isEmailMatched) {
-            const cleanedKey = permKeyId ? permKeyId.toString().trim() : '';
-            const matchedFolderRow = folderMap.get(cleanedKey);
-
-            if (matchedFolderRow) {
-              // 一致するフォルダ構成データがあった場合：A列(ID)を除いた残りの列データを右側に結合
-              const folderDataWithoutId = matchedFolderRow.slice(1);
-              outputRows.push([...row, ...folderDataWithoutId]);
-            } else {
-              // 一致するデータがなかった場合：空文字で埋めてセル列数を合わせる
-              const emptyCells = new Array(folderHeader.length).fill('');
-              outputRows.push([...row, ...emptyCells]);
-            }
-          }
-        }
-      }
-
-      // 7. 新しいシートへの書き出しを実行
-      const newSheetName = `外部アカウント権限一覧`;
-      this.writeToNewSheet(newSheetName, outputRows);
-    } catch (error) {
-      console.error('外部アカウント権限抽出処理でエラーが発生しました:', error);
-      throw error;
+    if (!accountSheet) {
+      throw new Error('「aro.staff以外のアカウント」シートが見つかりません。');
     }
+    if (!permissionSheet) {
+      throw new Error(
+        `「${Const.SHEET_NAME.PERMISSION}」シートが見つかりません。`
+      );
+    }
+    if (!folderSheet) {
+      throw new Error(`「${folderSheetName}」シートが見つかりません。`);
+    }
+
+    // 2. 比較対象のメールアドレスをSetに格納して高速化（O(1)検索用）
+    const emailSet = new Set<string>();
+    const accountValues = accountSheet.getDataRange().getValues() as string[][];
+    const COLUMN_INDEX_ACCOUNT_EMAIL = 3; // D列（メールアドレス）のインデックス番号
+    // ヘッダーなしのため一行目から処理する
+    for (const row of accountValues) {
+      const email = row[COLUMN_INDEX_ACCOUNT_EMAIL];
+      if (email && typeof email === 'string') {
+        // @マークより前の文字列（ローカルパート）を抽出してインデックス化
+        const emailPrefix = email.split('@')[0];
+        emailSet.add(emailPrefix.trim());
+      }
+    }
+    console.log(
+      `比較対象の外部メールアドレスを ${emailSet.size} 件読み込みました。`
+    );
+
+    // 3. 権限一覧シートのデータを取得
+    const permissionValues = permissionSheet
+      .getDataRange()
+      .getValues() as string[][];
+    if (permissionValues.length <= 1) {
+      console.warn(
+        `「${Const.SHEET_NAME.PERMISSION}」シートにデータ行が存在しません。`
+      );
+      return;
+    }
+
+    // 4. 「フォルダ構成」シートのデータをMap化して突合処理を高速化
+    const folderMap = new Map<string, string[]>();
+    const folderValues = folderSheet.getDataRange().getValues() as string[][];
+    const COLUMN_INDEX_FOLDER_ID = 0; // A列（アイテムID）のインデックス番号
+
+    // 2行目からループしてIDをキーとしたMapに格納
+    for (let i = 1; i < folderValues.length; i++) {
+      const fRow = folderValues[i];
+      const keyId = fRow[COLUMN_INDEX_FOLDER_ID];
+      if (keyId) {
+        folderMap.set(keyId.toString().trim(), fRow);
+      }
+    }
+
+    // 5. 新しいシートに出力する配列のヘッダー（見出し）を定義
+    const permHeader = permissionValues[0];
+    const folderHeader = folderValues[0].slice(1); // A列(ID)は重複するので除外
+    const outputRows: string[][] = [[...permHeader, ...folderHeader]];
+
+    const COLUMN_INDEX_PERM_KEY_ID = 0; // 権限シートのA列（突合キーID）
+    const COLUMN_INDEX_PERM_TEXT = 1; // 権限シートのB列（外部アカウント文字列）
+
+    // 6. 権限一覧のデータ行をループして部分一致およびIDの突合（マージ）を判定
+    for (let i = 1; i < permissionValues.length; i++) {
+      const row = permissionValues[i];
+      const targetText = row[COLUMN_INDEX_PERM_TEXT];
+      const permKeyId = row[COLUMN_INDEX_PERM_KEY_ID];
+
+      if (targetText && typeof targetText === 'string') {
+        let isEmailMatched = false;
+
+        // アカウント文字列の中にマスタのメールプレフィックスが含まれるか部分一致判定
+        for (const email of emailSet) {
+          if (targetText.includes(email)) {
+            isEmailMatched = true;
+            break;
+          }
+        }
+
+        // メールアドレスがマッチした場合のみマージ処理へ進む
+        if (isEmailMatched) {
+          const cleanedKey = permKeyId ? permKeyId.toString().trim() : '';
+          const matchedFolderRow = folderMap.get(cleanedKey);
+
+          if (matchedFolderRow) {
+            // 一致するフォルダ構成データがあった場合：A列(ID)を除いた残りの列データを右側に結合
+            const folderDataWithoutId = matchedFolderRow.slice(1);
+            outputRows.push([...row, ...folderDataWithoutId]);
+          } else {
+            // 一致するデータがなかった場合：空文字で埋めてセル列数を合わせる
+            const emptyCells = new Array(folderHeader.length).fill('');
+            outputRows.push([...row, ...emptyCells]);
+          }
+        }
+      }
+    }
+
+    // 7. 新しいシートへの書き出しを実行
+    const newSheetName = `外部アカウント権限一覧`;
+    this.writeToNewSheet(newSheetName, outputRows);
   }
 
   /**

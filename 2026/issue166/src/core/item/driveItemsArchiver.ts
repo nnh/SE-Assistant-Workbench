@@ -29,15 +29,16 @@ import { DrivePathResolver } from './drivePathResolver';
  * スクリプトプロパティに記憶し、次回実行時に途中から再開できる設計となっています。
  */
 export class DriveItemsArchiver {
-  // 進捗保存用のプロパティキーを追加
   private readonly PROP_PAGE_TOKEN = 'CURRENT_PAGE_TOKEN';
   private readonly PROP_BATCH_NUM = 'CURRENT_BATCH_NUMBER';
+  private readonly PROP_RUN_DATE = 'CURRENT_RUN_DATE';
 
   private targetSharedDriveId: string;
   private targetSharedDriveName: string;
   private saveFolder: GoogleAppsScript.Drive.Folder;
   private storedPageToken: string | null;
   private storedBatchNumber: number;
+  private storedRunDate: Date;
   private readonly SLEEP_MS = 500;
   private readonly limitToFirstPage: boolean;
   /**
@@ -65,6 +66,14 @@ export class DriveItemsArchiver {
     this.storedPageToken = props.getProperty(this.PROP_PAGE_TOKEN);
     const savedBatchNum = props.getProperty(this.PROP_BATCH_NUM);
     this.storedBatchNumber = savedBatchNum ? parseInt(savedBatchNum, 10) : 1;
+    // 実行開始日時を読み込む。なければ新規実行として現在時刻を保存する
+    const savedRunDate = props.getProperty(this.PROP_RUN_DATE);
+    if (savedRunDate) {
+      this.storedRunDate = new Date(savedRunDate);
+    } else {
+      this.storedRunDate = new Date();
+      props.setProperty(this.PROP_RUN_DATE, this.storedRunDate.toISOString());
+    }
   }
   /**
    * 共有ドライブのアーカイブ処理を実行します。
@@ -76,7 +85,6 @@ export class DriveItemsArchiver {
     filterMode: 'ALL' | 'PERIOD' | 'RECENT_2_DAYS' = Const.FILTER_MODE
       .RECENT_2_DAYS
   ): void {
-    const now = new Date();
     // 続きからの再開か、新規スタートかをログに出力
     if (this.storedPageToken) {
       console.log(
@@ -88,9 +96,8 @@ export class DriveItemsArchiver {
       );
     }
     try {
-      // 引数の末尾にトークンとバッチ番号を追加して呼び出す
       this.processSingleDrive(
-        now,
+        this.storedRunDate,
         this.storedPageToken || undefined,
         this.storedBatchNumber,
         filterMode
@@ -205,6 +212,7 @@ export class DriveItemsArchiver {
     props.setProperties({
       [this.PROP_PAGE_TOKEN]: token,
       [this.PROP_BATCH_NUM]: batchNum.toString(),
+      [this.PROP_RUN_DATE]: this.storedRunDate.toISOString(),
     });
     console.log(
       `ページ ${batchNum - 1} の出力を保存しました。次のトークンを記憶しました。`
@@ -219,6 +227,7 @@ export class DriveItemsArchiver {
   private clearProgress(props: GoogleAppsScript.Properties.Properties): void {
     props.deleteProperty(this.PROP_PAGE_TOKEN);
     props.deleteProperty(this.PROP_BATCH_NUM);
+    props.deleteProperty(this.PROP_RUN_DATE);
     console.log(
       `Drive [${this.targetSharedDriveId}] の全ページの出力が正常に完了したため、進捗プロパティをクリアしました。`
     );

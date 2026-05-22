@@ -22,7 +22,15 @@ export class DrivePermissionMatrixReport extends BaseReport {
   }
 
   public execute(): void {
-    const folderSheetName = `${Const.SHARED_DRIVE_NAME.EXTERNAL}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
+    const driveName = PropertiesService.getScriptProperties().getProperty(
+      Const.PROPERTY_KEYS.DRIVE_NAME
+    );
+    if (!driveName) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.DRIVE_NAME} が設定されていません。スクリプトプロパティに対象共有ドライブ名を設定してください。`
+      );
+    }
+    const folderSheetName = `${driveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
     const permissionSheetName = Const.SHEET_NAME.PERMISSION;
 
     const folderSheet = this.outputSpreadsheet.getSheetByName(folderSheetName);
@@ -67,23 +75,16 @@ export class DrivePermissionMatrixReport extends BaseReport {
       const fileId =
         row[Const.INDEX.MERGE_DRIVE_PERMISSION.PERMISSION_SHEET_KEY];
       if (!fileId) continue;
-      if (!permissionMap.has(fileId)) {
-        permissionMap.set(
-          fileId,
-          row[Const.INDEX.MERGE_DRIVE_PERMISSION.PERMISSION_PERMISSION]
-        );
-      } else {
-        // すでに同じIDが存在する場合は、既存の値に新しい値を追加していく
-        const existingPermission = permissionMap.get(fileId) || '';
-        const newPermission =
-          row[Const.INDEX.MERGE_DRIVE_PERMISSION.PERMISSION_PERMISSION];
-
-        // 既存のデータがあれば改行(\n)で繋ぎ、なければ新しいデータだけを入れる
-        const permissions = existingPermission
+      // すでに同じIDが存在する場合は改行(\n)で追記、初回は新しい値をそのまま設定
+      const existingPermission = permissionMap.get(fileId) ?? '';
+      const newPermission =
+        row[Const.INDEX.MERGE_DRIVE_PERMISSION.PERMISSION_PERMISSION];
+      permissionMap.set(
+        fileId,
+        existingPermission
           ? `${existingPermission}\n${newPermission}`
-          : newPermission;
-        permissionMap.set(fileId, permissions);
-      }
+          : newPermission
+      );
     }
     const outputValues = folderValues.map((row, index) => {
       if (index === 0) {
@@ -110,11 +111,7 @@ export class DrivePermissionMatrixReport extends BaseReport {
       return 0;
     });
 
-    const outputSheet = this.getOutputSheet(
-      this.outputSpreadsheet,
-      Const.SHARED_DRIVE_NAME.EXTERNAL,
-      headers
-    );
+    const outputSheet = this.initOutputSheet(driveName, headers);
     this.addDataToSheet(bodies, outputSheet);
     // A列、E列、F列を非表示にする
     outputSheet.hideColumns(1); // A列
@@ -123,6 +120,9 @@ export class DrivePermissionMatrixReport extends BaseReport {
   }
 }
 
+/**
+ * 5.1. アクセス権マトリクスレポート生成処理のエントリーポイント関数。
+ */
 export const runDrivePermissionMatrixReportGeneration_ = (): void => {
   const report = new DrivePermissionMatrixReport(
     Const.PROPERTY_KEYS.JSON_FOLDER_ID,

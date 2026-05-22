@@ -13,21 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/**
- * Copyright 2025 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+
+interface DriveItem {
+  parents?: string[];
+}
 
 export class DrivePathResolver {
   // パス計算用のキャッシュ (ID -> フルパス) をクラス内部に隠蔽
@@ -35,12 +24,12 @@ export class DrivePathResolver {
 
   /**
    * アイテムが存在する「親フォルダ」のフルパスを再帰的に構築する
-   * @param {any} folder - 対象のアイテムオブジェクト
+   * @param {DriveItem} item - 対象のアイテムオブジェクト
    * @returns {string} ルートからのフルパス文字列
    */
-  public resolve(folder: any): string {
+  public resolve(item: DriveItem): string {
     const parentId =
-      folder.parents && folder.parents.length > 0 ? folder.parents[0] : null;
+      item.parents && item.parents.length > 0 ? item.parents[0] : null;
 
     // 親がいない（ドライブ直下など）場合は空文字を返す
     if (!parentId) return '';
@@ -57,14 +46,13 @@ export class DrivePathResolver {
 
       // 親自身のフルパスを構築
       const parentName = parentFolder.getName();
-      const grandParentId = parentFolder.getParents().hasNext()
-        ? parentFolder.getParents().next().getId()
+      const parentIterator = parentFolder.getParents();
+      const grandParentId = parentIterator.hasNext()
+        ? parentIterator.next().getId()
         : null;
 
       // 再帰呼び出し：親の親のパス + 親の名前
       const grandParentPath = this.resolve({
-        id: parentId,
-        name: parentName,
         parents: grandParentId ? [grandParentId] : [],
       });
 

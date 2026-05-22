@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 import * as Const from '../../common/const';
-import { SpreadsheetHandler } from '../../common/spreadsheetHandler';
 import { getFolderById_ } from '../../common/utils';
 import { FileUtils } from '../../common/fileUtils';
+import { DriveApiService } from '../../common/driveApiService';
 /**
  * 各アイテム（ファイル・フォルダ）の詳細なアクセス権限（パーミッション）情報を
  * Drive APIから取得し、JSONファイルとしてアーカイブ保存するクラス。
@@ -26,8 +26,9 @@ import { FileUtils } from '../../common/fileUtils';
 export class PermissionArchiver {
   private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
-  private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet | null;
+  private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
   private workSheetName = Const.SHEET_NAME.PERMISSION_ARCHIVE_WORK;
+  private readonly SLEEP_MS = 500;
   /**
    * PermissionArchiver のインスタンスを初期化します。
    * スクリプトプロパティから必要な環境設定（保存先フォルダID、出力先スプレッドシートID）を読み込みます。
@@ -60,11 +61,6 @@ export class PermissionArchiver {
     }
     this.jsonFolder = getFolderById_(this.jsonFolderId);
     this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
-    if (!this.inputSpreadsheet) {
-      throw new Error(
-        `スプレッドシートID ${outputSsId} のスプレッドシートが見つかりません。`
-      );
-    }
   }
   /**
    * 既存のJSONファイルが存在するか確認し、ファイル名のセットを取得します。
@@ -93,9 +89,6 @@ export class PermissionArchiver {
    * @returns {string[][]} 取得対象のIDと最終更新日時の配列
    */
   private getTargetIdsFromSpreadsheet(): string[][] {
-    if (!this.inputSpreadsheet) {
-      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
-    }
     const driveName = PropertiesService.getScriptProperties().getProperty(
       Const.PROPERTY_KEYS.DRIVE_NAME
     );
@@ -143,12 +136,11 @@ export class PermissionArchiver {
    * @public
    */
   public archivePermissionsForTargetIds(): void {
-    if (!this.inputSpreadsheet) {
-      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
+    let workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
+    if (!workSheet) {
+      workSheet = this.inputSpreadsheet.insertSheet(this.workSheetName);
     }
-    const workSheet = new SpreadsheetHandler(
-      this.inputSpreadsheet
-    ).getOutputSheet(this.workSheetName, ['']);
+    workSheet.clearContents();
 
     const targetIds: string[][] = this.getTargetIdsFromSpreadsheet();
     const existingFileNameSet: Set<string> =
@@ -156,17 +148,20 @@ export class PermissionArchiver {
     const outputIds: string[][] = [];
 
     targetIds.forEach(([id, modifiedTime]) => {
-      // JSONファイルが存在しない場合は必ず取得対象とする
       const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
       if (!existingFileNameSet.has(fileName)) {
         console.log(`新規取得対象: ${id}`);
         outputIds.push([id]);
         return;
       }
-      const file = this.jsonFolder.getFilesByName(fileName).next();
-      const jsonLastUpdated = file.getLastUpdated();
+      const fileIterator = this.jsonFolder.getFilesByName(fileName);
+      if (!fileIterator.hasNext()) {
+        console.log(`新規取得対象（ファイル不在）: ${id}`);
+        outputIds.push([id]);
+        return;
+      }
+      const jsonLastUpdated = fileIterator.next().getLastUpdated();
 
-      // ファイルの更新日時がJSONより後の場合は取得対象とする
       const fileLastUpdated = new Date(modifiedTime);
       if (fileLastUpdated.getTime() > jsonLastUpdated.getTime()) {
         console.log(`更新あり。再取得対象: ${id}`);
@@ -179,7 +174,6 @@ export class PermissionArchiver {
       console.log('取得対象がありませんでした。');
       return;
     }
-    // 取得対象がある場合はスプレッドシートに出力
     workSheet.getRange(1, 1, outputIds.length, 1).setValues(outputIds);
   }
   /**
@@ -192,9 +186,6 @@ export class PermissionArchiver {
    * @public
    */
   public fetchPermissionsAndSaveForTargetIds(): void {
-    if (!this.inputSpreadsheet) {
-      throw new Error('スプレッドシートオブジェクトが初期化されていません。');
-    }
     const workSheet = this.inputSpreadsheet.getSheetByName(this.workSheetName);
     if (!workSheet) {
       throw new Error(
@@ -206,26 +197,37 @@ export class PermissionArchiver {
       console.log('取得対象がありませんでした。');
       return;
     }
-    const targetIds: string[][] = workSheet
+    // 空行（途中タイムアウトで残ったクリア済み行）を除外して実際のIDのみを取得
+    const allIds: string[] = workSheet
       .getRange(1, 1, lastRow, 1)
-      .getValues() as string[][];
-    const idsToProcess = targetIds.slice(0, 200); // 一度に処理する件数を200件に制限
-    idsToProcess.forEach(([id], index) => {
+      .getValues()
+      .flat()
+      .filter(
+        (id: unknown): id is string => typeof id === 'string' && id !== ''
+      );
+    if (allIds.length === 0) {
+      workSheet.clear();
+      return;
+    }
+    const idsToProcess = allIds.slice(0, 200);
+    const failedIds: string[] = [];
+    idsToProcess.forEach((id, index) => {
       try {
-        this.fetchPermissionsAndSave(id, this.jsonFolder);
-        // 処理が成功したIDはシートから削除
-        workSheet.getRange(index + 1, 1).clearContent();
+        this.fetchPermissionsAndSave(id);
       } catch (e) {
         console.error(`ID: ${id} の処理中にエラーが発生しました: ${e}`);
+        failedIds.push(id);
+      }
+      if (index < idsToProcess.length - 1) {
+        Utilities.sleep(this.SLEEP_MS);
       }
     });
-    const outputValues: string[][] = workSheet
-      .getDataRange()
-      .getValues()
-      .filter((row: string[]) => row[0] !== ''); // 空の行を除外
-    if (outputValues.length > 0) {
-      workSheet.clear(); // シートをクリア
-      workSheet.getRange(1, 1, outputValues.length, 1).setValues(outputValues); // 残ったIDを上に詰める
+    const remainingIds = [...failedIds, ...allIds.slice(200)];
+    workSheet.clear();
+    if (remainingIds.length > 0) {
+      workSheet
+        .getRange(1, 1, remainingIds.length, 1)
+        .setValues(remainingIds.map(id => [id]));
     }
   }
   /**
@@ -242,43 +244,24 @@ export class PermissionArchiver {
     kind: any;
     permissions: any;
   } {
-    const driveApi = (globalThis as any).Drive;
-    if (!driveApi) throw new Error('Drive APIサービスを有効にしてください。');
     // https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions?hl=ja#Permission
     const fields =
       'permissions(id,displayName,type,permissionDetails,emailAddress,role,allowFileDiscovery,domain,deleted,view,inheritedPermissionsDisabled)';
-    try {
-      const permissionList = driveApi.Permissions.list(fileId, {
-        supportsAllDrives: true,
-        useDomainAdminAccess: false,
-        fields: fields,
-      });
-      // permissionsが存在しない場合でも、構造を維持して返す
-      return {
-        kind: permissionList.kind || 'drive#permissionList',
-        permissions: permissionList.permissions || [],
-      };
-    } catch (e) {
-      console.error(`ID: ${fileId} の権限取得中にエラーが発生しました: ${e}`);
-      // エラー時も一貫したJSON構造を返す
-      return {
-        kind: 'drive#permissionList',
-        permissions: [],
-      };
-    }
+    return DriveApiService.fetchPermissions(fileId, {
+      supportsAllDrives: true,
+      useDomainAdminAccess: false,
+      fields,
+    });
   }
   /**
    * 指定されたファイルIDのパーミッション情報を取得し、JSONファイルとして保存します。
    * @param fileId 取得対象のファイルまたはフォルダのID
    * @param saveFolder 保存先のフォルダオブジェクト
    */
-  public fetchPermissionsAndSave(
-    fileId: string,
-    saveFolder: GoogleAppsScript.Drive.Folder
-  ): void {
+  public fetchPermissionsAndSave(fileId: string): void {
     const permissionsData = this.fetchPermissions(fileId);
     const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${fileId}.json`;
-    FileUtils.saveAsJsonFile(fileName, permissionsData, saveFolder);
+    FileUtils.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
   }
 }
 

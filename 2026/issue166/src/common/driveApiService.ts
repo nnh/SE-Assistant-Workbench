@@ -48,7 +48,7 @@ export const DriveApiService = {
     fileId: string,
     options: ListPermissionsOptions,
     maxRetries = 3
-  ) {
+  ): { kind: any; permissions: any } {
     let retryCount = 0;
     while (retryCount < maxRetries) {
       try {
@@ -59,12 +59,11 @@ export const DriveApiService = {
           permissions: result?.permissions || [],
         };
       } catch (e) {
-        if (++retryCount >= maxRetries)
-          return { kind: 'drive#permissionList', permissions: [] };
+        if (++retryCount >= maxRetries) throw e;
         Utilities.sleep(Math.pow(2, retryCount) * 1000);
       }
     }
-    return { kind: 'drive#permissionList', permissions: [] };
+    throw new Error('fetchPermissions: unexpected end of retry loop');
   },
   /** 共有ドライブ自体の情報取得 */
   fetchDriveInfo(driveId: string, maxRetries = 3) {

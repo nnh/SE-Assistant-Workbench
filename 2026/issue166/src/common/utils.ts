@@ -51,18 +51,4 @@ export const DateUtils = {
   getFormattedDate(date: Date = new Date(), format = 'yyyyMMdd_HHmm'): string {
     return Utilities.formatDate(date, 'JST', format);
   },
-
-  /**
-   * レポート名などで使う今日の日付 (yyyyMMdd)
-   */
-  getTodayStr(): string {
-    return this.getFormattedDate(new Date(), 'yyyyMMdd');
-  },
-
-  /**
-   * ログやJSONファイル名で使う現在日時 (yyyyMMdd_HHmm)
-   */
-  getNowStr(): string {
-    return this.getFormattedDate(new Date(), 'yyyyMMdd_HHmm');
-  },
 } as const;

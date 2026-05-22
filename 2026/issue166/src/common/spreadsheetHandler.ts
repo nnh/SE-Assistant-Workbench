@@ -29,8 +29,8 @@ export class SpreadsheetHandler {
       .setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
-  /** 出力用シートを取得・初期化 */
-  public getOutputSheet(
+  /** 出力用シートを初期化（既存内容を消去してヘッダーを設定する） */
+  public initOutputSheet(
     sheetName: string,
     headers: string[]
   ): GoogleAppsScript.Spreadsheet.Sheet {

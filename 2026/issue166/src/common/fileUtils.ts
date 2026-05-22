@@ -62,6 +62,11 @@ export const FileUtils = {
     saveFolder: GoogleAppsScript.Drive.Folder
   ): void {
     const content = JSON.stringify(data, null, 2);
-    saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+    const existing = saveFolder.getFilesByName(fileName);
+    if (existing.hasNext()) {
+      existing.next().setContent(content);
+    } else {
+      saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+    }
   },
 } as const;

@@ -56,8 +56,7 @@ class DriveItemsReportGenerator extends BaseReport {
    */
   public generateReport(): void {
     const sheetName = `${this.targetDriveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
-    const sheet: GoogleAppsScript.Spreadsheet.Sheet = this.getOutputSheet(
-      this.outputSpreadsheet,
+    const sheet: GoogleAppsScript.Spreadsheet.Sheet = this.initOutputSheet(
       sheetName,
       Const.REPORT_HEADERS.DRIVE_ITEM as string[]
     );
