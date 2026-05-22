@@ -21,7 +21,7 @@ import { PermissionArchiver } from '../permission/permissionArchiver';
 import { PermissionReportGenerator } from '../permission/permissionReportGenerator';
 import { DateUtils } from '../../common/utils';
 
-class SharedDrivePolicyReportGenerator extends BaseReport {
+export class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {
     super(
       Const.PROPERTY_KEYS.POLICY_REPORT_JSON_FOLDER_ID,
@@ -74,11 +74,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       'ALL_TARGETS',
       1
     );
-    this.jsonFolder.createFile(
-      fileName,
-      JSON.stringify(rawResults),
-      MimeType.PLAIN_TEXT
-    );
+    FileUtils.saveAsJsonFile(fileName, rawResults, this.jsonFolder);
     console.log(`JSONを保存しました: ${fileName}`);
   }
   /**
@@ -94,11 +90,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
         driveId,
         1
       );
-      permissionArchiver.saveAsJsonFile(
-        fileName,
-        permissionsData,
-        this.jsonFolder
-      );
+      FileUtils.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
       console.log(
         `Permissions JSON saved for drive ID ${driveId} as ${fileName}`
       );
@@ -149,11 +141,6 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       Const.PROPERTY_KEYS.JSON_FOLDER_ID,
       Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
     );
-    const index = {
-      displayName: 2,
-      emailAddress: 4,
-      role: 3,
-    };
     const allPermissionsData = targetDriveIds.map(id => {
       const targetJson: GoogleAppsScript.Drive.File[] =
         this.getPermissionsDataForDrive(id);

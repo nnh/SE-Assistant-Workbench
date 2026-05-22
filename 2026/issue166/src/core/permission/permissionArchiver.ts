@@ -15,12 +15,24 @@
  */
 import * as Const from '../../common/const';
 import { SpreadsheetHandler } from '../../common/spreadsheetHandler';
+import { getFolderById_ } from '../../common/utils';
+import { FileUtils } from '../../common/fileUtils';
+/**
+ * 各アイテム（ファイル・フォルダ）の詳細なアクセス権限（パーミッション）情報を
+ * Drive APIから取得し、JSONファイルとしてアーカイブ保存するクラス。
+ * * GASの実行制限時間を考慮し、「差分のある対象IDのリスト化（ワークシート出力）」と
+ * 「リストに基づいた小分けのAPI取得実行」の2フェーズに処理を分離しています。
+ */
 export class PermissionArchiver {
   private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
   private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet | null;
   private workSheetName = Const.SHEET_NAME.PERMISSION_ARCHIVE_WORK;
-
+  /**
+   * PermissionArchiver のインスタンスを初期化します。
+   * スクリプトプロパティから必要な環境設定（保存先フォルダID、出力先スプレッドシートID）を読み込みます。
+   * * @throws {Error} 必須となるスクリプトプロパティの不足、またはスプレッドシートの展開に失敗した場合
+   */
   constructor() {
     const props = PropertiesService.getScriptProperties();
 
@@ -46,7 +58,7 @@ export class PermissionArchiver {
         `プロパティ ${Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID} が設定されていません。スクリプトプロパティに出力先スプレッドシートIDを設定してください。`
       );
     }
-    this.jsonFolder = this.getSaveFolder(this.jsonFolderId);
+    this.jsonFolder = getFolderById_(this.jsonFolderId);
     this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
     if (!this.inputSpreadsheet) {
       throw new Error(
@@ -56,11 +68,11 @@ export class PermissionArchiver {
   }
   /**
    * 既存のJSONファイルが存在するか確認し、ファイル名のセットを取得します。
-   * * @description
+   * @description
    * JSONファイルが存在しない場合は新規取得対象、存在する場合はスプレッドシートの更新日時が
    * JSONファイルの更新日時より新しい場合に再取得対象とする判定のために、
    * すでにフォルダー内に存在する対象ファイルの名称一覧を収集します。
-   * * @private
+   * @private
    * @returns {Set<string>} 既存のJSONファイル名のセット
    */
   private getExistingPermissionFileNameSet(): Set<string> {
@@ -77,9 +89,7 @@ export class PermissionArchiver {
   }
   /**
    * フォルダ構成シートからパーミッション取得対象のIDを取得します。
-   * * @description
-   * 指定されたシートからIDと最終更新日時を取得し、取得対象のIDを抽出します。
-   * * @private
+   * @private
    * @returns {string[][]} 取得対象のIDと最終更新日時の配列
    */
   private getTargetIdsFromSpreadsheet(): string[][] {
@@ -101,32 +111,36 @@ export class PermissionArchiver {
         `スプレッドシートに「${sheetName}」シートが見つかりません。`
       );
     }
-    const index = {
-      id: 0,
-      modifiedTime: 5,
+
+    // 💡 マジックナンバーを排除するためのインデックス定数定義
+    const COLUMN_INDEX = {
+      ID: 0, // A列: アイテムID
+      MODIFIED_TIME: 5, // F列: 最終更新日時
+      EXCLUDE_CHECK: 6, // G列: 取得対象外判定
     };
 
-    if (!sheet) {
-      throw new Error(
-        `スプレッドシートに「${sheetName}」シートが見つかりません。`
-      );
-    }
     const data: string[][] = sheet.getDataRange().getValues();
+
     // 1行目はヘッダーの想定なのでスキップ
     const targetIds: string[][] = data
       .slice(1)
-      // G列（row[6]）が空文字、または要素自体がない場合（undefinedなど）にtrueにする（内部のみドライブの権限取得対象外判定のため）
-      .filter(row => !row[6] || row[6] === '')
-      .map(row => [row[index.id], row[index.modifiedTime]])
+      // 💡 row[6] を row[COLUMN_INDEX.EXCLUDE_CHECK] に変更して可読性を向上
+      .filter(
+        row =>
+          !row[COLUMN_INDEX.EXCLUDE_CHECK] ||
+          row[COLUMN_INDEX.EXCLUDE_CHECK] === ''
+      )
+      .map(row => [row[COLUMN_INDEX.ID], row[COLUMN_INDEX.MODIFIED_TIME]])
       .filter(id => typeof id[0] === 'string' && typeof id[1] === 'string');
+
     return targetIds;
   }
   /**
    * パーミッション取得対象のIDをスプレッドシートに出力します。
-   * * @description
+   * @description
    * 取得対象のIDが存在する場合は、指定されたシートに出力します。
    * 指定シート名は「作業用_パーミッション未取得IDリスト」とし、前回の内容はクリアしてから出力します。
-   * * @public
+   * @public
    */
   public archivePermissionsForTargetIds(): void {
     if (!this.inputSpreadsheet) {
@@ -169,13 +183,13 @@ export class PermissionArchiver {
     workSheet.getRange(1, 1, outputIds.length, 1).setValues(outputIds);
   }
   /**
-   * 作業用_パーミッション未取得IDリストシートからIDを取得し、パーミッション情報をJSONファイルとして保存します。
-   * * @description
-   * 作業用_パーミッション未取得IDリストシートからIDを取得し、Drive APIを使用して各IDのパーミッション情報を取得します。
-   * 作業用_パーミッション未取得IDリストシートの最後の行から1行目に向かってループを回し、IDを取得していきます。
-   * JSONファイルを取得したら、そのIDをシートから削除していきます。一度の処理につき、１０件まで取得することとします。
-   * 取得した情報はJSONファイルとして保存します。ファイル名は「permission_{ID}.json」とし、保存先はプロパティで指定されたフォルダとします。
-   * * @public
+   * 作業用ワークシートから未処理のIDリストを読み込み、パーミッション情報をJSONファイルとして保存します。
+   * @description
+   * 作業用ワークシートからIDを取得し、Drive APIを使用して各IDのパーミッション情報を取得します。
+   * GASの実行制限時間を考慮し、一度の処理（1回のバッチ）につき最大200件まで取得・保存を行います。
+   * JSONファイルの保存に成功したIDはシートから順次削除され、残ったIDは上に詰められます。
+   * ファイル名は「permission_{ID}.json」とし、保存先はプロパティで指定されたフォルダとなります。
+   * @public
    */
   public fetchPermissionsAndSaveForTargetIds(): void {
     if (!this.inputSpreadsheet) {
@@ -198,14 +212,11 @@ export class PermissionArchiver {
     const idsToProcess = targetIds.slice(0, 200); // 一度に処理する件数を200件に制限
     idsToProcess.forEach(([id], index) => {
       try {
-        const permissionsData = this.fetchPermissions(id);
-        const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
-        this.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
+        this.fetchPermissionsAndSave(id, this.jsonFolder);
         // 処理が成功したIDはシートから削除
-        workSheet.getRange(index + 1, 1).clearContent(); // IDをクリア
+        workSheet.getRange(index + 1, 1).clearContent();
       } catch (e) {
         console.error(`ID: ${id} の処理中にエラーが発生しました: ${e}`);
-        // エラーが発生しても処理を続行するため、ここでは何もしない
       }
     });
     const outputValues: string[][] = workSheet
@@ -219,6 +230,13 @@ export class PermissionArchiver {
   }
   /**
    * Drive API V3 で詳細権限を取得
+   * @param fileId 取得対象のファイルまたはフォルダのID
+   * @returns パーミッション情報のオブジェクト
+   * @description
+   * Drive API V3 の Permissions.list メソッドを使用して、指定されたファイルIDのパーミッション情報を取得します。
+   * 取得するフィールドは、id, displayName, type, permissionDetails, emailAddress, role, allowFileDiscovery, domain, deleted, view, inheritedPermissionsDisabled です。
+   * 取得に失敗した場合はエラーログを出力し、空のパーミッションリストを返します。
+   * なお、このメソッドは Drive API サービスが有効になっていることが前提です。
    */
   public fetchPermissions(fileId: string): {
     kind: any;
@@ -249,31 +267,18 @@ export class PermissionArchiver {
       };
     }
   }
-  public getSaveFolder(folderId: string): GoogleAppsScript.Drive.Folder {
-    const jsonOutputFolder = DriveApp.getFolderById(folderId);
-    if (!jsonOutputFolder) {
-      throw new Error(
-        `プロパティ「${folderId}」に設定されたフォルダIDが無効です。`
-      );
-    }
-    return jsonOutputFolder;
-  }
-  // JSONファイルとして保存するためのユーティリティ関数
-  public saveAsJsonFile(
-    fileName: string,
-    data: any,
-    saveFolder: GoogleAppsScript.Drive.Folder
-  ): void {
-    const content = JSON.stringify(data, null, 2);
-    saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
-  }
+  /**
+   * 指定されたファイルIDのパーミッション情報を取得し、JSONファイルとして保存します。
+   * @param fileId 取得対象のファイルまたはフォルダのID
+   * @param saveFolder 保存先のフォルダオブジェクト
+   */
   public fetchPermissionsAndSave(
     fileId: string,
     saveFolder: GoogleAppsScript.Drive.Folder
   ): void {
     const permissionsData = this.fetchPermissions(fileId);
     const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${fileId}.json`;
-    this.saveAsJsonFile(fileName, permissionsData, saveFolder);
+    FileUtils.saveAsJsonFile(fileName, permissionsData, saveFolder);
   }
 }
 

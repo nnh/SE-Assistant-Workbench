@@ -168,8 +168,7 @@ export class DriveItemsArchiver {
         batchNumber,
         date
       );
-      const content = JSON.stringify(enrichedItems, null, 2);
-      this.saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+      FileUtils.saveAsJsonFile(fileName, enrichedItems, this.saveFolder);
 
       // 次のループ（ページ）のための準備
       batchNumber++;

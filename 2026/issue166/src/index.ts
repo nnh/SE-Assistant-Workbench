@@ -21,17 +21,10 @@ import {
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
 } from './core/permission/permissionArchiver';
-import {
-  archiveSharedDrivePoliciesDriveGet_,
-  archiveSharedDrivePoliciesPermissions_,
-  sharedDrivePolicyReportGenerator_,
-} from './core/policy/sharedDrivePolicyReportGenerator';
 import { runDrivePermissionMatrixReportGeneration_ } from './core/permission/driveDataMerger';
-import {
-  runInternalDriveExcludeCheck_,
-  runExternalAccountPermissionReport_,
-} from './core/permission/InternalDriveProcessor';
+import { runExternalAccountPermissionReport_ } from './core/permission/externalAccountPermissionReport';
 import { setupProjectProperties_ } from './core/app/Initializer';
+import { runInternalDriveExcludeCheck_ } from './core/permission/internalDriveExcludeChecker';
 
 /**
  * 5.1.
@@ -39,18 +32,6 @@ import { setupProjectProperties_ } from './core/app/Initializer';
  */
 function runDrivePermissionMatrixReportGeneration() {
   runDrivePermissionMatrixReportGeneration_();
-}
-
-/**
- * 4.1.
- * 共有ドライブ自体の設定を保存・レポート出力する一連の処理
- */
-function runSharedDrivePolicyReportGeneration() {
-  // 設定を取得
-  archiveSharedDrivePoliciesDriveGet_();
-  archiveSharedDrivePoliciesPermissions_();
-  // スプレッドシートに出力
-  sharedDrivePolicyReportGenerator_();
 }
 
 /**
@@ -69,7 +50,10 @@ function runPermissionReportGeneration() {
 }
 /**
  * 2.3.
- * 取得対象のIDをもとにパーミッション情報を取得し、JSONファイルとして保存する
+ * 「作業用_パーミッション未取得IDリスト」シートのA列のIDをもとに、対象アイテムのパーミッション情報を取得してJSONファイルとして保存します。
+ * 取得したパーミッション情報は、ファイルIDをファイル名に含めて保存します。
+ * 例えば、ファイルIDが「abc123」の場合、「permissions_abc123.json」のようなファイル名で保存されます。
+ * 保存先のフォルダはスクリプトプロパティで指定されたフォルダになります。
  */
 function fetchPermissionsAndSaveForTargetIds() {
   fetchPermissionsAndSaveForTargetIds_();
@@ -77,14 +61,19 @@ function fetchPermissionsAndSaveForTargetIds() {
 
 /**
  * 2.2.
- * 取得対象になるファイルのIDをスプレッドシートに出力する処理
+ * 「${ドライブ名}_フォルダ構成」シートの情報を元に、パーミッション取得対象アイテムのIDを抽出し
+ * 「作業用_パーミッション未取得IDリスト」シートに出力します。
+ * 該当するIDのJSONファイルが存在しない場合、そのIDはパーミッション取得対象とみなし、出力する仕様です。
+ * 該当するIDのJSONファイルが存在する場合、更新日時を確認し、前回取得以降にアイテムが更新されている場合は
+ * パーミッション取得対象とみなして出力します。更新されていない場合は対象外とみなして出力しません。
+ * 上記の条件にかかわらず、G列に何らかの文字列が記載されたアイテムはパーミッション取得対象外とします。
  */
 function archivePermissionsForTargetIds() {
   archivePermissionsForTargetIds_();
 }
 
 /**
- * 任意の処理
+ * 2.0. 任意の処理
  * 「権限取得対象外親フォルダパス」シートのA列に記載されたフォルダパスをもとに、
  * 共有ドライブ内のアイテムをフィルタリングして、対象外のアイテムを抽出します。
  * パスは前方一致で判定します。例えば「ルートフォルダ/フォルダA」と記載した場合、
