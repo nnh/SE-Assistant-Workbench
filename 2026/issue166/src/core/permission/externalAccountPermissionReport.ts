@@ -53,8 +53,9 @@ export class ExternalAccountPermissionReport {
     console.log('外部アカウントの権限抽出処理を開始します。');
 
     // 1. 各ソースシートをスプレッドシートから取得
-    const accountSheet =
-      this.spreadsheet.getSheetByName('aro.staff以外のアカウント');
+    const accountSheet = this.spreadsheet.getSheetByName(
+      Const.SHEET_NAME.EXTERNAL_ACCOUNT_LIST
+    );
     const permissionSheet = this.spreadsheet.getSheetByName(
       Const.SHEET_NAME.PERMISSION
     );
@@ -63,7 +64,9 @@ export class ExternalAccountPermissionReport {
     const folderSheet = this.spreadsheet.getSheetByName(folderSheetName);
 
     if (!accountSheet) {
-      throw new Error('「aro.staff以外のアカウント」シートが見つかりません。');
+      throw new Error(
+        `「${Const.SHEET_NAME.EXTERNAL_ACCOUNT_LIST}」シートが見つかりません。`
+      );
     }
     if (!permissionSheet) {
       throw new Error(
@@ -160,8 +163,10 @@ export class ExternalAccountPermissionReport {
     }
 
     // 7. 新しいシートへの書き出しを実行
-    const newSheetName = `外部アカウント権限一覧`;
-    this.writeToNewSheet(newSheetName, outputRows);
+    this.writeToNewSheet(
+      Const.SHEET_NAME.EXTERNAL_ACCOUNT_PERMISSION,
+      outputRows
+    );
   }
 
   /**

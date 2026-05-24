@@ -74,11 +74,11 @@ export class JsonDataHandler {
   /** 複数のJSONを統合 */
   public combineJsonData<T>(prefix: string, targetDriveName: string): T[] {
     const targetFiles = this.getTargetJsonFiles(prefix, targetDriveName);
-    let combinedData: T[] = [];
+    const combinedData: T[] = [];
     for (const file of targetFiles) {
       const data = this.loadJsonFile<T[]>(file);
       if (data && Array.isArray(data)) {
-        combinedData = combinedData.concat(data);
+        combinedData.push(...data);
       }
     }
     return combinedData;

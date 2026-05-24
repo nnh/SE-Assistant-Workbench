@@ -48,7 +48,7 @@ export const DriveApiService = {
     fileId: string,
     options: ListPermissionsOptions,
     maxRetries = 3
-  ): { kind: any; permissions: any } {
+  ): Const.PermissionResponse {
     let retryCount = 0;
     while (retryCount < maxRetries) {
       try {

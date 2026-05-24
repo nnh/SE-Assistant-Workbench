@@ -24,11 +24,11 @@ import { DriveApiService } from '../../common/driveApiService';
  * 「リストに基づいた小分けのAPI取得実行」の2フェーズに処理を分離しています。
  */
 export class PermissionArchiver {
-  private jsonFolderId: string | null;
   public jsonFolder: GoogleAppsScript.Drive.Folder;
   private inputSpreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
   private workSheetName = Const.SHEET_NAME.PERMISSION_ARCHIVE_WORK;
   private readonly SLEEP_MS = 500;
+  private readonly BATCH_SIZE = 200;
   /**
    * PermissionArchiver のインスタンスを初期化します。
    * スクリプトプロパティから必要な環境設定（保存先フォルダID、出力先スプレッドシートID）を読み込みます。
@@ -37,11 +37,10 @@ export class PermissionArchiver {
   constructor() {
     const props = PropertiesService.getScriptProperties();
 
-    // インフラ準備
-    this.jsonFolderId = props.getProperty(
+    const jsonFolderId = props.getProperty(
       Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID
     );
-    if (!this.jsonFolderId) {
+    if (!jsonFolderId) {
       props.setProperty(
         Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID,
         'SET_YOUR_PERMISSION_JSON_FOLDER_ID_HERE'
@@ -59,29 +58,32 @@ export class PermissionArchiver {
         `プロパティ ${Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID} が設定されていません。スクリプトプロパティに出力先スプレッドシートIDを設定してください。`
       );
     }
-    this.jsonFolder = getFolderById_(this.jsonFolderId);
+    this.jsonFolder = getFolderById_(jsonFolderId);
     this.inputSpreadsheet = SpreadsheetApp.openById(outputSsId);
   }
   /**
-   * 既存のJSONファイルが存在するか確認し、ファイル名のセットを取得します。
+   * 既存のJSONファイルをスキャンし、ファイル名と最終更新日時のマップを取得します。
    * @description
-   * JSONファイルが存在しない場合は新規取得対象、存在する場合はスプレッドシートの更新日時が
-   * JSONファイルの更新日時より新しい場合に再取得対象とする判定のために、
-   * すでにフォルダー内に存在する対象ファイルの名称一覧を収集します。
+   * フォルダを一度だけ走査して全ファイルの最終更新日時を収集します。
+   * これにより、差分判定ループ内での追加API呼び出し（N+1問題）を防ぎます。
    * @private
-   * @returns {Set<string>} 既存のJSONファイル名のセット
+   * @returns {Map<string, GoogleAppsScript.Base.Date>} ファイル名をキー、最終更新日時を値とするMap
    */
-  private getExistingPermissionFileNameSet(): Set<string> {
-    const fileNamePrefix = Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION;
+  private getExistingPermissionFileMap(): Map<
+    string,
+    GoogleAppsScript.Base.Date
+  > {
+    const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
     const files = this.jsonFolder.getFiles();
-    const existingFileNameSet = new Set<string>();
+    const fileMap = new Map<string, GoogleAppsScript.Base.Date>();
     while (files.hasNext()) {
       const file = files.next();
-      if (file.getName().startsWith(`${fileNamePrefix}_`)) {
-        existingFileNameSet.add(file.getName());
+      const name = file.getName();
+      if (name.startsWith(prefix)) {
+        fileMap.set(name, file.getLastUpdated());
       }
     }
-    return existingFileNameSet;
+    return fileMap;
   }
   /**
    * フォルダ構成シートからパーミッション取得対象のIDを取得します。
@@ -105,7 +107,6 @@ export class PermissionArchiver {
       );
     }
 
-    // 💡 マジックナンバーを排除するためのインデックス定数定義
     const COLUMN_INDEX = {
       ID: 0, // A列: アイテムID
       MODIFIED_TIME: 5, // F列: 最終更新日時
@@ -114,10 +115,8 @@ export class PermissionArchiver {
 
     const data: string[][] = sheet.getDataRange().getValues();
 
-    // 1行目はヘッダーの想定なのでスキップ
     const targetIds: string[][] = data
       .slice(1)
-      // 💡 row[6] を row[COLUMN_INDEX.EXCLUDE_CHECK] に変更して可読性を向上
       .filter(
         row =>
           !row[COLUMN_INDEX.EXCLUDE_CHECK] ||
@@ -143,27 +142,20 @@ export class PermissionArchiver {
     workSheet.clearContents();
 
     const targetIds: string[][] = this.getTargetIdsFromSpreadsheet();
-    const existingFileNameSet: Set<string> =
-      this.getExistingPermissionFileNameSet();
+    const existingFileMap: Map<string, GoogleAppsScript.Base.Date> =
+      this.getExistingPermissionFileMap();
     const outputIds: string[][] = [];
 
     targetIds.forEach(([id, modifiedTime]) => {
       const fileName = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_${id}.json`;
-      if (!existingFileNameSet.has(fileName)) {
+      const existingLastUpdated = existingFileMap.get(fileName);
+      if (!existingLastUpdated) {
         console.log(`新規取得対象: ${id}`);
         outputIds.push([id]);
         return;
       }
-      const fileIterator = this.jsonFolder.getFilesByName(fileName);
-      if (!fileIterator.hasNext()) {
-        console.log(`新規取得対象（ファイル不在）: ${id}`);
-        outputIds.push([id]);
-        return;
-      }
-      const jsonLastUpdated = fileIterator.next().getLastUpdated();
-
       const fileLastUpdated = new Date(modifiedTime);
-      if (fileLastUpdated.getTime() > jsonLastUpdated.getTime()) {
+      if (fileLastUpdated.getTime() > existingLastUpdated.getTime()) {
         console.log(`更新あり。再取得対象: ${id}`);
         outputIds.push([id]);
       } else {
@@ -209,7 +201,7 @@ export class PermissionArchiver {
       workSheet.clear();
       return;
     }
-    const idsToProcess = allIds.slice(0, 200);
+    const idsToProcess = allIds.slice(0, this.BATCH_SIZE);
     const failedIds: string[] = [];
     idsToProcess.forEach((id, index) => {
       try {
@@ -222,7 +214,7 @@ export class PermissionArchiver {
         Utilities.sleep(this.SLEEP_MS);
       }
     });
-    const remainingIds = [...failedIds, ...allIds.slice(200)];
+    const remainingIds = [...failedIds, ...allIds.slice(this.BATCH_SIZE)];
     workSheet.clear();
     if (remainingIds.length > 0) {
       workSheet
@@ -240,10 +232,7 @@ export class PermissionArchiver {
    * 取得に失敗した場合はエラーログを出力し、空のパーミッションリストを返します。
    * なお、このメソッドは Drive API サービスが有効になっていることが前提です。
    */
-  public fetchPermissions(fileId: string): {
-    kind: any;
-    permissions: any;
-  } {
+  public fetchPermissions(fileId: string): Const.PermissionResponse {
     // https://developers.google.com/workspace/drive/api/reference/rest/v3/permissions?hl=ja#Permission
     const fields =
       'permissions(id,displayName,type,permissionDetails,emailAddress,role,allowFileDiscovery,domain,deleted,view,inheritedPermissionsDisabled)';

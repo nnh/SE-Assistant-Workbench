@@ -40,6 +40,7 @@ export class DriveItemsArchiver {
   private storedBatchNumber: number;
   private storedRunDate: Date;
   private readonly SLEEP_MS = 500;
+  private readonly PAGE_SIZE = 1000;
   private readonly limitToFirstPage: boolean;
   /**
    * DriveItemsArchiver のインスタンスを初期化します。
@@ -142,7 +143,7 @@ export class DriveItemsArchiver {
     const fields = `nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime, permissionIds)`;
     do {
       const options: ListFilesOptions = {
-        pageSize: 1000,
+        pageSize: this.PAGE_SIZE,
         q: baseQuery,
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,

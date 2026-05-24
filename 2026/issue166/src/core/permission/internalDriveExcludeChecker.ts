@@ -51,11 +51,12 @@ class InternalDriveExcludeChecker {
   public executeExcludeCheck(): void {
     try {
       // 1. 各種対象シートを取得
-      const excludeSheet =
-        this.spreadsheet.getSheetByName('権限取得対象外親フォルダパス');
+      const excludeSheet = this.spreadsheet.getSheetByName(
+        Const.SHEET_NAME.EXCLUDE_PATH_MASTER
+      );
       if (!excludeSheet) {
         throw new Error(
-          '「権限取得対象外親フォルダパス」シートが見つかりません。'
+          `「${Const.SHEET_NAME.EXCLUDE_PATH_MASTER}」シートが見つかりません。`
         );
       }
 

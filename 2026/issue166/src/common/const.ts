@@ -54,6 +54,9 @@ export const SHEET_NAME = {
   PERMISSION: '権限一覧',
   PERMISSION_ARCHIVE_WORK: '作業用_パーミッション未取得IDリスト',
   SHARED_DRIVE: '共有ドライブ自体の設定',
+  EXCLUDE_PATH_MASTER: '権限取得対象外親フォルダパス',
+  EXTERNAL_ACCOUNT_LIST: 'aro.staff以外のアカウント',
+  EXTERNAL_ACCOUNT_PERMISSION: '外部アカウント権限一覧',
 } as const;
 
 // MIME_TYPE

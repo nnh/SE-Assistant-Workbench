@@ -38,11 +38,10 @@ export class PermissionReportGenerator extends BaseReport {
    */
   public generateReport(): void {
     const sheetName = Const.SHEET_NAME.PERMISSION;
-    const ss: GoogleAppsScript.Spreadsheet.Spreadsheet = this.outputSpreadsheet;
 
-    let sheet = ss.getSheetByName(sheetName);
+    let sheet = this.outputSpreadsheet.getSheetByName(sheetName);
     if (!sheet) {
-      sheet = ss.insertSheet(sheetName);
+      sheet = this.outputSpreadsheet.insertSheet(sheetName);
     }
 
     const data = this.getInputData();
@@ -72,7 +71,6 @@ export class PermissionReportGenerator extends BaseReport {
    * @returns {GoogleAppsScript.Drive.File[]} 処理対象のJSONファイルの配列
    */
   private getInputData(): GoogleAppsScript.Drive.File[] {
-    const ss: GoogleAppsScript.Spreadsheet.Spreadsheet = this.outputSpreadsheet;
     const targetDriveName = PropertiesService.getScriptProperties().getProperty(
       Const.PROPERTY_KEYS.DRIVE_NAME
     );
@@ -82,7 +80,7 @@ export class PermissionReportGenerator extends BaseReport {
       );
     }
     const folderSheetName = `${targetDriveName}_${Const.OUTPUT_FILE_NAME.PREFIX.DRIVE_ITEM}`;
-    const folderSheet = ss.getSheetByName(folderSheetName);
+    const folderSheet = this.outputSpreadsheet.getSheetByName(folderSheetName);
     if (!folderSheet) {
       throw new Error(`シート「${folderSheetName}」が見つかりません。`);
     }
@@ -96,7 +94,6 @@ export class PermissionReportGenerator extends BaseReport {
       )
       .map((id: string) => id.trim());
     const targetFileIdSet: Set<string> = new Set(targetFileIds);
-    const targetJsonList: GoogleAppsScript.Drive.File[] = [];
     const files = this.jsonFolder.getFiles();
 
     const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
@@ -198,10 +195,12 @@ export class PermissionReportGenerator extends BaseReport {
     outputData: string[][],
     updateIds: Set<string>
   ): string[][] {
+    const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
     return outputData.map(row => {
-      const fileId = row[Const.INDEX.PERMISSION_ARRAY.FILENAME]
-        .replace('permission_', '')
-        .replace('.json', '');
+      const fileId = row[Const.INDEX.PERMISSION_ARRAY.FILENAME].slice(
+        prefix.length,
+        -'.json'.length
+      );
 
       if (fileId) updateIds.add(fileId);
 
