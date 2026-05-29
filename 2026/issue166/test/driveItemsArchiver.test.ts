@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { DriveItemsArchiver } from '../src/driveItemsArchiver';
-import * as Const from '../src/const';
+import { DriveItemsArchiver } from '../src/core/item/driveItemsArchiver';
+import * as Const from '../src/common/const';
 
 // GASのグローバルオブジェクトをモック化
 const mockGetProperty = jest.fn();
@@ -48,7 +48,7 @@ describe('DriveItemsArchiver', () => {
   });
 
   it('コンストラクタ：プロパティからIDを正しく読み込むこと', () => {
-    const archiver = new DriveItemsArchiver();
+    const archiver = new DriveItemsArchiver('TestDrive', false);
     expect(archiver).toBeDefined();
     expect(mockGetProperty).toHaveBeenCalledWith(
       Const.PROPERTY_KEYS.JSON_FOLDER_ID

@@ -29,31 +29,13 @@ export const PROPERTY_KEYS = {
   OUTPUT_SPREADSHEET_ID: 'OUTPUT_SPREADSHEET_ID', // レポート出力先のスプレッドシートID
 
   // キュー管理（共有ドライブのIDなど）
-  TARGET_SHARED_DRIVE_ID: 'TARGET_SHARED_DRIVE_ID', // 対象の共有ドライブIDリスト（カンマ区切り）
   POLICY_REPORT_TARGET_DRIVE_IDS: 'POLICY_REPORT_TARGET_DRIVE_IDS', // 共有ドライブ設定レポートの対象ドライブID（カンマ区切り）
 } as const;
 
 export const REPORT_HEADERS: {
-  DRIVE_ITEM: readonly string[];
   SHARED_DRIVE_POLICY: readonly string[];
-  PERMISSION: readonly string[];
 } = {
-  DRIVE_ITEM: [
-    'ID',
-    'アイテム種別',
-    '親フォルダパス',
-    '名前',
-    '作成日時',
-    '更新日時',
-  ],
   SHARED_DRIVE_POLICY: ['ドライブID', 'ドライブ名', '設定', '出力日時'],
-  PERMISSION: ['アイテムID', '権限', '継承'],
-} as const;
-// シート名
-export const SHEET_NAME = {
-  PERMISSION: '権限一覧',
-  PERMISSION_ARCHIVE_WORK: '作業用_パーミッション未取得IDリスト',
-  SHARED_DRIVE: '共有ドライブ自体の設定',
 } as const;
 
 // MIME_TYPE
@@ -61,21 +43,9 @@ export const MIME_TYPES = {
   FOLDER: 'application/vnd.google-apps.folder',
 } as const;
 
-// dummyなどの定数
-export const DUMMY_VALUE = 'dummy';
-export const FOLDER_JP = 'フォルダ';
-export const FILE_JP = 'ファイル';
-
-// 共有ドライブ名
-export const SHARED_DRIVE_NAME = {
-  EXTERNAL: 'ARO外部共有',
-  INTERNAL: 'ARO内部のみ共有',
-} as const;
-
 // 出力ファイル名のフォーマット
 export const OUTPUT_FILE_NAME = {
   PREFIX: {
-    DRIVE_ITEM: 'フォルダ構成',
     PERMISSION: 'permission',
     SHARED_DRIVE_POLICY: '共有ドライブ設定',
   },
@@ -95,11 +65,6 @@ export const INDEX = {
     DETAIL_INHERITED_FROM: 8,
     DETAIL_ROLE: 9,
     INHERITED: 10,
-  },
-  MERGE_DRIVE_PERMISSION: {
-    DRIVE_SHEET_KEY: 0,
-    PERMISSION_SHEET_KEY: 0,
-    PERMISSION_PERMISSION: 1,
   },
 } as const;
 

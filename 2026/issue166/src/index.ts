@@ -14,24 +14,17 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { runNextArchiving_ } from './driveItemsArchiver';
-import { runReportGeneration_ } from './driveItemsReportGenerator';
-import { runPermissionReportGeneration_ } from './permissionReportGenerator';
+import { executeJsonArchivingProcess_ } from './core/item/driveItemsArchiver';
+import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
+import { runPermissionReportGeneration_ } from './core/permission/permissionReportGenerator';
 import {
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
-} from './permissionArchiver';
-import {
-  archiveSharedDrivePoliciesDriveGet_,
-  archiveSharedDrivePoliciesPermissions_,
-  sharedDrivePolicyReportGenerator_,
-} from './sharedDrivePolicyReportGenerator';
-import { runDrivePermissionMatrixReportGeneration_ } from './driveDataMerger';
-import {
-  runInternalDriveExcludeCheck_,
-  runExternalAccountPermissionReport_,
-} from './InternalDriveProcessor';
-import { setupProjectProperties_ } from './Initializer';
+} from './core/permission/permissionArchiver';
+import { runDrivePermissionMatrixReportGeneration_ } from './core/permission/driveDataMerger';
+import { runExternalAccountPermissionReport_ } from './core/permission/externalAccountPermissionReport';
+import { setupProjectProperties_ } from './core/app/Initializer';
+import { runInternalDriveExcludeCheck_ } from './core/permission/internalDriveExcludeChecker';
 
 /**
  * 5.1.
@@ -39,18 +32,6 @@ import { setupProjectProperties_ } from './Initializer';
  */
 function runDrivePermissionMatrixReportGeneration() {
   runDrivePermissionMatrixReportGeneration_();
-}
-
-/**
- * 4.1.
- * 共有ドライブ自体の設定を保存・レポート出力する一連の処理
- */
-function runSharedDrivePolicyReportGeneration() {
-  // 設定を取得
-  archiveSharedDrivePoliciesDriveGet_();
-  archiveSharedDrivePoliciesPermissions_();
-  // スプレッドシートに出力
-  sharedDrivePolicyReportGenerator_();
 }
 
 /**
@@ -69,7 +50,10 @@ function runPermissionReportGeneration() {
 }
 /**
  * 2.3.
- * 取得対象のIDをもとにパーミッション情報を取得し、JSONファイルとして保存する
+ * 「作業用_パーミッション未取得IDリスト」シートのA列のIDをもとに、対象アイテムのパーミッション情報を取得してJSONファイルとして保存します。
+ * 取得したパーミッション情報は、ファイルIDをファイル名に含めて保存します。
+ * 例えば、ファイルIDが「abc123」の場合、「permissions_abc123.json」のようなファイル名で保存されます。
+ * 保存先のフォルダはスクリプトプロパティで指定されたフォルダになります。
  */
 function fetchPermissionsAndSaveForTargetIds() {
   fetchPermissionsAndSaveForTargetIds_();
@@ -77,17 +61,28 @@ function fetchPermissionsAndSaveForTargetIds() {
 
 /**
  * 2.2.
- * 取得対象になるファイルのIDをスプレッドシートに出力する処理
+ * 「${ドライブ名}_フォルダ構成」シートの情報を元に、パーミッション取得対象アイテムのIDを抽出し
+ * 「作業用_パーミッション未取得IDリスト」シートに出力します。
+ * 該当するIDのJSONファイルが存在しない場合、そのIDはパーミッション取得対象とみなし、出力する仕様です。
+ * 該当するIDのJSONファイルが存在する場合、更新日時を確認し、前回取得以降にアイテムが更新されている場合は
+ * パーミッション取得対象とみなして出力します。更新されていない場合は対象外とみなして出力しません。
+ * 上記の条件にかかわらず、G列に何らかの文字列が記載されたアイテムはパーミッション取得対象外とします。
  */
 function archivePermissionsForTargetIds() {
   archivePermissionsForTargetIds_();
 }
 
 /**
- * 2.1.
- * 任意の処理
- * パーミッション取得対象外とする親フォルダを目検で洗い出し、シートに設定します。
- * 設定した情報を元に取得対象外ファイルの設定を行います。
+ * 2.0. 任意の処理
+ * 「権限取得対象外親フォルダパス」シートのA列に記載されたフォルダパスをもとに、
+ * 共有ドライブ内のアイテムをフィルタリングして、対象外のアイテムを抽出します。
+ * パスは前方一致で判定します。例えば「ルートフォルダ/フォルダA」と記載した場合、
+ * 「ルートフォルダ/フォルダA/サブフォルダ1/ファイルX」は対象外になりますが、
+ * 「ルートフォルダ/ルートフォルダ/フォルダA」は対象外になりません。
+ * 対象外と判定されたアイテムについては、「${ドライブ名}_フォルダ構成」シートのG列に「取得対象外」と記載します。
+ * **** この処理を実行する場合は、下記の事前処理が必要です。****
+ * 1.「権限取得対象外親フォルダパス」シートを作成する。
+ * 2. パーミッション取得対象外とする親フォルダのパスをA列に入力する。一行目からデータを読み込む仕様のため、1行目から入力してください。
  */
 function internalDriveExcludeCheck() {
   runInternalDriveExcludeCheck_();
@@ -106,7 +101,16 @@ function runReportGeneration() {
  * キューから未処理の共有ドライブを取り出し、アイテムと権限情報をJSONとして保存します。
  */
 function executeJsonArchivingProcess() {
-  runNextArchiving_();
+  // テスト用フラグ
+  // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
+  const limitToFirstPage = false;
+  if (limitToFirstPage) {
+    console.warn(
+      'limitToFirstPageフラグがtrueのため、最初の1ページのみ処理して終了します。' +
+        '全件処理する場合はこのフラグをfalseにしてください。'
+    );
+  }
+  executeJsonArchivingProcess_(limitToFirstPage);
 }
 /**
  * 1.1. 初期処理

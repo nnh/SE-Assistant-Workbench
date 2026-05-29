@@ -48,7 +48,7 @@ export const DriveApiService = {
     fileId: string,
     options: ListPermissionsOptions,
     maxRetries = 3
-  ) {
+  ): Const.PermissionResponse {
     let retryCount = 0;
     while (retryCount < maxRetries) {
       try {
@@ -59,12 +59,11 @@ export const DriveApiService = {
           permissions: result?.permissions || [],
         };
       } catch (e) {
-        if (++retryCount >= maxRetries)
-          return { kind: 'drive#permissionList', permissions: [] };
+        if (++retryCount >= maxRetries) throw e;
         Utilities.sleep(Math.pow(2, retryCount) * 1000);
       }
     }
-    return { kind: 'drive#permissionList', permissions: [] };
+    throw new Error('fetchPermissions: unexpected end of retry loop');
   },
   /** 共有ドライブ自体の情報取得 */
   fetchDriveInfo(driveId: string, maxRetries = 3) {
@@ -85,12 +84,22 @@ export const DriveApiService = {
   /**
    * 共有ドライブの名称を取得し、ファイル名向けにサニタイズして返す
    */
-  fetchSharedDriveName(driveId: string): string {
+  fetchSharedDriveName(): string {
+    const driveId = PropertiesService.getScriptProperties().getProperty(
+      Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID
+    );
+    if (!driveId) {
+      throw new Error(
+        `プロパティ ${Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID} が設定されていません。スクリプトプロパティに共有ドライブ設定レポートの対象ドライブIDを設定してください。`
+      );
+    }
+
     try {
       const driveApi = (globalThis as any).Drive;
       const drive = driveApi.Drives.get(driveId);
       // 特殊文字をファイル名に使えないため、一部置換
-      return FileUtils.sanitizeFileName(drive.name);
+      const driveName = FileUtils.sanitizeFileName(drive.name);
+      return driveName;
     } catch (e) {
       console.warn(`Drive名取得失敗(ID: ${driveId}): ${e}`);
       return `UnknownDrive_${driveId.slice(-4)}`;

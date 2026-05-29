@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { DateUtils } from './utils';
 
 export class JsonDataHandler {
   constructor(private jsonFolder: GoogleAppsScript.Drive.Folder) {}
@@ -29,14 +28,14 @@ export class JsonDataHandler {
     }
   }
 
-  /** 特定の接頭辞を持つJSONファイルを取得 */
+  /** 特定の接頭辞を持つJSONファイルを取得（最新の実行グループのみ） */
   public getTargetJsonFiles(
     prefix: string,
     targetDriveName: string
   ): GoogleAppsScript.Drive.File[] {
     const files = this.jsonFolder.getFiles();
     const targetFiles: GoogleAppsScript.Drive.File[] = [];
-    const searchPrefix = `${prefix}_${targetDriveName}_${DateUtils.getTodayStr()}`;
+    const searchPrefix = `${prefix}_${targetDriveName}_`;
 
     while (files.hasNext()) {
       const file = files.next();
@@ -49,17 +48,37 @@ export class JsonDataHandler {
     }
     if (targetFiles.length === 0)
       throw new Error(`No JSON files found for: ${searchPrefix}`);
-    return targetFiles.sort((a, b) => a.getName().localeCompare(b.getName()));
+
+    // ファイル名から日時部分（yyyyMMdd_HHmm: 13文字）を抽出し、最新の実行グループのみを返す
+    const DATE_TIME_LENGTH = 13;
+    const latestDateTime = targetFiles.reduce((max, file) => {
+      const dt = file
+        .getName()
+        .slice(searchPrefix.length, searchPrefix.length + DATE_TIME_LENGTH);
+      return dt > max ? dt : max;
+    }, '');
+
+    return targetFiles
+      .filter(
+        file =>
+          file
+            .getName()
+            .slice(
+              searchPrefix.length,
+              searchPrefix.length + DATE_TIME_LENGTH
+            ) === latestDateTime
+      )
+      .sort((a, b) => a.getName().localeCompare(b.getName()));
   }
 
   /** 複数のJSONを統合 */
   public combineJsonData<T>(prefix: string, targetDriveName: string): T[] {
     const targetFiles = this.getTargetJsonFiles(prefix, targetDriveName);
-    let combinedData: T[] = [];
+    const combinedData: T[] = [];
     for (const file of targetFiles) {
       const data = this.loadJsonFile<T[]>(file);
       if (data && Array.isArray(data)) {
-        combinedData = combinedData.concat(data);
+        combinedData.push(...data);
       }
     }
     return combinedData;

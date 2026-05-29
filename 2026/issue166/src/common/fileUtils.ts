@@ -42,9 +42,31 @@ export const FileUtils = {
   },
 
   /**
-   * OSやGoogleドライブで問題になりやすい記号を置換する
+   * ファイル名に使用できない文字をアンダースコアに置換します。
+   * 置換対象の文字: \ / : * ? " < > |
+   * @param name 元のファイル名
+   * @returns 置換後の安全なファイル名
    */
   sanitizeFileName(name: string): string {
     return name.replace(/[\\/:*?"<>|]/g, '_');
+  },
+  /**
+   * オブジェクトデータをシリアライズし、プレーンテキストのJSONファイルとして指定フォルダへ保存します。
+   * @param fileName 作成するファイルの名前
+   * @param data 書き込む対象のオブジェクトデータ
+   * @param saveFolder 格納先のフォルダオブジェクト
+   */
+  saveAsJsonFile(
+    fileName: string,
+    data: any,
+    saveFolder: GoogleAppsScript.Drive.Folder
+  ): void {
+    const content = JSON.stringify(data, null, 2);
+    const existing = saveFolder.getFilesByName(fileName);
+    if (existing.hasNext()) {
+      existing.next().setContent(content);
+    } else {
+      saveFolder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+    }
   },
 } as const;

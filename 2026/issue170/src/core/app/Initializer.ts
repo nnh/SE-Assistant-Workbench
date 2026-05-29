@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import * as Const from './const';
+import * as Const from '../../common/const';
 
 class ProjectInitializer {
   /**
@@ -28,8 +28,8 @@ class ProjectInitializer {
       const propertyTemplates: Record<string, string> = {
         [Const.PROPERTY_KEYS.JSON_FOLDER_ID]:
           'SET_YOUR_JSON_SAVE_FOLDER_ID_HERE',
-        [Const.PROPERTY_KEYS.TARGET_SHARED_DRIVE_ID]:
-          'SET_YOUR_TARGET_SHARED_DRIVE_ID_HERE',
+        [Const.PROPERTY_KEYS.POLICY_REPORT_TARGET_DRIVE_IDS]:
+          'SET_YOUR_POLICY_REPORT_TARGET_DRIVE_IDS',
         [Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID]:
           'SET_YOUR_OUTPUT_SPREADSHEET_ID_HERE',
         [Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID]:

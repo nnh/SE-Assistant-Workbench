@@ -13,15 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { BaseReport } from './baseReport';
-import { DriveApiService } from './driveApiService';
-import * as Const from './const';
-import { FileUtils } from './fileUtils';
-import { PermissionArchiver } from './permissionArchiver';
-import { PermissionReportGenerator } from './permissionReportGenerator';
-import { DateUtils } from './utils';
+import { BaseReport } from '../../baseReport';
+import { DriveApiService } from '../../common/driveApiService';
+import * as Const from '../../common/const';
+import { FileUtils } from '../../common/fileUtils';
+import { PermissionArchiver } from '../permission/permissionArchiver';
+import { PermissionReportGenerator } from '../permission/permissionReportGenerator';
+import { DateUtils } from '../../common/utils';
 
-class SharedDrivePolicyReportGenerator extends BaseReport {
+export class SharedDrivePolicyReportGenerator extends BaseReport {
   constructor() {
     super(
       Const.PROPERTY_KEYS.POLICY_REPORT_JSON_FOLDER_ID,
@@ -74,11 +74,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       'ALL_TARGETS',
       1
     );
-    this.jsonFolder.createFile(
-      fileName,
-      JSON.stringify(rawResults),
-      MimeType.PLAIN_TEXT
-    );
+    FileUtils.saveAsJsonFile(fileName, rawResults, this.jsonFolder);
     console.log(`JSONを保存しました: ${fileName}`);
   }
   /**
@@ -94,11 +90,7 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
         driveId,
         1
       );
-      permissionArchiver.saveAsJsonFile(
-        fileName,
-        permissionsData,
-        this.jsonFolder
-      );
+      FileUtils.saveAsJsonFile(fileName, permissionsData, this.jsonFolder);
       console.log(
         `Permissions JSON saved for drive ID ${driveId} as ${fileName}`
       );
@@ -118,24 +110,14 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
    * @param targetDriveName
    * @returns
    */
-  private getPermissionsDataForDrive(
-    targetDriveName: string
-  ): GoogleAppsScript.Drive.File[] {
-    // 1. JSONファイルをすべて読み込む
-    const rawDataList: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
-      Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
-      targetDriveName
-    );
-    return rawDataList;
-  }
   public generateReport(): void {
     const outputDate = DateUtils.getNowStr();
-    const sheetName = Const.SHEET_NAME.SHARED_DRIVE;
+    const sheetName = DateUtils.getTodayStr();
     const sheet = this.getOutputSheet(
-      this.outputSpreadsheet,
       sheetName,
       Const.REPORT_HEADERS.SHARED_DRIVE_POLICY as string[]
     );
+    this.outputSpreadsheet.setActiveSheet(sheet);
 
     // 共有ドライブの設定
     const allRawData = this.fetchAndCombineJsonData<any>(
@@ -149,14 +131,11 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
       Const.PROPERTY_KEYS.JSON_FOLDER_ID,
       Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
     );
-    const index = {
-      displayName: 2,
-      emailAddress: 4,
-      role: 3,
-    };
     const allPermissionsData = targetDriveIds.map(id => {
-      const targetJson: GoogleAppsScript.Drive.File[] =
-        this.getPermissionsDataForDrive(id);
+      const targetJson: GoogleAppsScript.Drive.File[] = this.getTargetJsonFiles(
+        Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION,
+        id
+      );
       const members: string[][] = perGenerator.editOutputData(targetJson);
       // 必要な要素だけ抽出して整形
       const res = members.map(member => [
@@ -232,6 +211,8 @@ class SharedDrivePolicyReportGenerator extends BaseReport {
     outputData.forEach(row => row.push(outputDate));
 
     this.addDataToSheet(outputData, sheet);
+    sheet.setColumnWidth(2, 120);
+    sheet.setColumnWidth(3, 850);
     console.log(
       `共有ドライブの設定レポートを生成しました。出力行数: ${outputData.length}`
     );
