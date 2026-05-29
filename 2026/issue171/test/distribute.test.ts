@@ -30,6 +30,7 @@ const mockAutoResizeColumns = jest.fn();
 const mockSetColumnWidth = jest.fn();
 const mockAutoResizeColumn = jest.fn();
 const mockGetRange = jest.fn(() => ({ setValues: mockSetValues }));
+const mockSetFrozenRows = jest.fn();
 const mockGetDataRange = jest.fn();
 
 global.SpreadsheetApp = {
@@ -57,6 +58,7 @@ beforeEach(() => {
     autoResizeColumns: mockAutoResizeColumns,
     setColumnWidth: mockSetColumnWidth,
     autoResizeColumn: mockAutoResizeColumn,
+    setFrozenRows: mockSetFrozenRows,
   };
   mockInsertSheet.mockReturnValue(mockSheet);
   mockGetSheetByName.mockReturnValue(null);
@@ -117,6 +119,7 @@ describe('distributeByCategory_', () => {
       autoResizeColumns: mockAutoResizeColumns,
       setColumnWidth: mockSetColumnWidth,
       autoResizeColumn: mockAutoResizeColumn,
+      setFrozenRows: mockSetFrozenRows,
       getDataRange: () => ({ getValues: () => [] }),
     };
     mockGetSheetByName.mockReturnValue(existingSheet);

@@ -17,6 +17,12 @@
 import { importCsvFiles_ } from './import-csv';
 import { distributeByCategory_ } from './distribute';
 
+function onOpen(): void {
+  SpreadsheetApp.getActiveSpreadsheet().addMenu('コラボレーション管理', [
+    { name: '実行', functionName: 'main' },
+  ]);
+}
+
 function main(): void {
   importCsvFiles_();
   distributeByCategory_();

@@ -158,6 +158,7 @@ function writeToSheet_(
   const allRows = [fullHeader, ...activeRows, ...prevDeleted, ...newlyDeleted];
 
   sheet.getRange(1, 1, allRows.length, fullHeader.length).setValues(allRows);
+  sheet.setFrozenRows(1);
   resizeColumns_(sheet, fullHeader.length, COLUMN_WIDTHS);
 }
 
