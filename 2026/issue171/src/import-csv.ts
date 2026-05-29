@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { FILE_PATTERN } from './constants';
+import { FILE_PATTERN, PROP_FOLDER_ID } from './constants';
 
 interface CsvFileEntry {
   page: number;
@@ -23,7 +23,7 @@ interface CsvFileEntry {
 
 export function importCsvFiles_(): void {
   const folderId =
-    PropertiesService.getScriptProperties().getProperty('FOLDER_ID');
+    PropertiesService.getScriptProperties().getProperty(PROP_FOLDER_ID);
   if (!folderId) {
     throw new Error('スクリプトプロパティ FOLDER_ID が設定されていません');
   }
@@ -78,6 +78,42 @@ export function importCsvFiles_(): void {
         .getRange(startRow, 1, normalized.length, colCount)
         .setValues(normalized);
       startRow += normalized.length;
+    }
+  }
+}
+
+export function exportSheetAsPdf_(
+  ss: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  folderId: string,
+  title?: string,
+  fileName?: string
+): void {
+  // タイトル行を先頭に一時挿入
+  let titleInserted = false;
+  if (title) {
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1).setValue(title);
+    titleInserted = true;
+  }
+  // スプレッドシートへの変更をサーバーに反映してからPDF生成する
+  SpreadsheetApp.flush();
+  try {
+    // fitw=true: 全列を1ページ幅に収める / portrait=false: 横向き印刷
+    const url =
+      `https://docs.google.com/spreadsheets/d/${ss.getId()}/export` +
+      `?format=pdf&gid=${sheet.getSheetId()}&fitw=true&portrait=false`;
+    const token = ScriptApp.getOAuthToken();
+    const blob = UrlFetchApp.fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .getBlob()
+      .setName(fileName ?? `${sheet.getName()}.pdf`);
+    DriveApp.getFolderById(folderId).createFile(blob);
+  } finally {
+    // タイトル行を削除してシートを元の状態に戻す
+    if (titleInserted) {
+      sheet.deleteRow(1);
     }
   }
 }

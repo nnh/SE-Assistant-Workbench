@@ -16,6 +16,7 @@
 import {
   distributeByCategory_,
   findDeletedRows_,
+  formatDateYmd_,
   resizeColumns_,
   sortByFolderPath_,
   transformRows_,
@@ -25,20 +26,44 @@ const mockGetSheets = jest.fn();
 const mockGetSheetByName = jest.fn();
 const mockInsertSheet = jest.fn();
 const mockSetValues = jest.fn();
+const mockSetWrap = jest.fn();
 const mockClearContents = jest.fn();
 const mockAutoResizeColumns = jest.fn();
 const mockSetColumnWidth = jest.fn();
 const mockAutoResizeColumn = jest.fn();
-const mockGetRange = jest.fn(() => ({ setValues: mockSetValues }));
+const mockGetRange = jest.fn(() => ({
+  setValues: mockSetValues,
+  setWrap: mockSetWrap,
+  setValue: mockSetValue,
+}));
 const mockSetFrozenRows = jest.fn();
 const mockGetDataRange = jest.fn();
+const mockGetProperty = jest.fn();
+const mockFetch = jest.fn();
+const mockCreateFile = jest.fn();
+const mockInsertRowBefore = jest.fn();
+const mockDeleteRow = jest.fn();
+const mockSetValue = jest.fn();
+const mockSetName = jest.fn().mockReturnValue({});
 
 global.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
+    getId: () => 'ss-id',
     getSheets: mockGetSheets,
     getSheetByName: mockGetSheetByName,
     insertSheet: mockInsertSheet,
   }),
+  flush: jest.fn(),
+} as never;
+
+global.PropertiesService = {
+  getScriptProperties: () => ({ getProperty: mockGetProperty }),
+} as never;
+
+global.UrlFetchApp = { fetch: mockFetch } as never;
+global.ScriptApp = { getOAuthToken: () => 'mock-token' } as never;
+global.DriveApp = {
+  getFolderById: () => ({ createFile: mockCreateFile }),
 } as never;
 
 function makeSheet(name: string, data: string[][]) {
@@ -59,9 +84,16 @@ beforeEach(() => {
     setColumnWidth: mockSetColumnWidth,
     autoResizeColumn: mockAutoResizeColumn,
     setFrozenRows: mockSetFrozenRows,
+    getSheetId: () => 42,
+    getName: () => '外部一覧',
   };
   mockInsertSheet.mockReturnValue(mockSheet);
   mockGetSheetByName.mockReturnValue(null);
+  mockGetProperty.mockReturnValue(null);
+  mockSetName.mockReturnValue({});
+  mockFetch.mockReturnValue({
+    getBlob: () => ({ setName: mockSetName }),
+  });
 });
 
 describe('distributeByCategory_', () => {
@@ -110,6 +142,54 @@ describe('distributeByCategory_', () => {
     ]);
   });
 
+  it('外部一覧シートのデータ範囲に折り返し設定をする', () => {
+    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    mockGetSheets.mockReturnValue([makeSheet('2026-05-28-15-39-18', [header])]);
+
+    distributeByCategory_();
+
+    expect(mockSetWrap).toHaveBeenCalledWith(true);
+  });
+
+  it('管理対象一覧シートには折り返し設定をしない', () => {
+    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    const row = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', '管理対象'];
+    mockGetSheets.mockReturnValue([
+      makeSheet('2026-05-28-15-39-18', [header, row]),
+    ]);
+    // 外部一覧シートが存在しない場合のみ呼び出しを確認
+    mockGetSheetByName.mockImplementation((name: string) =>
+      name === '外部一覧' ? null : null
+    );
+
+    distributeByCategory_();
+
+    // setWrap は外部一覧（insertSheet で作成）のみに適用される
+    // 管理対象一覧向けのシートには呼ばれない
+    expect(mockSetWrap).toHaveBeenCalledTimes(1);
+    expect(mockSetWrap).toHaveBeenCalledWith(true);
+  });
+
+  it('外部一覧シートは外部専用の除外列（A, B, D, F, G, L, O）を使用する', () => {
+    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    const row = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', '外部'];
+    mockGetSheets.mockReturnValue([
+      makeSheet('2026-05-28-15-39-18', [header, row]),
+    ]);
+
+    distributeByCategory_();
+
+    expect(mockInsertSheet).toHaveBeenCalledWith('外部一覧');
+    const externalCall = mockSetValues.mock.calls.find((c: string[][][]) =>
+      c[0].some((r: string[]) => r.includes('外部'))
+    );
+    // A, B, D, F, G 列が除外され（L, O は列数不足のため対象外）、末尾にステータス列
+    expect(externalCall[0]).toEqual([
+      ['C', 'E', 'H', 'I', 'J', 'ステータス'],
+      ['c', 'e', 'h', 'i', '外部', ''],
+    ]);
+  });
+
   it('対象シートが既存の場合はクリアしてから出力する', () => {
     const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     mockGetSheets.mockReturnValue([makeSheet('2026-05-28-15-39-18', [header])]);
@@ -142,6 +222,55 @@ describe('distributeByCategory_', () => {
       mockAutoResizeColumn.mock.calls.length +
       mockAutoResizeColumns.mock.calls.length;
     expect(totalCalls).toBeGreaterThan(0);
+  });
+
+  it('PDF_FOLDER_ID が設定されている場合は外部一覧シートを PDF 出力する', () => {
+    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    mockGetSheets.mockReturnValue([makeSheet('2026-05-28-15-39-18', [header])]);
+    const externalSheet = {
+      getRange: mockGetRange,
+      clearContents: mockClearContents,
+      autoResizeColumns: mockAutoResizeColumns,
+      setColumnWidth: mockSetColumnWidth,
+      autoResizeColumn: mockAutoResizeColumn,
+      setFrozenRows: mockSetFrozenRows,
+      getDataRange: () => ({ getValues: () => [] }),
+      getSheetId: () => 42,
+      getName: () => '外部一覧',
+      insertRowBefore: mockInsertRowBefore,
+      deleteRow: mockDeleteRow,
+    };
+    mockGetSheetByName.mockImplementation((name: string) =>
+      name === '外部一覧' ? externalSheet : null
+    );
+    mockGetProperty.mockImplementation((key: string) =>
+      key === 'PDF_FOLDER_ID' ? 'pdf-folder-id' : null
+    );
+
+    distributeByCategory_();
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(mockCreateFile).toHaveBeenCalled();
+    // ソース名をタイトルとして先頭行に挿入し、PDF出力後に削除する
+    expect(mockInsertRowBefore).toHaveBeenCalledWith(1);
+    expect(mockSetValue).toHaveBeenCalledWith(
+      'collaborations_run_on_2026-05-28-15-39-18.csv'
+    );
+    expect(mockDeleteRow).toHaveBeenCalledWith(1);
+    // ファイル名が「Box外部コラボレータ一覧YYYYMMDD.pdf」形式
+    expect(mockSetName).toHaveBeenCalledWith(
+      expect.stringMatching(/^Box外部コラボレータ一覧\d{8}\.pdf$/)
+    );
+  });
+
+  it('PDF_FOLDER_ID 未設定の場合は PDF を出力しない', () => {
+    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    mockGetSheets.mockReturnValue([makeSheet('2026-05-28-15-39-18', [header])]);
+
+    distributeByCategory_();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockCreateFile).not.toHaveBeenCalled();
   });
 });
 
@@ -307,5 +436,25 @@ describe('findDeletedRows_', () => {
     expect(findDeletedRows_([header, old], [newRow], DATA_COLS, LABEL)).toEqual(
       []
     );
+  });
+});
+
+describe('formatDateYmd_', () => {
+  it('UTC+9（JST）に変換して YYYYMMDD 形式で返す', () => {
+    // UTC 06:39:18 = JST 15:39:18 (2026-05-28)
+    const date = new Date(Date.UTC(2026, 4, 28, 6, 39, 18));
+    expect(formatDateYmd_(date)).toBe('20260528');
+  });
+
+  it('1桁の月・日をゼロ埋めする', () => {
+    // UTC 00:03:07 = JST 09:03:07 (2026-01-05)
+    const date = new Date(Date.UTC(2026, 0, 5, 0, 3, 7));
+    expect(formatDateYmd_(date)).toBe('20260105');
+  });
+
+  it('UTC23:59 は JST 翌日になる', () => {
+    // UTC 2026-05-28 23:59 = JST 2026-05-29 08:59
+    const date = new Date(Date.UTC(2026, 4, 28, 23, 59, 0));
+    expect(formatDateYmd_(date)).toBe('20260529');
   });
 });

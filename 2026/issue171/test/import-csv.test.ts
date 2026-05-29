@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { importCsvFiles_ } from '../src/import-csv';
+import { exportSheetAsPdf_, importCsvFiles_ } from '../src/import-csv';
 
 const mockGetProperty = jest.fn();
 const mockGetFiles = jest.fn();
@@ -22,24 +22,45 @@ const mockInsertSheet = jest.fn();
 const mockSetValues = jest.fn();
 const mockGetRange = jest.fn(() => ({ setValues: mockSetValues }));
 const mockGetDataAsString = jest.fn();
+const mockCreateFile = jest.fn();
+const mockFetch = jest.fn();
+const mockAutoResizeColumns = jest.fn();
+const mockSetColumnWidth = jest.fn();
+const mockAutoResizeColumn = jest.fn();
+const mockInsertRowBefore = jest.fn();
+const mockDeleteRow = jest.fn();
+const mockSetValue = jest.fn();
 
 global.PropertiesService = {
   getScriptProperties: () => ({ getProperty: mockGetProperty }),
 } as never;
 
 global.DriveApp = {
-  getFolderById: () => ({ getFiles: mockGetFiles }),
+  getFolderById: () => ({
+    getFiles: mockGetFiles,
+    createFile: mockCreateFile,
+  }),
 } as never;
 
 global.SpreadsheetApp = {
   getActiveSpreadsheet: () => ({
+    getId: () => 'ss-id',
     getSheets: mockGetSheets,
     insertSheet: mockInsertSheet,
   }),
+  flush: jest.fn(),
 } as never;
 
 global.Utilities = {
   parseCsv: (content: string) => content.split('\n').map(row => row.split(',')),
+} as never;
+
+global.UrlFetchApp = {
+  fetch: mockFetch,
+} as never;
+
+global.ScriptApp = {
+  getOAuthToken: () => 'mock-token',
 } as never;
 
 function makeFile(name: string, csvContent: string) {
@@ -61,7 +82,18 @@ function makeIterator(files: ReturnType<typeof makeFile>[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockInsertSheet.mockReturnValue({ getRange: mockGetRange });
+  mockInsertSheet.mockReturnValue({
+    getRange: mockGetRange,
+    getSheetId: () => 12345,
+    getName: () => '2026-05-28-15-39-18',
+    getLastColumn: () => 10,
+    autoResizeColumns: mockAutoResizeColumns,
+    setColumnWidth: mockSetColumnWidth,
+    autoResizeColumn: mockAutoResizeColumn,
+  });
+  mockFetch.mockReturnValue({
+    getBlob: () => ({ setName: jest.fn().mockReturnValue({}) }),
+  });
 });
 
 describe('importCsvFiles_', () => {
@@ -71,7 +103,9 @@ describe('importCsvFiles_', () => {
   });
 
   it('パターン外のファイルはスキップする', () => {
-    mockGetProperty.mockReturnValue('folder-id');
+    mockGetProperty.mockImplementation((key: string) =>
+      key === 'FOLDER_ID' ? 'folder-id' : null
+    );
     mockGetSheets.mockReturnValue([]);
     mockGetFiles.mockReturnValue(makeIterator([makeFile('other.csv', 'a,b')]));
 
@@ -81,7 +115,9 @@ describe('importCsvFiles_', () => {
   });
 
   it('既存シートと同名のファイルはスキップする', () => {
-    mockGetProperty.mockReturnValue('folder-id');
+    mockGetProperty.mockImplementation((key: string) =>
+      key === 'FOLDER_ID' ? 'folder-id' : null
+    );
     mockGetSheets.mockReturnValue([{ getName: () => '2026-05-28-15-39-18' }]);
     mockGetFiles.mockReturnValue(
       makeIterator([
@@ -98,7 +134,9 @@ describe('importCsvFiles_', () => {
   });
 
   it('新規ファイルをシートに書き込む', () => {
-    mockGetProperty.mockReturnValue('folder-id');
+    mockGetProperty.mockImplementation((key: string) =>
+      key === 'FOLDER_ID' ? 'folder-id' : null
+    );
     mockGetSheets.mockReturnValue([]);
     mockGetFiles.mockReturnValue(
       makeIterator([
@@ -113,5 +151,48 @@ describe('importCsvFiles_', () => {
 
     expect(mockInsertSheet).toHaveBeenCalledWith('2026-05-28-15-39-18');
     expect(mockSetValues).toHaveBeenCalled();
+  });
+});
+
+describe('exportSheetAsPdf_', () => {
+  const mockSs = { getId: () => 'ss-id' } as never;
+  const mockSheet = {
+    getSheetId: () => 99,
+    getName: () => '2026-05-28-15-39-18',
+    insertRowBefore: mockInsertRowBefore,
+    deleteRow: mockDeleteRow,
+    getRange: () => ({ setValue: mockSetValue }),
+  } as never;
+
+  it('fitw=true を URL に含める', () => {
+    exportSheetAsPdf_(mockSs, mockSheet, 'pdf-folder-id');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://docs.google.com/spreadsheets/d/ss-id/export?format=pdf&gid=99&fitw=true&portrait=false',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer mock-token' },
+      })
+    );
+  });
+
+  it('シート名.pdf のファイル名で Drive に保存する', () => {
+    exportSheetAsPdf_(mockSs, mockSheet, 'pdf-folder-id');
+
+    expect(mockCreateFile).toHaveBeenCalled();
+  });
+
+  it('title が指定された場合は先頭行に挿入してPDF出力後に削除する', () => {
+    exportSheetAsPdf_(mockSs, mockSheet, 'pdf-folder-id', 'test-title');
+
+    expect(mockInsertRowBefore).toHaveBeenCalledWith(1);
+    expect(mockSetValue).toHaveBeenCalledWith('test-title');
+    expect(mockDeleteRow).toHaveBeenCalledWith(1);
+  });
+
+  it('title が未指定の場合は行の挿入・削除をしない', () => {
+    exportSheetAsPdf_(mockSs, mockSheet, 'pdf-folder-id');
+
+    expect(mockInsertRowBefore).not.toHaveBeenCalled();
+    expect(mockDeleteRow).not.toHaveBeenCalled();
   });
 });

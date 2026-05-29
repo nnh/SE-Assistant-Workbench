@@ -18,18 +18,23 @@ import {
   C_INDEX,
   C_PREFIX,
   COLUMN_WIDTHS,
+  COLUMN_WIDTHS_EXTERNAL,
   D_INDEX,
   DATE_SHEET_PATTERN,
   EXCLUDED_COLS,
+  EXCLUDED_COLS_EXTERNAL,
   J_INDEX,
   J_VALUE_EXTERNAL,
   J_VALUE_MANAGED,
   KEY_COLS_OUT,
+  PDF_FILE_NAME_PREFIX,
+  PROP_PDF_FOLDER_ID,
   SHEET_NAME_EXTERNAL,
   SHEET_NAME_MANAGED,
   STATUS_COL_HEADER,
   STATUS_DELETED,
 } from './constants';
+import { exportSheetAsPdf_ } from './import-csv';
 
 export function distributeByCategory_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -47,34 +52,58 @@ export function distributeByCategory_(): void {
 
   if (data.length === 0) return;
 
-  const header = transformRows_([data[0]])[0];
   const body = sortByFolderPath_(data.slice(1));
-
   const sourceName = source.getName();
 
   writeToSheet_(
     ss,
     SHEET_NAME_MANAGED,
-    header,
+    transformRows_([data[0]])[0],
     transformRows_(body.filter(r => r[J_INDEX] === J_VALUE_MANAGED)),
-    sourceName
+    sourceName,
+    COLUMN_WIDTHS
   );
   writeToSheet_(
     ss,
     SHEET_NAME_EXTERNAL,
-    header,
-    transformRows_(body.filter(r => r[J_INDEX] === J_VALUE_EXTERNAL)),
-    sourceName
+    transformRows_([data[0]], EXCLUDED_COLS_EXTERNAL)[0],
+    transformRows_(
+      body.filter(r => r[J_INDEX] === J_VALUE_EXTERNAL),
+      EXCLUDED_COLS_EXTERNAL
+    ),
+    sourceName,
+    COLUMN_WIDTHS_EXTERNAL,
+    true
   );
+
+  // 外部一覧シートをPDF出力
+  const pdfFolderId =
+    PropertiesService.getScriptProperties().getProperty(PROP_PDF_FOLDER_ID);
+  if (pdfFolderId) {
+    const externalSheet = ss.getSheetByName(SHEET_NAME_EXTERNAL);
+    if (externalSheet) {
+      const dateStr = formatDateYmd_(new Date());
+      exportSheetAsPdf_(
+        ss,
+        externalSheet,
+        pdfFolderId,
+        `collaborations_run_on_${sourceName}.csv`,
+        `${PDF_FILE_NAME_PREFIX}${dateStr}.pdf`
+      );
+    }
+  }
 }
 
-export function transformRows_(rows: string[][]): string[][] {
+export function transformRows_(
+  rows: string[][],
+  excludedCols: ReadonlySet<number> = EXCLUDED_COLS
+): string[][] {
   return rows.map(row => {
     const copy = [...row];
     if (copy[C_INDEX]?.startsWith(C_PREFIX)) {
       copy[C_INDEX] = copy[C_INDEX].slice(C_PREFIX.length);
     }
-    return copy.filter((_, i) => !EXCLUDED_COLS.has(i));
+    return copy.filter((_, i) => !excludedCols.has(i));
   });
 }
 
@@ -122,7 +151,9 @@ function writeToSheet_(
   name: string,
   header: string[],
   rows: string[][],
-  sourceName: string
+  sourceName: string,
+  widths: readonly number[],
+  wrapText = false
 ): void {
   const dataColCount = header.length;
   const statusLabel = `${STATUS_DELETED}（${sourceName}）`;
@@ -156,9 +187,13 @@ function writeToSheet_(
   const activeRows = rows.map(r => [...r, '']);
   const allRows = [fullHeader, ...activeRows, ...prevDeleted, ...newlyDeleted];
 
-  sheet.getRange(1, 1, allRows.length, fullHeader.length).setValues(allRows);
+  const dataRange = sheet.getRange(1, 1, allRows.length, fullHeader.length);
+  dataRange.setValues(allRows);
+  if (wrapText) {
+    dataRange.setWrap(true);
+  }
   sheet.setFrozenRows(1);
-  resizeColumns_(sheet, fullHeader.length, COLUMN_WIDTHS);
+  resizeColumns_(sheet, fullHeader.length, widths);
 }
 
 export function resizeColumns_(
@@ -179,4 +214,12 @@ export function resizeColumns_(
       sheet.autoResizeColumn(i + 1);
     }
   }
+}
+
+/** JST の YYYYMMDD 形式で日付文字列を返す */
+export function formatDateYmd_(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // JST = UTC+9
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${jst.getUTCFullYear()}${pad(jst.getUTCMonth() + 1)}${pad(jst.getUTCDate())}`;
 }

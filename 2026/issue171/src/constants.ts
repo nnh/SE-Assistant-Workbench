@@ -22,6 +22,12 @@ export const PROP_FOLDER_ID = 'FOLDER_ID';
 /** 管理対象_集計の出力先スプレッドシートID（未設定時はアクティブスプレッドシート） */
 export const PROP_SUMMARY_SPREADSHEET_ID = 'SUMMARY_SPREADSHEET_ID';
 
+/** PDF出力先 Google Drive フォルダのID（未設定時はPDF出力しない） */
+export const PROP_PDF_FOLDER_ID = 'PDF_FOLDER_ID';
+
+/** PDF ファイル名のプレフィックス（後ろに YYYYMMDD.pdf が付く） */
+export const PDF_FILE_NAME_PREFIX = 'Box外部コラボレータ一覧';
+
 // ---- import-csv ----
 
 /** 対象CSVファイル名のパターン。キャプチャ1=日時、キャプチャ2=ページ番号 */
@@ -41,8 +47,11 @@ export const J_INDEX = 9; // コラボレータの種類
 /** C列先頭から除去するプレフィックス */
 export const C_PREFIX = 'すべてのファイル/';
 
-/** 出力から除外する列インデックス（A, B, D, E, F, L） */
+/** 管理対象一覧の出力から除外する列インデックス（A, B, D, E, F, L） */
 export const EXCLUDED_COLS = new Set([0, 1, 3, 4, 5, 11]);
+
+/** 外部一覧の出力から除外する列インデックス（A, B, D, F, G, L, O） */
+export const EXCLUDED_COLS_EXTERNAL = new Set([0, 1, 3, 5, 6, 11, 14]);
 
 /** 削除判定キーとなる出力列インデックス（パス=0, コラボレータのログイン=3, コラボレータ権限=5） */
 export const KEY_COLS_OUT = [0, 3, 5];
@@ -77,9 +86,16 @@ export const SUMMARY_COLUMN_WIDTHS: readonly number[] = [
 ];
 
 /**
- * 出力列の幅（ピクセル）。出力列の順に指定する。0 の場合は自動調整。空配列は全列自動調整。
+ * 管理対象一覧の列幅（ピクセル）。出力列の順に指定する。0 の場合は自動調整。空配列は全列自動調整。
  * 例: [200, 0, 100] → 1列目200px, 2列目自動, 3列目100px
  */
 export const COLUMN_WIDTHS: readonly number[] = [
   610, 80, 180, 260, 130, 120, 80, 80, 0,
+];
+
+/**
+ * 外部一覧の列幅（ピクセル）。出力列の順に指定する。0 の場合は自動調整。空配列は全列自動調整。
+ */
+export const COLUMN_WIDTHS_EXTERNAL: readonly number[] = [
+  610, 80, 180, 260, 130, 120, 80, 80, 80,
 ];
