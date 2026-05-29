@@ -99,7 +99,7 @@ describe('distributeByCategory_', () => {
 
     distributeByCategory_();
 
-    expect(mockInsertSheet).toHaveBeenCalledWith('管理対象');
+    expect(mockInsertSheet).toHaveBeenCalledWith('管理対象一覧');
     const kanriCall = mockSetValues.mock.calls.find((c: string[][][]) =>
       c[0].some((r: string[]) => r.includes('管理対象'))
     );

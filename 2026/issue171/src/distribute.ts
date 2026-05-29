@@ -14,23 +14,22 @@
  * limitations under the License.
  */
 
-const DATE_SHEET_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/;
-const C_INDEX = 2; // C列（0始まり）
-const D_INDEX = 3; // D列（0始まり）
-const J_INDEX = 9; // J列（0始まり）
-const C_PREFIX = 'すべてのファイル/';
-const EXCLUDED_COLS = new Set([0, 1, 3, 4, 5, 11]); // A, B, D, E, F, L
-
-// 出力列のうち削除判定キーとなる列インデックス（パス=0, コラボレータのログイン=3, コラボレータ権限=5）
-const KEY_COLS_OUT = [0, 3, 5];
-const STATUS_COL_HEADER = 'ステータス';
-const STATUS_DELETED = '削除済';
-
-// 出力列の幅（ピクセル）。出力列の順に指定する。0 の場合は自動調整。空配列は全列自動調整。
-// 例: [200, 0, 100] → 1列目200px, 2列目自動, 3列目100px
-const COLUMN_WIDTHS: readonly number[] = [
-  610, 80, 180, 260, 130, 120, 80, 80, 0,
-];
+import {
+  C_INDEX,
+  C_PREFIX,
+  COLUMN_WIDTHS,
+  D_INDEX,
+  DATE_SHEET_PATTERN,
+  EXCLUDED_COLS,
+  J_INDEX,
+  J_VALUE_EXTERNAL,
+  J_VALUE_MANAGED,
+  KEY_COLS_OUT,
+  SHEET_NAME_EXTERNAL,
+  SHEET_NAME_MANAGED,
+  STATUS_COL_HEADER,
+  STATUS_DELETED,
+} from './constants';
 
 export function distributeByCategory_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -55,16 +54,16 @@ export function distributeByCategory_(): void {
 
   writeToSheet_(
     ss,
-    '管理対象',
+    SHEET_NAME_MANAGED,
     header,
-    transformRows_(body.filter(r => r[J_INDEX] === '管理対象')),
+    transformRows_(body.filter(r => r[J_INDEX] === J_VALUE_MANAGED)),
     sourceName
   );
   writeToSheet_(
     ss,
-    '外部',
+    SHEET_NAME_EXTERNAL,
     header,
-    transformRows_(body.filter(r => r[J_INDEX] === '外部')),
+    transformRows_(body.filter(r => r[J_INDEX] === J_VALUE_EXTERNAL)),
     sourceName
   );
 }

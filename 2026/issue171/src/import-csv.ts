@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-const FILE_PATTERN =
-  /^collaborations_run_on_(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})_.+?_(\d+)\.csv$/;
+import { FILE_PATTERN } from './constants';
 
 interface CsvFileEntry {
   page: number;
