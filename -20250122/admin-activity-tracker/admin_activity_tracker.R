@@ -2,7 +2,7 @@
 #' This is a program that consolidates information that has been changed with administrative privileges.
 #' @file admin_activity_tracker.R
 #' @author Mariko Ohtsuka
-#' @date 2025.6.2
+#' @date 2026.6.1
 rm(list = ls())
 # ------ libraries ------
 library(tidyverse)
@@ -61,7 +61,7 @@ GetZoomLog <- function(target) {
   if (nrow(df) == 0) {
     return(df)
   }
-  res <- df %>% filter(カテゴリー != "記録" & カテゴリー != "レコーディング")
+  res <- df %>% filter(カテゴリ != "記録" & カテゴリ != "レコーディング")
 }
 GetNasLog <- function() {
   targetFiles <- file.path(kParentPath, "ARONAS") %>%
@@ -311,7 +311,7 @@ SetNasLog <- function() {
 }
 SetZoomLog <- function(target) {
   df <- GetZoomLog(target)
-  sheetName <- ifelse(target == "z1", "Zoom1", "Zoom2")
+  sheetName <- "ZoomPhone"
   df %>% WriteSheet(sheetName)
 }
 GetSpreadSheetId <- function(file_path) {
@@ -371,4 +371,4 @@ dummy <- SetFortiGateLog()
 dummy <- SetGoogleLog()
 dummy <- SetPrimeDriveLog()
 dummy <- SetNasLog()
-dummy <- c("z2", "z1") %>% map(~ SetZoomLog(.))
+dummy <- c("phone") %>% map(~ SetZoomLog(.))
