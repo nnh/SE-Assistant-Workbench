@@ -16,7 +16,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { executeJsonArchivingProcess_ } from './core/item/driveItemsArchiver';
 import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
-import { runPermissionReportGeneration_ } from './core/permission/permissionReportGenerator';
+import {
+  runPermissionReportGeneration_,
+  runPermissionReportGenerationFromSpecifiedIds_,
+  runPermissionReportGenerationStep1_,
+  runPermissionReportGenerationStep2_,
+} from './core/permission/permissionReportGenerator';
 import {
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
@@ -48,6 +53,35 @@ function externalAccountPermissionReport() {
 function runPermissionReportGeneration() {
   runPermissionReportGeneration_();
 }
+
+/**
+ * 2.4c.
+ * 指定IDの権限情報を権限一覧へ出力
+ * 「作業用_権限出力対象IDリスト」シートのA1セルから縦にファイルIDを記載して実行してください。
+ */
+function runPermissionReportGenerationFromSpecifiedIds() {
+  runPermissionReportGenerationFromSpecifiedIds_();
+}
+
+/**
+ * 2.4a.
+ * 権限一覧の出力（バッチ処理 Step1）
+ * 入力ファイルが多くタイムアウトが発生する場合はこちらを使用してください。
+ * 対象ファイルのIDリストを収集してプロパティに保存し、Step2のトリガーを自動登録します。
+ */
+//function runPermissionReportGenerationStep1() {
+//  runPermissionReportGenerationStep1_();
+//}
+
+/**
+ * 2.4b.
+ * 権限一覧の出力（バッチ処理 Step2）
+ * 通常は Step1 が登録したトリガーから自動呼び出しされます。手動実行も可能です。
+ * 1バッチ分のJSON読み込み・シートマージを行い、残りがあれば次バッチのトリガーを登録します。
+ */
+//function runPermissionReportGenerationStep2() {
+//  runPermissionReportGenerationStep2_();
+//}
 /**
  * 2.3.
  * 「作業用_パーミッション未取得IDリスト」シートのA列のIDをもとに、対象アイテムのパーミッション情報を取得してJSONファイルとして保存します。
