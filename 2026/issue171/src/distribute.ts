@@ -14,23 +14,27 @@
  * limitations under the License.
  */
 
-const DATE_SHEET_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/;
-const C_INDEX = 2; // C列（0始まり）
-const D_INDEX = 3; // D列（0始まり）
-const J_INDEX = 9; // J列（0始まり）
-const C_PREFIX = 'すべてのファイル/';
-const EXCLUDED_COLS = new Set([0, 1, 3, 4, 5, 11]); // A, B, D, E, F, L
-
-// 出力列のうち削除判定キーとなる列インデックス（パス=0, コラボレータのログイン=3, コラボレータ権限=5）
-const KEY_COLS_OUT = [0, 3, 5];
-const STATUS_COL_HEADER = 'ステータス';
-const STATUS_DELETED = '削除済';
-
-// 出力列の幅（ピクセル）。出力列の順に指定する。0 の場合は自動調整。空配列は全列自動調整。
-// 例: [200, 0, 100] → 1列目200px, 2列目自動, 3列目100px
-const COLUMN_WIDTHS: readonly number[] = [
-  610, 80, 180, 260, 130, 120, 80, 80, 0,
-];
+import {
+  C_INDEX,
+  C_PREFIX,
+  COLUMN_WIDTHS,
+  COLUMN_WIDTHS_EXTERNAL,
+  D_INDEX,
+  DATE_SHEET_PATTERN,
+  EXCLUDED_COLS,
+  EXCLUDED_COLS_EXTERNAL,
+  J_INDEX,
+  J_VALUE_EXTERNAL,
+  J_VALUE_MANAGED,
+  KEY_COLS_OUT,
+  PDF_FILE_NAME_PREFIX,
+  PROP_PDF_FOLDER_ID,
+  SHEET_NAME_EXTERNAL,
+  SHEET_NAME_MANAGED,
+  STATUS_COL_HEADER,
+  STATUS_DELETED,
+} from './constants';
+import { exportSheetAsPdf_ } from './import-csv';
 
 export function distributeByCategory_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -48,34 +52,58 @@ export function distributeByCategory_(): void {
 
   if (data.length === 0) return;
 
-  const header = transformRows_([data[0]])[0];
   const body = sortByFolderPath_(data.slice(1));
-
   const sourceName = source.getName();
 
   writeToSheet_(
     ss,
-    '管理対象',
-    header,
-    transformRows_(body.filter(r => r[J_INDEX] === '管理対象')),
-    sourceName
+    SHEET_NAME_MANAGED,
+    transformRows_([data[0]])[0],
+    transformRows_(body.filter(r => r[J_INDEX] === J_VALUE_MANAGED)),
+    sourceName,
+    COLUMN_WIDTHS
   );
   writeToSheet_(
     ss,
-    '外部',
-    header,
-    transformRows_(body.filter(r => r[J_INDEX] === '外部')),
-    sourceName
+    SHEET_NAME_EXTERNAL,
+    transformRows_([data[0]], EXCLUDED_COLS_EXTERNAL)[0],
+    transformRows_(
+      body.filter(r => r[J_INDEX] === J_VALUE_EXTERNAL),
+      EXCLUDED_COLS_EXTERNAL
+    ),
+    sourceName,
+    COLUMN_WIDTHS_EXTERNAL,
+    true
   );
+
+  // 外部一覧シートをPDF出力
+  const pdfFolderId =
+    PropertiesService.getScriptProperties().getProperty(PROP_PDF_FOLDER_ID);
+  if (pdfFolderId) {
+    const externalSheet = ss.getSheetByName(SHEET_NAME_EXTERNAL);
+    if (externalSheet) {
+      const dateStr = formatDateYmd_(new Date());
+      exportSheetAsPdf_(
+        ss,
+        externalSheet,
+        pdfFolderId,
+        `collaborations_run_on_${sourceName}.csv`,
+        `${PDF_FILE_NAME_PREFIX}${dateStr}.pdf`
+      );
+    }
+  }
 }
 
-export function transformRows_(rows: string[][]): string[][] {
+export function transformRows_(
+  rows: string[][],
+  excludedCols: ReadonlySet<number> = EXCLUDED_COLS
+): string[][] {
   return rows.map(row => {
     const copy = [...row];
     if (copy[C_INDEX]?.startsWith(C_PREFIX)) {
       copy[C_INDEX] = copy[C_INDEX].slice(C_PREFIX.length);
     }
-    return copy.filter((_, i) => !EXCLUDED_COLS.has(i));
+    return copy.filter((_, i) => !excludedCols.has(i));
   });
 }
 
@@ -123,7 +151,9 @@ function writeToSheet_(
   name: string,
   header: string[],
   rows: string[][],
-  sourceName: string
+  sourceName: string,
+  widths: readonly number[],
+  wrapText = false
 ): void {
   const dataColCount = header.length;
   const statusLabel = `${STATUS_DELETED}（${sourceName}）`;
@@ -157,9 +187,13 @@ function writeToSheet_(
   const activeRows = rows.map(r => [...r, '']);
   const allRows = [fullHeader, ...activeRows, ...prevDeleted, ...newlyDeleted];
 
-  sheet.getRange(1, 1, allRows.length, fullHeader.length).setValues(allRows);
+  const dataRange = sheet.getRange(1, 1, allRows.length, fullHeader.length);
+  dataRange.setValues(allRows);
+  if (wrapText) {
+    dataRange.setWrap(true);
+  }
   sheet.setFrozenRows(1);
-  resizeColumns_(sheet, fullHeader.length, COLUMN_WIDTHS);
+  resizeColumns_(sheet, fullHeader.length, widths);
 }
 
 export function resizeColumns_(
@@ -180,4 +214,12 @@ export function resizeColumns_(
       sheet.autoResizeColumn(i + 1);
     }
   }
+}
+
+/** JST の YYYYMMDD 形式で日付文字列を返す */
+export function formatDateYmd_(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // JST = UTC+9
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return `${jst.getUTCFullYear()}${pad(jst.getUTCMonth() + 1)}${pad(jst.getUTCDate())}`;
 }

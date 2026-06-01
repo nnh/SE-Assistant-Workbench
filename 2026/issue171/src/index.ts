@@ -16,14 +16,21 @@
 
 import { importCsvFiles_ } from './import-csv';
 import { distributeByCategory_ } from './distribute';
+import { summarizeManagedSheet_ } from './summary';
 
 function onOpen(): void {
   SpreadsheetApp.getActiveSpreadsheet().addMenu('コラボレーション管理', [
     { name: '実行', functionName: 'main' },
+    { name: '集計のみ', functionName: 'summarize' },
   ]);
 }
 
 function main(): void {
   importCsvFiles_();
   distributeByCategory_();
+  summarizeManagedSheet_();
+}
+
+function summarize(): void {
+  summarizeManagedSheet_();
 }
