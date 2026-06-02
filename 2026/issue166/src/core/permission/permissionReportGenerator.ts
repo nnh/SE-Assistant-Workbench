@@ -69,6 +69,20 @@ export class PermissionReportGenerator extends BaseReport {
         .map((id: string) => id.trim())
     );
 
+    // 権限一覧シートから、処理予定IDの既存行を事前に削除する
+    const sheetName = Const.SHEET_NAME.PERMISSION;
+    let outputSheet = this.outputSpreadsheet.getSheetByName(sheetName);
+    if (!outputSheet) {
+      outputSheet = this.outputSpreadsheet.insertSheet(sheetName);
+    }
+    const existingValues = outputSheet.getDataRange().getValues() as string[][];
+    // 下から削除することで行番号のズレを防ぐ
+    for (let i = existingValues.length - 1; i >= 1; i--) {
+      if (specifiedIds.has(existingValues[i][0])) {
+        outputSheet.deleteRow(i + 1);
+      }
+    }
+
     // フォルダ走査は1回だけ行い、itemId → File のマップを構築する
     const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
     const fileMap = new Map<string, GoogleAppsScript.Drive.File>();
@@ -85,12 +99,6 @@ export class PermissionReportGenerator extends BaseReport {
           }
         }
       }
-    }
-
-    const sheetName = Const.SHEET_NAME.PERMISSION;
-    let outputSheet = this.outputSpreadsheet.getSheetByName(sheetName);
-    if (!outputSheet) {
-      outputSheet = this.outputSpreadsheet.insertSheet(sheetName);
     }
 
     // IDごとに処理し、完了したら即座にシートの該当行をクリアする
