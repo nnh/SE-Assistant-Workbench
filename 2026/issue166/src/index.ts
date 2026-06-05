@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+// 【作業用】削除する場合: 下記 import と workExtractMissingPermissionIds 関数を合わせて削除してください
+import { workExtractMissingPermissionIds_ } from './core/permission/workExtractMissingPermissionIds';
 import { executeJsonArchivingProcess_ } from './core/item/driveItemsArchiver';
 import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
-import { runPermissionReportGenerationFromSpecifiedIds_ } from './core/permission/permissionReportGenerator';
+import {
+  runPermissionReportGenerationFromSpecifiedIds_,
+  runPermissionReportGenerationFromSpecifiedIdsBatch_,
+} from './core/permission/permissionReportGenerator';
 import {
   archivePermissionsForTargetIds_,
   fetchPermissionsAndSaveForTargetIds_,
@@ -25,6 +30,14 @@ import { runDrivePermissionMatrixReportGeneration_ } from './core/permission/dri
 import { runExternalAccountPermissionReport_ } from './core/permission/externalAccountPermissionReport';
 import { setupProjectProperties_ } from './core/app/Initializer';
 import { runInternalDriveExcludeCheck_ } from './core/permission/internalDriveExcludeChecker';
+
+/**
+ * 【作業用】権限一覧に存在しないIDをARO外部共有_フォルダ構成から抽出し、作業用_権限出力対象IDリストに出力します。
+ * 削除する場合: この関数・上部の import・workExtractMissingPermissionIds.ts ファイルを削除してください。
+ */
+function workExtractMissingPermissionIds() {
+  workExtractMissingPermissionIds_();
+}
 
 /**
  * 5.1.
@@ -46,8 +59,18 @@ function externalAccountPermissionReport() {
  * 指定IDの権限情報を権限一覧へ出力
  * 「作業用_権限出力対象IDリスト」シートのA1セルから縦にファイルIDを記載して実行してください。
  */
-function runPermissionReportGenerationFromSpecifiedIds() {
-  runPermissionReportGenerationFromSpecifiedIds_();
+//function runPermissionReportGenerationFromSpecifiedIds() {
+//  runPermissionReportGenerationFromSpecifiedIds_();
+//}
+
+/**
+ * 2.4b.
+ * 指定IDの権限情報をバッチ処理で権限一覧へ出力
+ * IDが多くタイムアウトが発生する場合はこちらを使用してください。
+ * 200件ずつ処理し、残りがある場合は自動でトリガーを登録して続きを実行します。
+ */
+function runPermissionReportGenerationFromSpecifiedIdsBatch() {
+  runPermissionReportGenerationFromSpecifiedIdsBatch_();
 }
 /**
  * 2.3.

@@ -24,6 +24,13 @@ import * as Const from '../../common/const';
  * 高度なレポート出力フローを提供します。
  */
 export class PermissionReportGenerator extends BaseReport {
+  // 1回の実行で処理するID数の上限
+  private static readonly BATCH_SIZE = 200;
+
+  // バッチ処理のエントリーポイント関数名（トリガー登録に使用）
+  private static readonly BATCH_FUNCTION_NAME =
+    'runPermissionReportGenerationFromSpecifiedIdsBatch_';
+
   /**
    * PermissionReportGenerator のインスタンスを初期化します。
    * @param {string} jsonFolderKey - 保存先フォルダIDを取得するためのキー名
@@ -122,6 +129,123 @@ export class PermissionReportGenerator extends BaseReport {
       }
 
       idSheet.getRange(i + 1, 1).clearContent();
+    }
+  }
+
+  /**
+   * 「作業用_権限出力対象IDリスト」シートのIDをバッチ処理します。
+   * @description
+   * 1回の実行で BATCH_SIZE 件分のIDを処理します。
+   * シートに未処理のIDが残っている場合は次回実行のトリガーを登録します。
+   * 前回のトリガーは実行開始時に削除します。
+   */
+  public generateReportFromSpecifiedIdsBatch(): void {
+    // 前回登録した自分自身のトリガーを削除
+    ScriptApp.getProjectTriggers()
+      .filter(
+        t =>
+          t.getHandlerFunction() ===
+          PermissionReportGenerator.BATCH_FUNCTION_NAME
+      )
+      .forEach(t => ScriptApp.deleteTrigger(t));
+
+    const idSheet = this.outputSpreadsheet.getSheetByName(
+      Const.SHEET_NAME.PERMISSION_TARGET_ID_LIST
+    );
+    if (!idSheet) {
+      throw new Error(
+        `シート「${Const.SHEET_NAME.PERMISSION_TARGET_ID_LIST}」が見つかりません。`
+      );
+    }
+
+    // 末尾 BATCH_SIZE 行のみ読み込む
+    const lastRow = idSheet.getLastRow();
+    if (lastRow === 0) {
+      console.log('処理対象のIDがありません。');
+      return;
+    }
+
+    const startRow = Math.max(
+      1,
+      lastRow - PermissionReportGenerator.BATCH_SIZE + 1
+    );
+    const batchValues = idSheet
+      .getRange('A' + startRow + ':A' + lastRow)
+      .getValues();
+    const batch: { rowIndex: number; id: string }[] = batchValues
+      .map((row, i) => ({ rowIndex: startRow + i, id: String(row[0]).trim() }))
+      .filter(entry => entry.id !== '')
+      .reverse();
+
+    if (batch.length === 0) {
+      console.log('処理対象のIDがありません。');
+      return;
+    }
+
+    const specifiedIds = new Set(batch.map(entry => entry.id));
+
+    // 権限一覧シートから処理予定IDの既存行を削除する
+    const sheetName = Const.SHEET_NAME.PERMISSION;
+    let outputSheet = this.outputSpreadsheet.getSheetByName(sheetName);
+    if (!outputSheet) {
+      outputSheet = this.outputSpreadsheet.insertSheet(sheetName);
+    }
+    const existingValues = outputSheet.getDataRange().getValues() as string[][];
+    for (let i = existingValues.length - 1; i >= 1; i--) {
+      if (specifiedIds.has(existingValues[i][0])) {
+        outputSheet.deleteRow(i + 1);
+      }
+    }
+
+    // フォルダ走査は1回だけ行い、itemId → File のマップを構築する
+    const prefix = `${Const.OUTPUT_FILE_NAME.PREFIX.PERMISSION}_`;
+    const fileMap = new Map<string, GoogleAppsScript.Drive.File>();
+    const files = this.jsonFolder.getFiles();
+    while (files.hasNext()) {
+      const file = files.next();
+      const fileName = file.getName();
+      if (fileName.startsWith(prefix) && fileName.endsWith('.json')) {
+        const itemId = fileName.slice(prefix.length, -'.json'.length);
+        if (specifiedIds.has(itemId)) {
+          const existing = fileMap.get(itemId);
+          if (!existing || file.getLastUpdated() > existing.getLastUpdated()) {
+            fileMap.set(itemId, file);
+          }
+        }
+      }
+    }
+
+    // IDごとに処理し、完了したら即座にシートの該当行をクリアする
+    for (const { rowIndex, id } of batch) {
+      const file = fileMap.get(id);
+      if (file) {
+        const outputData = this.editOutputData([file]);
+        const resultRows = this.formatReportRows(outputData);
+
+        if (outputSheet.getLastRow() === 0) {
+          this.setHeader(
+            outputSheet,
+            Const.REPORT_HEADERS.PERMISSION as string[]
+          );
+        }
+        this.addDataToSheet(resultRows, outputSheet);
+      }
+
+      idSheet.getRange(rowIndex, 1).clearContent();
+    }
+
+    // 残りのIDがあれば次のトリガーを登録する（startRow より上に行がある場合）
+    const remaining = startRow - 1;
+    if (remaining > 0) {
+      ScriptApp.newTrigger(PermissionReportGenerator.BATCH_FUNCTION_NAME)
+        .timeBased()
+        .after(60 * 1000)
+        .create();
+      console.log(
+        `${batch.length} 件処理完了。残り ${remaining} 件。次のトリガーを登録しました。`
+      );
+    } else {
+      console.log(`全件処理完了。`);
     }
   }
 
@@ -244,4 +368,17 @@ export const runPermissionReportGenerationFromSpecifiedIds_ = (): void => {
     Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
   );
   generator.generateReportFromSpecifiedIds();
+};
+
+/**
+ * 2.4b. 「作業用_権限出力対象IDリスト」シートのIDをバッチ処理します。
+ * IDが多くタイムアウトが発生する場合はこちらを使用してください。
+ * 200件ずつ処理し、残りがある場合は自動でトリガーを登録して続きを実行します。
+ */
+export const runPermissionReportGenerationFromSpecifiedIdsBatch_ = (): void => {
+  const generator = new PermissionReportGenerator(
+    Const.PROPERTY_KEYS.PERMISSION_JSON_FOLDER_ID,
+    Const.PROPERTY_KEYS.OUTPUT_SPREADSHEET_ID
+  );
+  generator.generateReportFromSpecifiedIdsBatch();
 };
