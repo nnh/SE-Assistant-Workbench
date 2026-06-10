@@ -42,15 +42,22 @@ export class DriveItemsArchiver {
   private readonly SLEEP_MS = 500;
   private readonly PAGE_SIZE = 1000;
   private readonly limitToFirstPage: boolean;
+  private readonly foldersOnly: boolean;
   /**
    * DriveItemsArchiver のインスタンスを初期化します。
    * スクリプトプロパティから必要な環境設定および前回実行時の進捗データを読み込みます。
    * * @param {string} driveName - 処理対象の共有ドライブ名（ログやファイル名に使用）
    * @param {boolean} [limitToFirstPage=false] - 最初の1ページのみで処理を終了させるかどうかのテストフラグ
+   * @param {boolean} [foldersOnly=false] - フォルダのみを取得対象とするかどうかのフラグ
    * @throws {Error} 必須となる対象ドライブIDのスクリプトプロパティが存在しない場合
    */
-  constructor(driveName: string, limitToFirstPage = false) {
+  constructor(
+    driveName: string,
+    limitToFirstPage = false,
+    foldersOnly = false
+  ) {
     this.limitToFirstPage = limitToFirstPage;
+    this.foldersOnly = foldersOnly;
     const props = PropertiesService.getScriptProperties();
     this.saveFolder = getFolderByPropertyKey_(
       Const.PROPERTY_KEYS.JSON_FOLDER_ID
@@ -141,10 +148,13 @@ export class DriveItemsArchiver {
     );
 
     const fields = `nextPageToken, files(id, name, parents, createdTime, mimeType, modifiedTime, permissionIds)`;
+    const query = this.foldersOnly
+      ? `${baseQuery} and mimeType = 'application/vnd.google-apps.folder'`
+      : baseQuery;
     do {
       const options: ListFilesOptions = {
         pageSize: this.PAGE_SIZE,
-        q: baseQuery,
+        q: query,
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
         corpora: 'drive',
@@ -266,7 +276,8 @@ export class DriveItemsArchiver {
  * @throws {Error} 取得したドライブ名がシステム定義外（予期せぬ名前）であった場合
  */
 export const executeJsonArchivingProcess_ = (
-  limitToFirstPage: boolean
+  limitToFirstPage: boolean,
+  foldersOnly = false
 ): void => {
   const driveName = DriveApiService.fetchSharedDriveName();
   const props = PropertiesService.getScriptProperties();
@@ -282,5 +293,7 @@ export const executeJsonArchivingProcess_ = (
       `予期せぬドライブ名が取得されました。ドライブ名: ${driveName}`
     );
   }
-  new DriveItemsArchiver(driveName, limitToFirstPage).execute(mode);
+  new DriveItemsArchiver(driveName, limitToFirstPage, foldersOnly).execute(
+    mode
+  );
 };

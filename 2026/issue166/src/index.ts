@@ -136,6 +136,23 @@ function executeJsonArchivingProcess() {
   }
   executeJsonArchivingProcess_(limitToFirstPage);
 }
+
+/**
+ * 1.2b. 主処理（フォルダのみ）
+ * キューから未処理の共有ドライブを取り出し、フォルダのみをJSONとして保存します。
+ */
+function executeJsonArchivingProcessFoldersOnly() {
+  // テスト用フラグ
+  // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
+  const limitToFirstPage = false;
+  if (limitToFirstPage) {
+    console.warn(
+      'limitToFirstPageフラグがtrueのため、最初の1ページのみ処理して終了します。' +
+        '全件処理する場合はこのフラグをfalseにしてください。'
+    );
+  }
+  executeJsonArchivingProcess_(limitToFirstPage, true);
+}
 /**
  * 1.1. 初期処理
  * スクリプトプロパティの雛形をセットします。
