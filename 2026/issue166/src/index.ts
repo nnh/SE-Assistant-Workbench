@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+// 【作業用】削除する場合: 下記 import と workExtractMissingPermissionIds 関数を合わせて削除してください
+import { workExtractMissingPermissionIds_ } from './core/permission/workExtractMissingPermissionIds';
 import { executeJsonArchivingProcess_ } from './core/item/driveItemsArchiver';
 import { runReportGeneration_ } from './core/item/driveItemsReportGenerator';
 import {
-  runPermissionReportGeneration_,
   runPermissionReportGenerationFromSpecifiedIds_,
-  runPermissionReportGenerationStep1_,
-  runPermissionReportGenerationStep2_,
+  runPermissionReportGenerationFromSpecifiedIdsBatch_,
 } from './core/permission/permissionReportGenerator';
 import {
   archivePermissionsForTargetIds_,
@@ -30,6 +30,14 @@ import { runDrivePermissionMatrixReportGeneration_ } from './core/permission/dri
 import { runExternalAccountPermissionReport_ } from './core/permission/externalAccountPermissionReport';
 import { setupProjectProperties_ } from './core/app/Initializer';
 import { runInternalDriveExcludeCheck_ } from './core/permission/internalDriveExcludeChecker';
+
+/**
+ * 【作業用】権限一覧に存在しないIDをARO外部共有_フォルダ構成から抽出し、作業用_権限出力対象IDリストに出力します。
+ * 削除する場合: この関数・上部の import・workExtractMissingPermissionIds.ts ファイルを削除してください。
+ */
+function workExtractMissingPermissionIds() {
+  workExtractMissingPermissionIds_();
+}
 
 /**
  * 5.1.
@@ -48,40 +56,22 @@ function externalAccountPermissionReport() {
 
 /**
  * 2.4.
- * 権限一覧の出力
- */
-function runPermissionReportGeneration() {
-  runPermissionReportGeneration_();
-}
-
-/**
- * 2.4c.
  * 指定IDの権限情報を権限一覧へ出力
  * 「作業用_権限出力対象IDリスト」シートのA1セルから縦にファイルIDを記載して実行してください。
  */
-function runPermissionReportGenerationFromSpecifiedIds() {
-  runPermissionReportGenerationFromSpecifiedIds_();
-}
-
-/**
- * 2.4a.
- * 権限一覧の出力（バッチ処理 Step1）
- * 入力ファイルが多くタイムアウトが発生する場合はこちらを使用してください。
- * 対象ファイルのIDリストを収集してプロパティに保存し、Step2のトリガーを自動登録します。
- */
-//function runPermissionReportGenerationStep1() {
-//  runPermissionReportGenerationStep1_();
+//function runPermissionReportGenerationFromSpecifiedIds() {
+//  runPermissionReportGenerationFromSpecifiedIds_();
 //}
 
 /**
  * 2.4b.
- * 権限一覧の出力（バッチ処理 Step2）
- * 通常は Step1 が登録したトリガーから自動呼び出しされます。手動実行も可能です。
- * 1バッチ分のJSON読み込み・シートマージを行い、残りがあれば次バッチのトリガーを登録します。
+ * 指定IDの権限情報をバッチ処理で権限一覧へ出力
+ * IDが多くタイムアウトが発生する場合はこちらを使用してください。
+ * 200件ずつ処理し、残りがある場合は自動でトリガーを登録して続きを実行します。
  */
-//function runPermissionReportGenerationStep2() {
-//  runPermissionReportGenerationStep2_();
-//}
+function runPermissionReportGenerationFromSpecifiedIdsBatch() {
+  runPermissionReportGenerationFromSpecifiedIdsBatch_();
+}
 /**
  * 2.3.
  * 「作業用_パーミッション未取得IDリスト」シートのA列のIDをもとに、対象アイテムのパーミッション情報を取得してJSONファイルとして保存します。
@@ -145,6 +135,23 @@ function executeJsonArchivingProcess() {
     );
   }
   executeJsonArchivingProcess_(limitToFirstPage);
+}
+
+/**
+ * 1.2b. 主処理（フォルダのみ）
+ * キューから未処理の共有ドライブを取り出し、フォルダのみをJSONとして保存します。
+ */
+function executeJsonArchivingProcessFoldersOnly() {
+  // テスト用フラグ
+  // trueにすると最初の1ページ（最大1000件）のみ保存して終了します
+  const limitToFirstPage = false;
+  if (limitToFirstPage) {
+    console.warn(
+      'limitToFirstPageフラグがtrueのため、最初の1ページのみ処理して終了します。' +
+        '全件処理する場合はこのフラグをfalseにしてください。'
+    );
+  }
+  executeJsonArchivingProcess_(limitToFirstPage, true);
 }
 /**
  * 1.1. 初期処理

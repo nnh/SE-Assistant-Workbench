@@ -31,10 +31,6 @@ export const PROPERTY_KEYS = {
   // キュー管理（共有ドライブのIDなど）
   TARGET_SHARED_DRIVE_ID: 'TARGET_SHARED_DRIVE_ID', // 対象の共有ドライブIDリスト（カンマ区切り）
   POLICY_REPORT_TARGET_DRIVE_IDS: 'POLICY_REPORT_TARGET_DRIVE_IDS', // 共有ドライブ設定レポートの対象ドライブID（カンマ区切り）
-
-  // 権限レポートバッチ処理用
-  PERMISSION_BATCH_FILE_IDS: 'PERMISSION_BATCH_FILE_IDS', // バッチ対象のDriveファイルIDリスト（JSON文字列）
-  PERMISSION_BATCH_INDEX: 'PERMISSION_BATCH_INDEX', // 現在のバッチインデックス
 } as const;
 
 export const REPORT_HEADERS: {
