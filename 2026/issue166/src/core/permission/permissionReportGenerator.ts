@@ -27,10 +27,6 @@ export class PermissionReportGenerator extends BaseReport {
   // 1回の実行で処理するID数の上限
   private static readonly BATCH_SIZE = 200;
 
-  // バッチ処理のエントリーポイント関数名（トリガー登録に使用）
-  private static readonly BATCH_FUNCTION_NAME =
-    'runPermissionReportGenerationFromSpecifiedIdsBatch_';
-
   /**
    * PermissionReportGenerator のインスタンスを初期化します。
    * @param {string} jsonFolderKey - 保存先フォルダIDを取得するためのキー名
@@ -140,15 +136,6 @@ export class PermissionReportGenerator extends BaseReport {
    * 前回のトリガーは実行開始時に削除します。
    */
   public generateReportFromSpecifiedIdsBatch(): void {
-    // 前回登録した自分自身のトリガーを削除
-    ScriptApp.getProjectTriggers()
-      .filter(
-        t =>
-          t.getHandlerFunction() ===
-          PermissionReportGenerator.BATCH_FUNCTION_NAME
-      )
-      .forEach(t => ScriptApp.deleteTrigger(t));
-
     const idSheet = this.outputSpreadsheet.getSheetByName(
       Const.SHEET_NAME.PERMISSION_TARGET_ID_LIST
     );
@@ -234,15 +221,10 @@ export class PermissionReportGenerator extends BaseReport {
       idSheet.getRange(rowIndex, 1).clearContent();
     }
 
-    // 残りのIDがあれば次のトリガーを登録する（startRow より上に行がある場合）
     const remaining = startRow - 1;
     if (remaining > 0) {
-      ScriptApp.newTrigger(PermissionReportGenerator.BATCH_FUNCTION_NAME)
-        .timeBased()
-        .after(60 * 1000)
-        .create();
       console.log(
-        `${batch.length} 件処理完了。残り ${remaining} 件。次のトリガーを登録しました。`
+        `${batch.length} 件処理完了。残り ${remaining} 件。再度実行してください。`
       );
     } else {
       console.log(`全件処理完了。`);
