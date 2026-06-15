@@ -1,67 +1,86 @@
 # admin-activity-tracker
 
-## Description
+## 概要
 
-This program consolidates information that has been changed with administrative privileges. It tracks and aggregates activity logs to provide an overview of administrative actions in a given system.
+管理者権限で実行された操作のログを集約し、Google スプレッドシートに出力するプログラムです。
 
-## Installation
+### 対象ログソース
 
-To set up the environment and install necessary dependencies, follow these steps:
+| ソース | フォルダ | 出力シート |
+|--------|----------|------------|
+| FortiGate | `FortiGate/` | FortiGate |
+| Google 管理コンソール | `Google/` | Google |
+| PrimeDrive | `PrimeDrive/` | PrimeDrive |
+| ARONAS（NAS） | `ARONAS/` | ARONAS |
+| Zoom | `Zoom/phone/` | ZoomPhone |
 
-1. Clone the repository:
+## インストール
 
-   1. click on Download Zip from Code at https://github.com/nnh/SE-Assistant-Workbench.
-   2. Right-click on the downloaded file, ‘Extract All’ and save it.
+1. リポジトリを取得する
 
-2. Install required libraries in R:
+   - GitHub の Code ボタンから「Download ZIP」を選択してダウンロードする
+   - ダウンロードしたファイルを右クリックして「すべて展開」で解凍する
 
-   Open RStudio and run the following command to install the required libraries:
+2. 必要なRパッケージをインストールする
+
+   RStudio を開き、以下のコマンドを実行する：
 
    ```r
    install.packages(c("tidyverse", "googlesheets4", "jsonlite", "here"))
    ```
 
-## Usage
+## 使い方
 
-### Configuration Before Running the Scripts
+### 実行前の設定
 
-Before running the scripts, create a `config.json` file in the same folder as the script you want to execute.  
-The file should contain the following content:
+スクリプトと同じフォルダに `config.json` を作成し、以下の内容を記載する：
 
-```config.json
+```json
 {
-  "spreadsheet_id": "your_spreadsheet_id_here"
+  "spreadsheet_id": "スプレッドシートのIDを記入"
 }
 ```
 
-Replace "your_spreadsheet_id_here" with the ID of the target Google Spreadsheet.
+スプレッドシートIDは、Google スプレッドシートのURLの `/d/` と `/edit` の間にある文字列です。
 
-### How to Run the Scripts
+### 実行手順
 
-1. Open RStudio: Launch RStudio on your computer.
-2. Set Up New Project: Open the admin-activity-tracker directory as a New Project.
-3. Open `admin_activity_tracker.R`.
-4. Run the Script:  
-   Click the Source button to execute the script. If prompted for Google authentication, follow the on-screen instructions to grant access to the Google Sheets API.  
-   Follow the on-screen prompts or logs for results.
+1. RStudio を起動する
+2. `admin-activity-tracker` ディレクトリを新規プロジェクトとして開く
+3. `admin_activity_tracker.R` を開く
+4. 対象年月を確認する（デフォルトは前月）
 
-### Features
+   ```r
+   # スクリプト末尾付近の以下の行で対象年月を指定します
+   targetYm <- GetPreviousMonth()  # 前月を対象にする場合
+   # targetYm <- NULL              # すべてのファイルを対象にする場合
+   ```
 
-- Administrative Log Aggregation:  
-  Collects and aggregates logs of administrative actions.
-- Google Sheets Integration:  
-  Outputs the results directly to a specified Google Spreadsheet.
-- Customizable Configuration:  
-  Easy to update target Spreadsheet ID and other settings via a configuration file.
+5. 「Source」ボタンをクリックして実行する
+6. Google 認証のプロンプトが表示された場合は画面の指示に従って認証する
 
-### Troubleshooting
+## トラブルシューティング
 
-- Common Errors and Fixes
-  Google Authentication:  
-  If prompted for Google authentication, follow the on-screen instructions to grant access to the Google Sheets API.
+### Google 認証エラー
 
-- Missing Libraries:  
-  Ensure all required libraries (tidyverse, googlesheets4, jsonlite, here) are installed. Use the installation command provided in the Installation section.
+Google 認証を求められた場合は、画面の指示に従って Google Sheets API へのアクセスを許可してください。
 
-- Invalid Spreadsheet ID:  
-  Verify that the spreadsheet_id in config.txt matches the ID of the target spreadsheet.
+### パッケージが見つからないエラー
+
+インストールコマンドを再実行してください：
+
+```r
+install.packages(c("tidyverse", "googlesheets4", "jsonlite", "here"))
+```
+
+### スプレッドシートIDが無効
+
+`config.json` の `spreadsheet_id` に設定したIDが正しいか確認してください。IDはスプレッドシートのURLから確認できます：
+
+```
+https://docs.google.com/spreadsheets/d/【ここがID】/edit
+```
+
+### ログファイルが読み込まれない
+
+ログファイルのファイル名に年月が含まれているか確認してください。`targetYm` で指定した年月がファイル名に含まれていないと対象外になります。
