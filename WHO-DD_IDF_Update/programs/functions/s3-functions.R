@@ -29,7 +29,7 @@ UploadToS3Folder <- function(folder_name, file_path, object_name) {
       object = full_object_name,
       bucket = kAwsBucketName,
       region = kAwsDefaultRegion,
-      multipart = T
+      multipart = TRUE
     )
   } else {
     res <- put_object(

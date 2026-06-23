@@ -34,7 +34,7 @@ UnzipWhodd <- function(input_zip_path) {
     trimws()
   temp_unzipDir <- file.path(downloads_path, "tempUnzipWhodd")
   ExecUnzip(input_zip_path, temp_unzipDir)
-  whoddZipFilePath <- temp_unzipDir |> list.files(pattern = "*.zip", full.names = T)
+  whoddZipFilePath <- temp_unzipDir |> list.files(pattern = "*.zip", full.names = TRUE)
   unzipDir <- file.path(temp_unzipDir, unZipDirName)
   ExecUnzip(whoddZipFilePath, unzipDir)
   version <- basename(whoddZipFilePath) |>

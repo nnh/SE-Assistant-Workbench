@@ -27,23 +27,30 @@ GetREnviron <- function() {
       stop("Error: Please add 'kAwsDefaultRegion' to the config and re-run.")
     }
     cat(".Renviron file not found. Creating .Renviron file...\n")
-    
-    aws_key <- readline(prompt = "Enter your AWS access key ID: ")
-    aws_secret <- readline(prompt = "Enter your AWS secret access key: ")
-    boxClientId <<- readline(prompt = "Enter BOX Client ID and press Enter: ")
-    boxClientSecret <<- readline(prompt = "Enter BOX Client Secret and press Enter: ")
 
-    
+    aws_key <- trimws(readline(prompt = "Enter your AWS access key ID: "))
+    aws_secret <- trimws(readline(prompt = "Enter your AWS secret access key: "))
+    # 空入力のまま書き込むと後でAWS呼び出しが失敗するためチェックする
+    if (aws_key == "" || aws_secret == "") {
+      stop("Error: AWS access key ID/secret が空です。再実行して入力してください。")
+    }
+
+    # BOX認証情報は毎回BoxAuthSettings()で入力させるため.Renvironには保存しない
     writeLines(sprintf("AWS_ACCESS_KEY_ID=%s", aws_key), con = renv_file)
     cat(sprintf("AWS_SECRET_ACCESS_KEY=%s\n", aws_secret), file = renv_file, append = TRUE)
     cat(sprintf("AWS_DEFAULT_REGION=%s\n", kAwsDefaultRegion), file = renv_file, append = TRUE)
-    cat(sprintf("BOX_CLIENT_ID=%s\n", boxClientId), file = renv_file, append = TRUE)
-    cat(sprintf("BOX_CLIENT_SECRET=%s\n", boxClientSecret), file = renv_file, append = TRUE)
-    
+
   }
   readRenviron(renv_file)
-  kBoxClientId <<- Sys.getenv("BOX_CLIENT_ID")
-  kBoxClientSecret <<- Sys.getenv("BOX_CLIENT_SECRET")
+  # .Renvironに必要なAWS環境変数が揃っているか検証する
+  requiredEnv <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+  missingEnv <- requiredEnv[Sys.getenv(requiredEnv) == ""]
+  if (length(missingEnv) > 0) {
+    stop(paste0("Error: .Renviron に必要なAWS設定がありません: ", paste(missingEnv, collapse = ", "),
+                "\n", renv_file, " を確認してください。"))
+  }
+  # 呼び出し側で戻り値が表示されないようinvisibleで返す
+  return(invisible())
 }
 
 #' Get configuration text
@@ -62,10 +69,28 @@ GetConfigText <- function() {
   }, error = function(e) {
     stop(paste("Error: Unable to read file -", configTextPath, "\n", e$message))
   })
-  for (i in 1:nrow(configText)) {
-    assign(configText[i, 1, drop=T], configText[i, 2, drop=T], envir = .GlobalEnv)
+  # config.sample.txtの初期値(プレースホルダ)。キー名は必須項目も兼ねる
+  initialValues <- c(
+    kCodingDirId = "BOXフォルダID",
+    kAwsDefaultRegion = "AWSリージョン",
+    kAwsBucketName = "AWSバケット名"
+  )
+  # 必須キーの欠落チェック
+  missingKeys <- setdiff(names(initialValues), configText$itemname)
+  if (length(missingKeys) > 0) {
+    stop(paste0("Error: config.txt に必須項目がありません: ", paste(missingKeys, collapse = ", ")))
   }
-  return()
+  for (i in seq_len(nrow(configText))) {
+    itemname <- configText$itemname[i]
+    item <- configText$item[i]
+    # 初期値のまま、または空の場合は未設定とみなしてエラーにする
+    if (itemname %in% names(initialValues) && (item == initialValues[[itemname]] || item == "")) {
+      stop(paste0("Error: config.txt の '", itemname, "' が未設定です。実際の値を設定してください。"))
+    }
+    assign(itemname, item, envir = .GlobalEnv)
+  }
+  # 呼び出し側で戻り値が表示されないようinvisibleで返す
+  return(invisible())
 }
 #' Get home directory path
 #'
@@ -139,7 +164,8 @@ GetTargetFilesList <- function(filename) {
 #' @return A list of files with their paths and modified names.
 #' @importFrom stringr str_c str_detect
 GetDownloadFiles <- function() {
-  zipFiles <- downloads_path |> list.files(pattern=str_c("*", kZipExtention))
+  # 拡張子が.zipのファイルのみを対象にする(.をエスケープし末尾を固定)
+  zipFiles <- downloads_path |> list.files(pattern=str_c("\\", kZipExtention, "$"))
   meddra <- zipFiles |> GetTargetFiles(str_c(kMeddraZipParts, ".*", kZipExtention, "$"))
   whodd <- zipFiles |> GetTargetFiles(str_c(kWhoddJapanCrtParts, ".*", kZipExtention, "$"))
   whoddZip <- zipFiles |> GetTargetFiles(str_c("(?i)^WHODrug\\s.*", kZipExtention ,"$"))
@@ -167,7 +193,7 @@ GetDownloadFiles <- function() {
 #' @param targetDir The path to the directory to be created.
 CreateDir <- function(targetDir) {
   if (dir.exists(targetDir)) {
-    unlink(targetDir, recursive=T)
+    unlink(targetDir, recursive=TRUE)
   }
   dir.create(targetDir)
 }
@@ -189,7 +215,7 @@ ContainsNestedList <- function(lst) {
 #' @param filename The pattern to match file names.
 #' @return A vector of file paths that match the pattern.
 FindFiles <- function(directory, filename) {
-  all_files <- list.files(path=directory, pattern=filename, recursive=T, full.names=T)
+  all_files <- list.files(path=directory, pattern=filename, recursive=TRUE, full.names=TRUE)
   return(all_files)
 }
 #' Find a folder within a specified directory and its subdirectories

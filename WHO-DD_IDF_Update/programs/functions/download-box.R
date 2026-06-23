@@ -14,8 +14,8 @@ GetBoxTargetFiles <- function(id, pattern) {
 }
 GetLatestFileInfo <- function(targetFiles) {
   latestYm <- targetFiles |> filter(ym == max(ym))
-  id <- latestYm[1, "id", drop=T] |> flatten_chr()
-  name <- latestYm[1, "name", drop=T] |> flatten_chr()
+  id <- latestYm[1, "id", drop=TRUE] |> flatten_chr()
+  name <- latestYm[1, "name", drop=TRUE] |> flatten_chr()
   return(list(id=id, name=name))
 }
 
@@ -35,7 +35,7 @@ GetTargetIdfFile <- function(idfBoxDirInfo) {
   target <- targetIdfFiles |> filter((targetYear - 1) <= year & year <= targetYear)
   target$password <- NA
   for (i in 1:nrow(target)) {
-    filename <- target[i, "name", drop=T] |> flatten_chr()
+    filename <- target[i, "name", drop=TRUE] |> flatten_chr()
     target[i, "password"] <- GetIdfPassword(idfBoxDirInfo, filename)
   }
   res <- target
@@ -66,18 +66,18 @@ GetTargetPassword <- function(boxDirInfo, inputFilename, footer) {
 }
 
 whoddDownloadFilesFromBox <- function() {
-  whoddBoxDirInfo <- GetTargetDirInfo(KWhoddBoxDirName, kWhoddZip)
+  whoddBoxDirInfo <- GetTargetDirInfo(KWhoddBoxDirName)
   if (is.null(whoddBoxDirInfo$zipId)) {
     stop("The specified directory is not found.")
   }  
   whoddFileInfo <- GetLatestWhoddFile(whoddBoxDirInfo)
-  whoddFileInfo$id |> box_dl(downloads_path, overwrite=T)  
+  whoddFileInfo$id |> box_dl(downloads_path, overwrite=TRUE)  
   localPathWhodd <- whoddFileInfo$name %>% file.path(downloads_path, .)
   return(localPathWhodd)
 }
 
 GetIdfDownloadFilesInfoFromBox <- function() {
-  idfBoxDirInfo <- GetTargetDirInfo(KIdfBoxDirName, kIdf)
+  idfBoxDirInfo <- GetTargetDirInfo(KIdfBoxDirName)
   if (is.null(idfBoxDirInfo$zipId)) {
     stop("The specified directory is not found.")
   }  
@@ -86,7 +86,7 @@ GetIdfDownloadFilesInfoFromBox <- function() {
 }
 
 GetMeddraDownloadFilesInfoFromBox <- function() {
-  meddraBoxDirInfo <- GetTargetDirInfo(kMeddraBoxDirName, kMeddra)
+  meddraBoxDirInfo <- GetTargetDirInfo(kMeddraBoxDirName)
   if (is.null(meddraBoxDirInfo$zipId)) {
     stop("The specified directory is not found.")
   }  
@@ -98,7 +98,7 @@ GetTargetMeddraFile <- function(meddraBoxDirInfo) {
   targetMeddraFiles <- meddraBoxDirInfo$zipId |> GetBoxTargetFiles(str_c(kMeddraZipParts, kZipExtention))
   targetMeddraFiles$ver <- targetMeddraFiles$name |> str_extract(str_c("[0-9]+", kZipExtention)) |> str_remove(kZipExtention) |> as.numeric()
   meddraFileInfo <- targetMeddraFiles |> filter(ver == max(ver)) 
-  meddraFileInfo$id |> flatten_chr() |> box_dl(downloads_path, overwrite=T)  
+  meddraFileInfo$id |> flatten_chr() |> box_dl(downloads_path, overwrite=TRUE)  
   localPathMeddra <- meddraFileInfo$name %>% file.path(downloads_path, .)
   meddraPassword <- GetTargetPassword(meddraBoxDirInfo, meddraFileInfo$name, kIdfPasswordFileFooter)
   res <- list()

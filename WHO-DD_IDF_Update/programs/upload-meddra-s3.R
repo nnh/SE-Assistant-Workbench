@@ -14,6 +14,10 @@ source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "whodd-idf-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "download-box.R"),  encoding="UTF-8")
 # ------ main ------
+# 設定・環境変数・Downloadsパスを初期化する
+GetConfigText()
+GetREnviron()
+downloads_path <- GetFolderPath("Downloads")
 # download the ZIP file from BOX.
 meddra_zip <- GetMeddraDownloadFilesInfoFromBox()
 
@@ -24,10 +28,10 @@ version <- temp$version
 if (!exists("unzipDir")) {
   stop("unzip error.")
 }
-meddraDir <- unzipDir|> list.dirs(full.names=T, recursive=F)
+meddraDir <- unzipDir|> list.dirs(full.names=TRUE, recursive=FALSE)
 asciiDir <- meddraDir |> file.path("ASCII")
-targetDir <- asciiDir |> list.dirs(full.names=T, recursive=F) |> str_extract("^.*_UTF8$") |> na.omit()
-targetFiles <- targetDir |> list.files(full.names=T)
+targetDir <- asciiDir |> list.dirs(full.names=TRUE, recursive=FALSE) |> str_extract("^.*_UTF8$") |> na.omit()
+targetFiles <- targetDir |> list.files(full.names=TRUE)
 aws_dir <- str_c(kMeddraAwsParentDirName, "/", version)
 copyFiles <- targetFiles |> map( ~ {
   res <- list()

@@ -13,38 +13,44 @@ library(here)
 # ------ constants ------
 # ------ functions ------
 source(here("programs", "functions", "common.R"), encoding = "UTF-8")
-SaveZipWithPassword <- function(boxDirName, target) {
+SaveZipWithPassword <- function(boxDirName, target, file_list) {
   boxDirInfo <- NULL
   tryCatch(
     {
-      # SaveZipCommon 実行
-      boxDirInfo <- SaveZipCommon(boxDirName, target)
+      # SaveZipToBox 実行
+      boxDirInfo <- SaveZipToBox(boxDirName, target, file_list)
     },
     error = function(e) {
-      message("SaveZipCommon でエラー発生: ", e$message)
-      boxDirInfo <<- NULL  # エラー時はNULLのまま
+      message("SaveZipToBox でエラー発生: ", e$message)
     },
     finally = {
-      # パスワード入力とファイル保存は必ず実行
+      # パスワード入力とローカル保存は失敗時でも必ず実行する
       password <- readline(prompt = str_c("Enter ", target, " password: "))
       passwordFilePath <- file.path(
         downloads_path,
         str_c(file_list[[target]]$filename, kIdfPasswordFileFooter)
       )
       writeLines(password, con = passwordFilePath)
-      box_ul(dir_id = boxDirInfo$zipId, passwordFilePath, pb = TRUE)
+      # zipアップロードが成功している(boxDirInfoが有効な)ときだけBoxへアップロードする
+      if (!is.null(boxDirInfo)) {
+        box_ul(dir_id = boxDirInfo$zipId, passwordFilePath, pb = TRUE)
+      } else {
+        message("zipのアップロードに失敗したため、パスワードファイルはローカルにのみ保存しました: ", passwordFilePath)
+      }
     }
   )
 }
 
 # ------ main ------
+# 設定・環境変数・Downloadsパスを初期化する
+GetConfigText()
+GetREnviron()
+downloads_path <- GetFolderPath("Downloads")
 file_list <- GetDownloadFiles()
 if (kMeddra %in% names(file_list)) {
-  SaveZipWithPassword(kMeddraBoxDirName, kMeddra)
+  SaveZipWithPassword(kMeddraBoxDirName, kMeddra, file_list)
 }
-if (length(file_list[[kWhoddZip]]) > 0) {
-  SaveZipCommon(KWhoddBoxDirName, kWhoddZip)
-}
+# WHODDは大容量でboxrでアップロードできないため、programs/upload-whodd-box.Rで手動アップロードする
 if (kIdf %in% names(file_list)) {
-  SaveZipWithPassword(KIdfBoxDirName, kIdf)
+  SaveZipWithPassword(KIdfBoxDirName, kIdf, file_list)てst
 }
