@@ -14,13 +14,20 @@
  * limitations under the License.
  */
 
-import {SHARED_DRIVE_ID_KEY, OUTPUT_SHEET_NAME} from './constants';
+import {
+  SHARED_DRIVE_ID_KEY,
+  OUTPUT_SHEET_NAME,
+  CACHE_FILE_ID_KEY,
+} from './constants';
 import {
   getDriveName_,
   fetchAllFiles_,
   fetchPermissions_,
   buildRows_,
   writeToSheet_,
+  loadCache_,
+  saveCache_,
+  resolvePermissions_,
 } from './functions';
 
 // 初期設定：スクリプトプロパティ SHARED_DRIVE_ID が無ければダミー値で作成する。
@@ -35,7 +42,8 @@ function setupSharedDriveId(): void {
   Logger.log('%s をダミー値で作成しました', SHARED_DRIVE_ID_KEY);
 }
 
-// メイン：共有ドライブを走査し、パスと権限の一覧をシートに出力する
+// メイン：共有ドライブを走査し、パスと権限の一覧をシートに出力する。
+// modifiedTime が前回から変わったファイルだけ権限を取り直す（差分取得）
 function exportSharedDrivePermissions(): void {
   const driveId =
     PropertiesService.getScriptProperties().getProperty(SHARED_DRIVE_ID_KEY);
@@ -46,8 +54,17 @@ function exportSharedDrivePermissions(): void {
   }
   const driveName = getDriveName_(driveId);
   const files = fetchAllFiles_(driveId);
-  const rows = buildRows_(files, driveId, driveName);
+  const cache = loadCache_();
+  const {permissionsByFileId, newCache} = resolvePermissions_(files, cache);
+  saveCache_(newCache);
+  const rows = buildRows_(files, driveId, driveName, permissionsByFileId);
   writeToSheet_(rows, OUTPUT_SHEET_NAME);
+}
+
+// 権限キャッシュの参照を消し、次回実行を全件取得に戻す（取りこぼし時の手動フル再取得）
+function clearPermissionCache(): void {
+  PropertiesService.getScriptProperties().deleteProperty(CACHE_FILE_ID_KEY);
+  Logger.log('権限キャッシュをクリアしました。次回実行は全件取得になります');
 }
 
 // テスト用：先頭の少件数だけ取得し、別シート permissions_test に出力する。
@@ -66,15 +83,24 @@ function testExportSharedDrivePermissions(): void {
   Logger.log('共有ドライブ名 = %s', driveName);
   const files = fetchAllFiles_(driveId, 50);
   Logger.log('取得ファイル数 = %s', files.length);
+  // テストではキャッシュを使わず、サンプル分だけ権限を取得する
+  const permissionsByFileId: {
+    [fileId: string]: ReturnType<typeof fetchPermissions_>;
+  } = {};
+  for (const file of files) {
+    if (file.id) {
+      permissionsByFileId[file.id] = fetchPermissions_(file.id);
+    }
+  }
   // 先頭ファイルの権限（permissions.list が取れているか確認用）
   if (files.length && files[0].id) {
     Logger.log(
       '先頭ファイル %s の権限: %s',
       files[0].name,
-      JSON.stringify(fetchPermissions_(files[0].id)),
+      JSON.stringify(permissionsByFileId[files[0].id]),
     );
   }
-  const rows = buildRows_(files, driveId, driveName);
+  const rows = buildRows_(files, driveId, driveName, permissionsByFileId);
   writeToSheet_(rows, OUTPUT_SHEET_NAME + '_test');
   Logger.log(
     'テスト出力: %s ファイル / %s 行（ヘッダ含む）。出力先シート = %s',
@@ -99,4 +125,5 @@ const globalScope = globalThis as {[key: string]: unknown};
 globalScope.setupSharedDriveId = setupSharedDriveId;
 globalScope.exportSharedDrivePermissions = exportSharedDrivePermissions;
 globalScope.testExportSharedDrivePermissions = testExportSharedDrivePermissions;
+globalScope.clearPermissionCache = clearPermissionCache;
 globalScope.createWeeklyTrigger = createWeeklyTrigger;

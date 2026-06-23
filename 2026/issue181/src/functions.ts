@@ -22,6 +22,8 @@ import {
   PERMISSION_TYPE_LABELS,
   ROLE_LABELS,
   DISPLAY_NAME_TO_EMAIL,
+  CACHE_FILE_NAME,
+  CACHE_FILE_ID_KEY,
 } from './constants';
 
 interface DrivePermissionDetail {
@@ -45,7 +47,16 @@ interface DriveFile {
   name?: string;
   mimeType?: string;
   parents?: string[];
+  modifiedTime?: string;
 }
+
+// 権限キャッシュ：fileId ごとに更新日時と権限一覧を保持する
+interface CacheEntry {
+  modifiedTime: string;
+  permissions: DrivePermission[];
+}
+type PermissionCache = {[fileId: string]: CacheEntry};
+type PermissionsByFileId = {[fileId: string]: DrivePermission[]};
 
 interface DriveFileList {
   files?: DriveFile[];
@@ -94,7 +105,7 @@ function toRoleLabel_(role?: string): string {
   return ROLE_LABELS[role] ?? role;
 }
 
-// inherited（継承かどうか）を日本語に変換する。未設定は空文字
+// inherited（継承かどうか）を日本語に変換する。
 function toInheritedLabel_(inherited?: boolean): string {
   if (inherited === undefined) {
     return '';
@@ -107,7 +118,7 @@ function toAllowFileDiscoveryLabel_(allowFileDiscovery?: boolean): string {
   if (allowFileDiscovery === undefined) {
     return '';
   }
-  return allowFileDiscovery ? '検索可' : '検索不可';
+  return allowFileDiscovery ? '表示する' : '';
 }
 
 // deleted（アカウント削除済みか）を変換する。削除済みのときだけ値を出す
@@ -214,17 +225,71 @@ function createPathResolver_(
   };
 }
 
+// Drive に保存した権限キャッシュを読み込む。無い/壊れている場合は空（全件取得）
+export function loadCache_(): PermissionCache {
+  const fileId =
+    PropertiesService.getScriptProperties().getProperty(CACHE_FILE_ID_KEY);
+  if (!fileId) {
+    return {};
+  }
+  try {
+    const content = DriveApp.getFileById(fileId).getBlob().getDataAsString();
+    return JSON.parse(content) as PermissionCache;
+  } catch {
+    // キャッシュファイルが削除された/壊れている場合は全件取得に倒す
+    return {};
+  }
+}
+
+// 権限キャッシュを Drive の JSON ファイルへ保存する（無ければ作成）
+export function saveCache_(cache: PermissionCache): void {
+  const json = JSON.stringify(cache);
+  const properties = PropertiesService.getScriptProperties();
+  const fileId = properties.getProperty(CACHE_FILE_ID_KEY);
+  if (fileId) {
+    DriveApp.getFileById(fileId).setContent(json);
+    return;
+  }
+  const file = DriveApp.createFile(CACHE_FILE_NAME, json, 'application/json');
+  properties.setProperty(CACHE_FILE_ID_KEY, file.getId());
+}
+
+// modifiedTime を使った差分取得。更新/新規ファイルだけ permissions.list を呼ぶ。
+// 戻り値の newCache は今回の全ファイル分（一覧に無い＝削除分は自然に消える）
+export function resolvePermissions_(
+  files: DriveFile[],
+  cache: PermissionCache,
+): {permissionsByFileId: PermissionsByFileId; newCache: PermissionCache} {
+  const permissionsByFileId: PermissionsByFileId = {};
+  const newCache: PermissionCache = {};
+  for (const file of files) {
+    if (!file.id) {
+      continue;
+    }
+    const modifiedTime = file.modifiedTime ?? '';
+    const cached = cache[file.id];
+    const permissions =
+      cached && cached.modifiedTime === modifiedTime
+        ? cached.permissions // 前回から未更新 → 再利用
+        : fetchPermissions_(file.id); // 更新/新規 → 取り直し
+    permissionsByFileId[file.id] = permissions;
+    newCache[file.id] = {modifiedTime, permissions};
+  }
+  return {permissionsByFileId, newCache};
+}
+
 // 出力用の2次元配列を作る（1ファイルの各権限明細ごとに1行）
 export function buildRows_(
   files: DriveFile[],
   driveId: string,
   driveName: string,
+  permissionsByFileId: PermissionsByFileId,
 ): (string | boolean)[][] {
   const resolvePath = createPathResolver_(files, driveId, driveName);
   const rows: (string | boolean)[][] = [HEADER];
   for (const file of files) {
     const path = resolvePath(file);
-    const permissions = file.id ? fetchPermissions_(file.id) : [];
+    const permissions = file.id ? (permissionsByFileId[file.id] ?? []) : [];
     for (const permission of permissions) {
       // permissionDetails が空でも1行は出力する
       const details =

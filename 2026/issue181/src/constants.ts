@@ -26,8 +26,14 @@ export const PERMISSION_FIELDS =
   'permissionDetails(role,inherited)';
 
 // files.list で取得するフィールド。共有ドライブでは permissions が
-// インラインで返らないため、ここでは取得せずファイルごとに permissions.list で取る
-export const FILE_FIELDS = 'nextPageToken, files(id,name,mimeType,parents)';
+// インラインで返らないため、ここでは取得せずファイルごとに permissions.list で取る。
+// modifiedTime は差分判定（前回から更新されたか）に使う
+export const FILE_FIELDS =
+  'nextPageToken, files(id,name,mimeType,parents,modifiedTime)';
+
+// 権限キャッシュ（差分取得用）のファイル名とファイルIDを保存するプロパティキー
+export const CACHE_FILE_NAME = 'permission_cache.json';
+export const CACHE_FILE_ID_KEY = 'PERMISSION_CACHE_FILE_ID';
 
 // permissions.list で取得するフィールド
 export const PERMISSION_LIST_FIELDS =
