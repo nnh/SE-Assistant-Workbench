@@ -99,7 +99,7 @@ function toInheritedLabel_(inherited?: boolean): string {
   if (inherited === undefined) {
     return '';
   }
-  return inherited ? '継承' : '直接';
+  return inherited ? '親から継承' : '';
 }
 
 // allowFileDiscovery（検索で見つかるか）を日本語に変換する。未設定は空文字
