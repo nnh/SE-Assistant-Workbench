@@ -17,8 +17,31 @@
 // 走査対象の共有ドライブID。スクリプトプロパティ SHARED_DRIVE_ID に設定する
 export const SHARED_DRIVE_ID_KEY = 'SHARED_DRIVE_ID';
 
-// 結果を書き込むシート名
+// 整形済みの結果を書き込むシート名
 export const OUTPUT_SHEET_NAME = 'permissions';
+
+// 生データを書き込むシート名（formatRows_ の入力元）
+export const OUTPUT_RAW_SHEET_NAME = 'permissions_raw';
+
+// 備考シート名。A列=ファイルID, B列=ファイル名, C列=説明（1行目は見出し）
+export const NOTES_SHEET_NAME = '備考';
+
+// 生データシートのヘッダ（RawRow のフィールドに対応）
+export const RAW_HEADER = [
+  'path',
+  'fileId',
+  'name',
+  'mimeType',
+  'displayName',
+  'type',
+  'emailAddress',
+  'domain',
+  'role',
+  'inherited',
+  'allowFileDiscovery',
+  'deleted',
+  'view',
+];
 
 // 取得するPermissionのフィールド（Drive API v3）
 export const PERMISSION_FIELDS =
@@ -35,26 +58,29 @@ export const FILE_FIELDS =
 export const CACHE_FILE_NAME = 'permission_cache.json';
 export const CACHE_FILE_ID_KEY = 'PERMISSION_CACHE_FILE_ID';
 
+// 1回の実行で権限取得（permissions.list）に充てる時間の上限(ms)。
+// 6分制限に収めるため、残りはシート書き込み等のバッファとして残す
+export const FETCH_BUDGET_MS = 270000;
+
 // permissions.list で取得するフィールド
 export const PERMISSION_LIST_FIELDS =
   'nextPageToken, permissions(' + PERMISSION_FIELDS + ')';
 
-// 出力ヘッダ（1行＝1ファイルの1権限明細）
+// 整形済みシート(permissions)の出力ヘッダ（1行＝1ファイル）
 export const HEADER = [
   'パス',
   'ファイルID',
   'ファイル名',
   '種類',
-  '表示名',
-  '付与先種別',
-  'メールアドレス',
-  'ドメイン',
-  'ロール',
-  '継承',
-  '検索結果',
-  'アカウント削除',
-  'ビュー',
+  'メール/ロール/継承/検索結果/アカウント削除/ビュー',
+  '説明',
 ];
+
+// view（ビュー）の日本語ラベル
+export const VIEW_LABELS: {[view: string]: string} = {
+  published: '公開ビュー',
+  metadata: 'メタデータ',
+};
 
 // type（付与先種別）の日本語ラベル
 export const PERMISSION_TYPE_LABELS: {[type: string]: string} = {

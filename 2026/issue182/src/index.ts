@@ -15,8 +15,13 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {exportSharedDriveFileList_} from './sharedDriveFiles';
+import {exportSharedDriveSlideList_} from './sharedDriveSlides';
 import {updatePublishStatus_} from './publishStatus';
-import {ARO_EXTERNAL_SHEET_NAME, ARO_INTERNAL_SHEET_NAME} from './constants';
+import {
+  ARO_EXTERNAL_SHEET_NAME,
+  ARO_INTERNAL_SHEET_NAME,
+  SLIDE_OUTPUT_SHEET_NAME,
+} from './constants';
 
 /**
  * エントリポイント。スクリプトエディタやトリガーから実行する。
@@ -24,6 +29,14 @@ import {ARO_EXTERNAL_SHEET_NAME, ARO_INTERNAL_SHEET_NAME} from './constants';
  */
 function listSharedDriveFiles(): void {
   exportSharedDriveFileList_();
+}
+
+/**
+ * エントリポイント。スクリプトエディタやトリガーから実行する。
+ * 実処理は sharedDriveSlides.ts に分離している。
+ */
+function listSharedDriveSlides(): void {
+  exportSharedDriveSlideList_();
 }
 
 /**
@@ -40,4 +53,12 @@ function checkAroExternalSharePublishStatus(): void {
  */
 function checkAroInternalSharePublishStatus(): void {
   updatePublishStatus_(ARO_INTERNAL_SHEET_NAME);
+}
+
+/**
+ * エントリポイント。「スライド一覧」シートのウェブ公開状態を判定する。
+ * 実処理は publishStatus.ts に分離している。
+ */
+function checkSlidePublishStatus(): void {
+  updatePublishStatus_(SLIDE_OUTPUT_SHEET_NAME);
 }

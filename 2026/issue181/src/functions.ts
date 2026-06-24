@@ -17,13 +17,11 @@
 import {
   FILE_FIELDS,
   PERMISSION_LIST_FIELDS,
-  HEADER,
-  MIME_TYPE_LABELS,
-  PERMISSION_TYPE_LABELS,
-  ROLE_LABELS,
-  DISPLAY_NAME_TO_EMAIL,
+  RAW_HEADER,
   CACHE_FILE_NAME,
   CACHE_FILE_ID_KEY,
+  NOTES_SHEET_NAME,
+  FETCH_BUDGET_MS,
 } from './constants';
 
 interface DrivePermissionDetail {
@@ -84,48 +82,6 @@ interface DriveAdvancedService {
 }
 const driveApi = (globalThis as unknown as {Drive: DriveAdvancedService}).Drive;
 
-// mimeType を日本語ラベルに変換する。対応表にないものはそのまま返す
-function toMimeTypeLabel_(mimeType: string): string {
-  return MIME_TYPE_LABELS[mimeType] ?? mimeType;
-}
-
-// type（付与先種別）を日本語ラベルに変換する
-function toTypeLabel_(type?: string): string {
-  if (!type) {
-    return '';
-  }
-  return PERMISSION_TYPE_LABELS[type] ?? type;
-}
-
-// role（ロール）を日本語ラベルに変換する
-function toRoleLabel_(role?: string): string {
-  if (!role) {
-    return '';
-  }
-  return ROLE_LABELS[role] ?? role;
-}
-
-// inherited（継承かどうか）を日本語に変換する。
-function toInheritedLabel_(inherited?: boolean): string {
-  if (inherited === undefined) {
-    return '';
-  }
-  return inherited ? '親から継承' : '';
-}
-
-// allowFileDiscovery（検索で見つかるか）を日本語に変換する。未設定は空文字
-function toAllowFileDiscoveryLabel_(allowFileDiscovery?: boolean): string {
-  if (allowFileDiscovery === undefined) {
-    return '';
-  }
-  return allowFileDiscovery ? '表示する' : '';
-}
-
-// deleted（アカウント削除済みか）を変換する。削除済みのときだけ値を出す
-function toDeletedLabel_(deleted?: boolean): string {
-  return deleted ? '削除済み' : '';
-}
-
 // 共有ドライブ名を取得する
 export function getDriveName_(driveId: string): string {
   return driveApi.Drives.get(driveId, {fields: 'name'}).name ?? driveId;
@@ -149,10 +105,12 @@ export function fetchAllFiles_(
       fields: FILE_FIELDS,
       pageToken: pageToken,
     });
-    if (res.files) {
-      for (const file of res.files) {
-        files.push(file);
-      }
+    // ファイルが返らなければ終了（nextPageToken が返り続ける異常時の無限ループ防止）
+    if (!res.files || res.files.length === 0) {
+      break;
+    }
+    for (const file of res.files) {
+      files.push(file);
     }
     pageToken = res.nextPageToken;
     if (maxFiles && files.length >= maxFiles) {
@@ -254,39 +212,80 @@ export function saveCache_(cache: PermissionCache): void {
   properties.setProperty(CACHE_FILE_ID_KEY, file.getId());
 }
 
-// modifiedTime を使った差分取得。更新/新規ファイルだけ permissions.list を呼ぶ。
-// 戻り値の newCache は今回の全ファイル分（一覧に無い＝削除分は自然に消える）
+// modifiedTime を使った差分取得（時間予算付き）。更新/新規ファイルだけ
+// permissions.list を呼び、FETCH_BUDGET_MS を超えたら今回の取得は打ち切る。
+// 打ち切ったファイルは次回以降の実行で取得する（段階的に完成させる）。
+// fetched=今回取得した件数, remaining=今回取得しきれず次回に持ち越す件数
 export function resolvePermissions_(
   files: DriveFile[],
   cache: PermissionCache,
-): {permissionsByFileId: PermissionsByFileId; newCache: PermissionCache} {
+): {
+  permissionsByFileId: PermissionsByFileId;
+  newCache: PermissionCache;
+  fetched: number;
+  remaining: number;
+} {
   const permissionsByFileId: PermissionsByFileId = {};
   const newCache: PermissionCache = {};
+  const start = Date.now();
+  let fetched = 0;
+  let remaining = 0;
   for (const file of files) {
     if (!file.id) {
       continue;
     }
     const modifiedTime = file.modifiedTime ?? '';
     const cached = cache[file.id];
-    const permissions =
-      cached && cached.modifiedTime === modifiedTime
-        ? cached.permissions // 前回から未更新 → 再利用
-        : fetchPermissions_(file.id); // 更新/新規 → 取り直し
-    permissionsByFileId[file.id] = permissions;
-    newCache[file.id] = {modifiedTime, permissions};
+    if (cached && cached.modifiedTime === modifiedTime) {
+      // 前回から未更新 → 再利用（API 呼び出しなし）
+      newCache[file.id] = cached;
+      permissionsByFileId[file.id] = cached.permissions;
+      continue;
+    }
+    if (Date.now() - start < FETCH_BUDGET_MS) {
+      // 更新/新規 → 取り直し
+      const permissions = fetchPermissions_(file.id);
+      newCache[file.id] = {modifiedTime, permissions};
+      permissionsByFileId[file.id] = permissions;
+      fetched++;
+    } else {
+      // 時間切れ：今回は取得しない。古いキャッシュがあれば暫定で残す（次回再取得）
+      if (cached) {
+        newCache[file.id] = cached;
+        permissionsByFileId[file.id] = cached.permissions;
+      }
+      remaining++;
+    }
   }
-  return {permissionsByFileId, newCache};
+  return {permissionsByFileId, newCache, fetched, remaining};
 }
 
-// 出力用の2次元配列を作る（1ファイルの各権限明細ごとに1行）
+// 1行分の生データ（ラベル変換・補完前）。HEADER の各列に対応する
+export interface RawRow {
+  path: string;
+  fileId: string;
+  name: string;
+  mimeType: string;
+  displayName: string;
+  type: string;
+  emailAddress: string;
+  domain: string;
+  role: string;
+  inherited?: boolean;
+  allowFileDiscovery?: boolean;
+  deleted?: boolean;
+  view: string;
+}
+
+// 生データの行（1ファイルの各権限明細ごとに1行）を作る。ラベル変換はしない
 export function buildRows_(
   files: DriveFile[],
   driveId: string,
   driveName: string,
   permissionsByFileId: PermissionsByFileId,
-): (string | boolean)[][] {
+): RawRow[] {
   const resolvePath = createPathResolver_(files, driveId, driveName);
-  const rows: (string | boolean)[][] = [HEADER];
+  const rows: RawRow[] = [];
   for (const file of files) {
     const path = resolvePath(file);
     const permissions = file.id ? (permissionsByFileId[file.id] ?? []) : [];
@@ -296,39 +295,105 @@ export function buildRows_(
         permission.permissionDetails && permission.permissionDetails.length
           ? permission.permissionDetails
           : [{} as DrivePermissionDetail];
-      const displayName = permission.displayName ?? '';
-      const typeLabel = toTypeLabel_(permission.type);
-      // メールアドレス(G列)が空のときの補完
-      let emailAddress = permission.emailAddress ?? '';
-      if (!emailAddress) {
-        if (displayName === DISPLAY_NAME_TO_EMAIL) {
-          // 表示名が指定組織なら表示名を入れる
-          emailAddress = displayName;
-        } else if (permission.type === 'anyone') {
-          // 「リンクを知っている全員」なら付与先種別(F列)の値を入れる
-          emailAddress = typeLabel;
-        }
-      }
       for (const detail of details) {
-        rows.push([
+        rows.push({
           path,
-          file.id ?? '',
-          file.name ?? '',
-          file.mimeType ? toMimeTypeLabel_(file.mimeType) : '',
-          displayName,
-          typeLabel,
-          emailAddress,
-          permission.domain ?? '',
-          toRoleLabel_(detail.role),
-          toInheritedLabel_(detail.inherited),
-          toAllowFileDiscoveryLabel_(permission.allowFileDiscovery),
-          toDeletedLabel_(permission.deleted),
-          permission.view ?? '',
-        ]);
+          fileId: file.id ?? '',
+          name: file.name ?? '',
+          mimeType: file.mimeType ?? '',
+          displayName: permission.displayName ?? '',
+          type: permission.type ?? '',
+          emailAddress: permission.emailAddress ?? '',
+          domain: permission.domain ?? '',
+          role: detail.role ?? '',
+          inherited: detail.inherited,
+          allowFileDiscovery: permission.allowFileDiscovery,
+          deleted: permission.deleted,
+          view: permission.view ?? '',
+        });
       }
     }
   }
+  // パス順に並べる（同一ファイルの行はパスが同じなので隣接したまま）
+  rows.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return rows;
+}
+
+// 生データ(RawRow[])を生データシート用の2次元配列に変換する
+export function rawRowsToValues_(rawRows: RawRow[]): (string | boolean)[][] {
+  const values: (string | boolean)[][] = [RAW_HEADER];
+  for (const row of rawRows) {
+    values.push([
+      row.path,
+      row.fileId,
+      row.name,
+      row.mimeType,
+      row.displayName,
+      row.type,
+      row.emailAddress,
+      row.domain,
+      row.role,
+      row.inherited ?? '',
+      row.allowFileDiscovery ?? '',
+      row.deleted ?? '',
+      row.view,
+    ]);
+  }
+  return values;
+}
+
+// セル値を任意のboolean（未設定は undefined）に変換する
+function toOptionalBoolean_(value: unknown): boolean | undefined {
+  return value === '' || value === undefined ? undefined : Boolean(value);
+}
+
+// 備考シートを読み込み、ファイルID → 説明 のマップを返す。シートが無ければ空
+export function readNotes_(): {[fileId: string]: string} {
+  const sheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NOTES_SHEET_NAME);
+  const notes: {[fileId: string]: string} = {};
+  if (!sheet) {
+    return notes;
+  }
+  const values = sheet.getDataRange().getValues();
+  // 先頭行は見出しなのでスキップ。A列=ファイルID, C列=説明
+  for (let i = 1; i < values.length; i++) {
+    const fileId = String(values[i][0]);
+    if (fileId) {
+      notes[fileId] = String(values[i][2]);
+    }
+  }
+  return notes;
+}
+
+// 生データシートを読み込んで RawRow[] に戻す
+export function readRawRows_(sheetName: string): RawRow[] {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    throw new Error(`シート ${sheetName} が見つかりません`);
+  }
+  const values = sheet.getDataRange().getValues();
+  const rawRows: RawRow[] = [];
+  // 先頭行はヘッダなのでスキップ
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    rawRows.push({
+      path: String(v[0]),
+      fileId: String(v[1]),
+      name: String(v[2]),
+      mimeType: String(v[3]),
+      displayName: String(v[4]),
+      type: String(v[5]),
+      emailAddress: String(v[6]),
+      domain: String(v[7]),
+      role: String(v[8]),
+      inherited: toOptionalBoolean_(v[9]),
+      allowFileDiscovery: toOptionalBoolean_(v[10]),
+      deleted: toOptionalBoolean_(v[11]),
+      view: String(v[12]),
+    });
+  }
+  return rawRows;
 }
 
 // 結果をバインド先スプレッドシートの指定シートへ書き込む（既存内容はクリア）
@@ -343,8 +408,21 @@ export function writeToSheet_(
   } else {
     sheet.clearContents();
   }
+  if (!rows.length) {
+    return;
+  }
+  const width = rows[0].length;
+  // 既定サイズ（新規シートは1000行）を超える場合に備え、先に行数・列数を確保する。
+  // 不足したまま setValues すると「範囲外」エラーになる
+  const maxRows = sheet.getMaxRows();
+  if (maxRows < rows.length) {
+    sheet.insertRowsAfter(maxRows, rows.length - maxRows);
+  }
+  const maxColumns = sheet.getMaxColumns();
+  if (maxColumns < width) {
+    sheet.insertColumnsAfter(maxColumns, width - maxColumns);
+  }
   // 行数が多くなるため分割して書き込む
-  const width = HEADER.length;
   const chunkSize = 5000;
   let startRow = 1;
   for (let i = 0; i < rows.length; i += chunkSize) {

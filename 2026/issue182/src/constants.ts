@@ -17,9 +17,12 @@
 export const SCRIPT_PROPERTY_KEY = 'SHARED_DRIVE_ID';
 // 出力先シート名
 export const OUTPUT_SHEET_NAME = 'ファイル一覧';
+// スライド一覧の出力先シート名
+export const SLIDE_OUTPUT_SHEET_NAME = 'スライド一覧';
 // 取得対象のMIMEタイプ
 export const MIME_DOCUMENT = 'application/vnd.google-apps.document';
 export const MIME_SPREADSHEET = 'application/vnd.google-apps.spreadsheet';
+export const MIME_PRESENTATION = 'application/vnd.google-apps.presentation';
 // Drive API の1ページあたり取得件数（最大1000）
 export const PAGE_SIZE = 1000;
 
