@@ -29,5 +29,7 @@ kMeddraAwsParentDirName <- kMeddraBoxDirName
 # ------ functions ------
 source(here("programs", "functions", "common-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "box-functions.R"),  encoding="UTF-8")
-# 設定・環境変数・Downloadsパスの初期化(GetConfigText/GetREnviron/GetFolderPath)は
-# source時の副作用を避けるため、各エントリスクリプト側で明示的に呼び出す
+# ------ main ------
+dummy <- GetConfigText()
+dummy <- GetREnviron()
+downloads_path <- GetFolderPath("Downloads")

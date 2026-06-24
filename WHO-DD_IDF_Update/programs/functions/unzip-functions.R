@@ -16,7 +16,7 @@ Sys.setenv(PATH = paste(Sys.getenv("PATH"), "C:/Program Files/7-Zip", sep = ";")
 #' @param cmd The command string to execute.
 #' @return None. The function prints the result of the unzipping process.
 UnzipBy7z <- function(cmd) {
-  result <- system(cmd, intern=TRUE)
+  result <- system(cmd, intern=T)
   cat(result, sep = "\n")
 }
 

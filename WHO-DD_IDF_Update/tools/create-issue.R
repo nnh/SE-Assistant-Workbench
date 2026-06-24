@@ -11,9 +11,7 @@ source(here("tools", "functions", "create-issue-functions.R"),  encoding="UTF-8"
 # ------ main ------
 # APIキーを設定
 api_key <- readline(prompt="Enter your linear API key: ")
-# 設定とAWS環境変数を初期化する
-GetConfigText()
-GetREnviron()
+dummy <- GetConfigText()
 team <- GetTeamNameAndId(api_key)
 masterUpdateLabel_id <- GetLabelId("MasterUpdate", api_key)
 targetBucket <- get_bucket_df(bucket=kAwsBucketName)

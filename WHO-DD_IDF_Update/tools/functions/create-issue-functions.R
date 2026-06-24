@@ -149,7 +149,7 @@ GetVersions <- function(recent_objects) {
   # バージョンチェック
   temp <- recent_objects %>% filter(str_detect(Key, str_c("^.*", kMeddraReleaseTxt, "$")))
   if (nrow(temp) == 1) {
-    meddraReleasePath <- temp[1, "Key", drop=TRUE]
+    meddraReleasePath <- temp[1, "Key", drop=T]
     response <- get_object(bucket=kAwsBucketName, object=meddraReleasePath)
     meddraVersion <- response %>% rawToChar(response) %>% str_c(collapse="") %>% str_split_1("\\$") %>% .[1]
     temp <- versions %>% filter(category == kMeddraAwsParentDirName) %>% .[1, "version"]

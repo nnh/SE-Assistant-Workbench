@@ -24,7 +24,7 @@ DownloadAllS3Objects <- function(local_root) {
     cat("Attempting to download to:", local_file, "\n")  # デバッグメッセージ
     dir_name <- dirname(local_file)
     if (!dir.exists(dir_name)) {
-      dir.create(dir_name, recursive=TRUE)
+      dir.create(dir_name, recursive=T)
     }
     tryCatch({
       if (!str_ends(.x, "/")) {
@@ -66,23 +66,20 @@ GetFileSize <- function(file) {
   return(file1_size)
 }
 # ------ main ------
-# 設定・環境変数・Downloadsパスを初期化する
-GetConfigText()
-GetREnviron()
-downloads_path <- GetFolderPath("Downloads")
+dummy <- GetREnviron()
 homeDir <- GetHomeDir()
 testDir <- file.path(downloads_path,  "meddra-test")
-unlink(testDir, recursive=TRUE)
+unlink(testDir, recursive=T)
 CreateDir(testDir)
 # box
 boxDownloadDir <- "box" |> CreateMeddraTestDir()
 boxZipFromDir <- file.path(homeDir, "\\Box\\References\\Coding\\MedDRA\\圧縮ファイル") 
 temp <- boxZipFromDir |> list.files(pattern="zip") |> str_extract("MEDDRAJ[0-9]{3}\\.zip") |>
   str_extract("[0-9]{3}") |> as.numeric() |> max() |> as.character()
-password_meddra <- file.path(boxZipFromDir, str_c("MEDDRAJ", temp, "_pw.txt")) |> read.delim(header=FALSE) %>% .[1, 1, drop=TRUE]
+password_meddra <- file.path(boxZipFromDir, str_c("MEDDRAJ", temp, "_pw.txt")) |> read.delim(header=F) %>% .[1, 1, drop=T]
 boxTargetVer <- str_c(str_sub(temp, 1, 2), ".", str_sub(temp, 3, 3))
 boxZipFileName <- kMeddra |>toupper() %>% str_c("^.*\\", ., "J", str_remove(boxTargetVer, "\\."), kZipExtention, "$")
-boxZipPath <- list.files(boxZipFromDir, full.names=TRUE) |> str_extract(boxZipFileName) |> na.omit()
+boxZipPath <- list.files(boxZipFromDir, full.names=T) |> str_extract(boxZipFileName) |> na.omit()
 if (length(boxZipPath) != 1) {
   stop("box file download error.")
 }
@@ -100,9 +97,9 @@ DownloadAllS3Objects(downloadFromAwsDir)
 # compare
 ## filename
 awsTargetPath <- file.path(downloadFromAwsDir, kMeddraAwsParentDirName, s3TargetDirName)
-awsFilenames <- list.files(awsTargetPath, recursive=TRUE)
-boxTargetPath <- file.path(boxDownloadDir, "MEDDRAJ", "ASCII") |> list.files(full.name=TRUE) |> str_extract("^.*_UTF8") |> na.omit()
-boxFilenames <- list.files(boxTargetPath, recursive=TRUE)
+awsFilenames <- list.files(awsTargetPath, recursive=T)
+boxTargetPath <- file.path(boxDownloadDir, "MEDDRAJ", "ASCII") |> list.files(full.name=T) |> str_extract("^.*_UTF8") |> na.omit()
+boxFilenames <- list.files(boxTargetPath, recursive=T)
 if (identical(awsFilenames, boxFilenames)) {
   print("filecount ok.")
 } else {
@@ -133,8 +130,8 @@ targetFilenames <- awsFilenames |> map( ~ {
 ## File Identity Check
 checkFileIdentity <- targetFilenames |> map_lgl( ~ {
   filename <- .
-  file1 <- awsTargetPath |> file.path(filename) |> readLines(warn=FALSE)
-  file2 <- boxTargetPath |> file.path(filename) |> readLines(warn=FALSE)
+  file1 <- awsTargetPath |> file.path(filename) |> readLines(warn=F)
+  file2 <- boxTargetPath |> file.path(filename) |> readLines(warn=F)
   return(identical(file1, file2))
 })
 if (all(checkFileIdentity)) {
