@@ -87,12 +87,40 @@ function resolveEmail_(row: RawRow): string {
   return '';
 }
 
-// 生データに日本語ラベル変換・補完・備考の付与を行い、シート出力用の2次元配列にする。
-// 同一ファイル(ID)の複数権限は1行にまとめ、権限ごとの列はセル内改行で結合する
+// 結合列（メール/ロール…）の0始まりインデックス（HEADER の並びに対応）
+const COMBINED_COLUMN_INDEX = 4;
+
+// 「親から継承」の権限行に付ける薄い文字色
+const INHERITED_TEXT_COLOR = '#999999';
+
+// formatRows_ の戻り値。values はシート全体、richTexts は結合列のデータ行ごと
+export interface FormattedOutput {
+  values: (string | boolean)[][];
+  richColumnIndex: number;
+  richTexts: GoogleAppsScript.Spreadsheet.RichTextValue[];
+}
+
+// 権限1件分の「メール : ロール（フラグ）」文字列を作る
+function combinedLine_(row: RawRow): string {
+  const head = [resolveEmail_(row), toRoleLabel_(row.role)]
+    .filter(value => value)
+    .join(' : ');
+  const flags = [
+    toInheritedLabel_(row.inherited),
+    toAllowFileDiscoveryLabel_(row.allowFileDiscovery),
+    toDeletedLabel_(row.deleted),
+    toViewLabel_(row.view),
+  ].filter(value => value);
+  return flags.length ? `${head}（${flags.join('・')}）` : head;
+}
+
+// 生データに日本語ラベル変換・補完・備考の付与を行い、シート出力用のデータを作る。
+// 同一ファイル(ID)の複数権限は1行にまとめ、結合列はセル内改行で結合する。
+// 「親から継承」の行はリッチテキストで文字色を薄くする
 export function formatRows_(
   rawRows: RawRow[],
   notesByFileId: {[fileId: string]: string} = {},
-): (string | boolean)[][] {
+): FormattedOutput {
   // fileId ごとに行をまとめる（元の出現順を保持）
   const groups: RawRow[][] = [];
   const indexByFileId: {[fileId: string]: number} = {};
@@ -106,7 +134,12 @@ export function formatRows_(
     groups[index].push(row);
   }
 
-  const rows: (string | boolean)[][] = [HEADER];
+  const grayStyle = SpreadsheetApp.newTextStyle()
+    .setForegroundColor(INHERITED_TEXT_COLOR)
+    .build();
+
+  const values: (string | boolean)[][] = [HEADER];
+  const richTexts: GoogleAppsScript.Spreadsheet.RichTextValue[] = [];
   for (const group of groups) {
     // ファイル単位の値（全権限で共通）は先頭行から取る
     const first = group[0];
@@ -115,31 +148,35 @@ export function formatRows_(
     const parentPath = first.path.endsWith(nameSuffix)
       ? first.path.slice(0, -nameSuffix.length)
       : first.path;
-    // 権限ごとに変わる列は改行で結合する（各行が1要素＝列をまたいで行が揃う）
-    const join = (toCell: (row: RawRow) => string): string =>
-      group.map(toCell).join('\n');
-    rows.push([
+
+    // 結合列：権限ごとに1行（セル内改行）。継承行は文字位置を控えて後で薄くする
+    const lines: string[] = [];
+    const dimRanges: {start: number; end: number}[] = [];
+    let offset = 0;
+    for (const row of group) {
+      const line = combinedLine_(row);
+      if (row.inherited) {
+        dimRanges.push({start: offset, end: offset + line.length});
+      }
+      lines.push(line);
+      offset += line.length + 1; // +1 は改行ぶん
+    }
+    const combinedText = lines.join('\n');
+    let richBuilder = SpreadsheetApp.newRichTextValue().setText(combinedText);
+    for (const range of dimRanges) {
+      richBuilder = richBuilder.setTextStyle(range.start, range.end, grayStyle);
+    }
+    richTexts.push(richBuilder.build());
+
+    values.push([
       parentPath,
       first.fileId,
       first.name,
       first.mimeType ? toMimeTypeLabel_(first.mimeType) : '',
-      // 権限ごとに「メール : ロール（フラグ）」の形でまとめる。
-      // 継承・検索は値があるときだけ括弧で添える
-      join(row => {
-        const head = [resolveEmail_(row), toRoleLabel_(row.role)]
-          .filter(value => value)
-          .join(' : ');
-        const flags = [
-          toInheritedLabel_(row.inherited),
-          toAllowFileDiscoveryLabel_(row.allowFileDiscovery),
-          toDeletedLabel_(row.deleted),
-          toViewLabel_(row.view),
-        ].filter(value => value);
-        return flags.length ? `${head}（${flags.join('・')}）` : head;
-      }),
+      combinedText,
       notesByFileId[first.fileId] ?? '',
       first.fetchedAt,
     ]);
   }
-  return rows;
+  return {values, richColumnIndex: COMBINED_COLUMN_INDEX, richTexts};
 }

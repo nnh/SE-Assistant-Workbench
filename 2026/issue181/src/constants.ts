@@ -17,11 +17,20 @@
 // 走査対象の共有ドライブID。スクリプトプロパティ SHARED_DRIVE_ID に設定する
 export const SHARED_DRIVE_ID_KEY = 'SHARED_DRIVE_ID';
 
+// checkFilePermissions で権限を確認するファイルID。スクリプトプロパティに設定する
+export const CHECK_FILE_ID_KEY = 'CHECK_FILE_ID';
+
 // 整形済みの結果を書き込むシート名
-export const OUTPUT_SHEET_NAME = 'permissions';
+export const OUTPUT_SHEET_NAME = 'ARO外部共有ファイル一覧';
 
 // 備考シート名。A列=ファイルID, B列=ファイル名, C列=説明（1行目は見出し）
 export const NOTES_SHEET_NAME = '備考';
+
+// 備考シートC列(説明)で許可する入力値（入力規則用）
+export const NOTES_DESCRIPTION_OPTIONS = [
+  'テンプレートギャラリー内ファイル、内部のみに移動不可',
+  'Webに公開中、内部のみに移動不可',
+];
 
 // 取得するPermissionのフィールド（Drive API v3）
 export const PERMISSION_FIELDS =

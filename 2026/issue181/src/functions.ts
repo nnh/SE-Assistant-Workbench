@@ -112,6 +112,7 @@ export function fetchAllFiles_(
       driveId: driveId,
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
+      q: 'trashed = false', // ゴミ箱内のファイルは除外する
       pageSize: maxFiles ? Math.min(maxFiles, 1000) : 1000,
       fields: FILE_FIELDS,
       pageToken: pageToken,
@@ -380,6 +381,31 @@ export function readNotes_(): {[fileId: string]: string} {
     }
   }
   return notes;
+}
+
+// 指定列(0始まり)の2行目以降にリッチテキストを設定する（結合列の継承行を薄くする用）
+export function setColumnRichText_(
+  sheetName: string,
+  columnIndex: number,
+  richTexts: GoogleAppsScript.Spreadsheet.RichTextValue[],
+): void {
+  if (!richTexts.length) {
+    return;
+  }
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    return;
+  }
+  const cells = richTexts.map(richText => [richText]);
+  const chunkSize = 5000;
+  let startRow = 2; // 1行目は見出し
+  for (let i = 0; i < cells.length; i += chunkSize) {
+    const chunk = cells.slice(i, i + chunkSize);
+    sheet
+      .getRange(startRow, columnIndex + 1, chunk.length, 1)
+      .setRichTextValues(chunk);
+    startRow += chunk.length;
+  }
 }
 
 // 指定シートが存在すれば削除する（旧 permissions_raw の掃除用）

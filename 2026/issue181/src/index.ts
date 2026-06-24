@@ -16,8 +16,12 @@
 
 import {
   SHARED_DRIVE_ID_KEY,
+  CHECK_FILE_ID_KEY,
   OUTPUT_SHEET_NAME,
   CACHE_FILE_ID_KEY,
+  NOTES_SHEET_NAME,
+  NOTES_DESCRIPTION_OPTIONS,
+  HEADER,
 } from './constants';
 import {
   getDriveName_,
@@ -26,6 +30,7 @@ import {
   buildRows_,
   readNotes_,
   writeToSheet_,
+  setColumnRichText_,
   deleteSheetIfExists_,
   loadCache_,
   saveCache_,
@@ -81,7 +86,9 @@ function exportSharedDrivePermissions(): void {
     permissionsByFileId,
     fetchedAtByFileId,
   );
-  writeToSheet_(formatRows_(rawRows, readNotes_()), OUTPUT_SHEET_NAME);
+  const out = formatRows_(rawRows, readNotes_());
+  writeToSheet_(out.values, OUTPUT_SHEET_NAME);
+  setColumnRichText_(OUTPUT_SHEET_NAME, out.richColumnIndex, out.richTexts);
   console.log(
     `今回取得 ${fetched} 件 / 残り ${remaining} 件 ` +
       (remaining ? '（未完了：再実行で続きを取得）' : '（完了）'),
@@ -113,23 +120,114 @@ function formatPermissions(): void {
     permissionsByFileId,
     fetchedAtByFileId,
   );
-  writeToSheet_(formatRows_(rawRows, readNotes_()), OUTPUT_SHEET_NAME);
+  const out = formatRows_(rawRows, readNotes_());
+  writeToSheet_(out.values, OUTPUT_SHEET_NAME);
+  setColumnRichText_(OUTPUT_SHEET_NAME, out.richColumnIndex, out.richTexts);
   console.log(`整形のみ実行（キャッシュから再構築）: ${rawRows.length} 明細行`);
 }
 
-// 作業用：取得日時の無い既存キャッシュに、暫定で現在時刻をセットする（手動で一度だけ実行）
-function backfillFetchedAt(): void {
-  const cache = loadCache_();
-  const now = nowString_();
-  let updated = 0;
-  for (const fileId of Object.keys(cache)) {
-    if (!cache[fileId].fetchedAt) {
-      cache[fileId].fetchedAt = now;
-      updated++;
-    }
+// 作業用：スクリプトプロパティ CHECK_FILE_ID のファイルの権限をログに出す
+function checkFilePermissions(): void {
+  const fileId =
+    PropertiesService.getScriptProperties().getProperty(CHECK_FILE_ID_KEY);
+  if (!fileId) {
+    throw new Error(
+      `スクリプトプロパティ ${CHECK_FILE_ID_KEY} に確認したいファイルIDを設定してください`,
+    );
   }
-  saveCache_(cache);
-  console.log(`取得日時を補完: ${updated} 件に ${now} をセットしました`);
+  const permissions = fetchPermissions_(fileId);
+  console.log(
+    `${fileId} の権限（${permissions.length}件）: ` +
+      JSON.stringify(permissions),
+  );
+}
+
+// 作業用：備考シートC列(説明)に入力規則を設定する（指定2値のみ・それ以外は不可）
+function setNotesValidation(): void {
+  const sheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NOTES_SHEET_NAME);
+  if (!sheet) {
+    throw new Error(`シート ${NOTES_SHEET_NAME} が見つかりません`);
+  }
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(NOTES_DESCRIPTION_OPTIONS, true)
+    .setAllowInvalid(false)
+    .build();
+  // 1行目は見出しなので2行目以降のC列に適用
+  const numRows = sheet.getMaxRows() - 1;
+  if (numRows < 1) {
+    return;
+  }
+  sheet.getRange(2, 3, numRows, 1).setDataValidation(rule);
+  console.log(`備考シートC列に入力規則を設定しました（${numRows} 行）`);
+}
+
+// 作業用：結果シートに条件付き書式（行全体の背景色）を設定する。
+// F列(説明)が指定値のとき、D列(種類)が「フォルダ」のときで色分けする
+function setListConditionalFormatting(): void {
+  const sheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OUTPUT_SHEET_NAME);
+  if (!sheet) {
+    throw new Error(`シート ${OUTPUT_SHEET_NAME} が見つかりません`);
+  }
+  const numRows = sheet.getMaxRows() - 1; // 1行目は見出し
+  if (numRows < 1) {
+    return;
+  }
+  // ヘッダ行を除く全列を対象（行全体に色を付ける）
+  const range = sheet.getRange(2, 1, numRows, HEADER.length);
+
+  // 備考(F列)が指定値のとき：薄い黄色
+  const notesFormula =
+    `=OR($F2="${NOTES_DESCRIPTION_OPTIONS[0]}",` +
+    `$F2="${NOTES_DESCRIPTION_OPTIONS[1]}")`;
+  const notesRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(notesFormula)
+    .setBackground('#FFF2CC')
+    .setRanges([range])
+    .build();
+
+  // 種類(D列)がフォルダのとき：濃いめの青＋太字でファイルと区別しやすくする
+  const folderRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=$D2="フォルダ"')
+    .setBackground('#9FC5E8')
+    .setBold(true)
+    .setRanges([range])
+    .build();
+
+  // 既存の条件付き書式は置き換える（備考を優先）
+  sheet.setConditionalFormatRules([notesRule, folderRule]);
+  console.log('結果シートに条件付き書式を設定しました');
+}
+
+// 作業用：備考シートで、A列のファイルIDが結果シートB列に存在しない行を色付けする
+function setNotesOrphanFormatting(): void {
+  const sheet =
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NOTES_SHEET_NAME);
+  if (!sheet) {
+    throw new Error(`シート ${NOTES_SHEET_NAME} が見つかりません`);
+  }
+  const numRows = sheet.getMaxRows() - 1; // 1行目は見出し
+  if (numRows < 1) {
+    return;
+  }
+  // A〜C列（行全体）を対象にする
+  const range = sheet.getRange(2, 1, numRows, 3);
+  // A列が空でなく、結果シートB列に同じIDが無ければ該当。
+  // 条件付き書式は他シートを直接参照できないため INDIRECT で参照する
+  const formula =
+    '=AND($A2<>"",' +
+    `COUNTIF(INDIRECT("'${OUTPUT_SHEET_NAME}'!$B:$B"),$A2)=0)`;
+  const rule = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formula)
+    .setBackground('#F4CCCC')
+    .setRanges([range])
+    .build();
+  // 既存の条件付き書式は置き換える（再実行で重複しない）
+  sheet.setConditionalFormatRules([rule]);
+  console.log(
+    '備考シートに「一覧に無いファイルID」の条件付き書式を設定しました',
+  );
 }
 
 // 権限キャッシュの参照を消し、次回実行を全件取得に戻す（取りこぼし時の手動フル再取得）
@@ -180,11 +278,13 @@ function testExportSharedDrivePermissions(): void {
     permissionsByFileId,
     fetchedAtByFileId,
   );
-  const rows = formatRows_(rawRows, readNotes_());
-  writeToSheet_(rows, OUTPUT_SHEET_NAME + '_test');
+  const testSheetName = OUTPUT_SHEET_NAME + '_test';
+  const out = formatRows_(rawRows, readNotes_());
+  writeToSheet_(out.values, testSheetName);
+  setColumnRichText_(testSheetName, out.richColumnIndex, out.richTexts);
   console.log(
-    `テスト出力: ${files.length} ファイル / ${rows.length} 行（ヘッダ含む）。` +
-      `出力先シート = ${OUTPUT_SHEET_NAME}_test`,
+    `テスト出力: ${files.length} ファイル / ${out.values.length} 行（ヘッダ含む）。` +
+      `出力先シート = ${testSheetName}`,
   );
 }
 
@@ -195,5 +295,8 @@ globalScope.setupSharedDriveId = setupSharedDriveId;
 globalScope.exportSharedDrivePermissions = exportSharedDrivePermissions;
 globalScope.formatPermissions = formatPermissions;
 globalScope.testExportSharedDrivePermissions = testExportSharedDrivePermissions;
-globalScope.backfillFetchedAt = backfillFetchedAt;
+globalScope.checkFilePermissions = checkFilePermissions;
+globalScope.setNotesValidation = setNotesValidation;
+globalScope.setListConditionalFormatting = setListConditionalFormatting;
+globalScope.setNotesOrphanFormatting = setNotesOrphanFormatting;
 globalScope.clearPermissionCache = clearPermissionCache;
