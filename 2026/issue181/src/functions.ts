@@ -17,7 +17,6 @@
 import {
   FILE_FIELDS,
   PERMISSION_LIST_FIELDS,
-  RAW_HEADER,
   CACHE_FILE_NAME,
   CACHE_FILE_ID_KEY,
   NOTES_SHEET_NAME,
@@ -48,13 +47,16 @@ interface DriveFile {
   modifiedTime?: string;
 }
 
-// 権限キャッシュ：fileId ごとに更新日時と権限一覧を保持する
+// 権限キャッシュ：fileId ごとに更新日時・取得日時・権限一覧を保持する。
+// fetchedAt は古いキャッシュには無いことがあるため任意
 interface CacheEntry {
   modifiedTime: string;
+  fetchedAt?: string;
   permissions: DrivePermission[];
 }
 type PermissionCache = {[fileId: string]: CacheEntry};
 type PermissionsByFileId = {[fileId: string]: DrivePermission[]};
+type FetchedAtByFileId = {[fileId: string]: string};
 
 interface DriveFileList {
   files?: DriveFile[];
@@ -81,6 +83,15 @@ interface DriveAdvancedService {
   };
 }
 const driveApi = (globalThis as unknown as {Drive: DriveAdvancedService}).Drive;
+
+// 現在時刻をスクリプトのタイムゾーンで 'yyyy-MM-dd HH:mm:ss' に整形して返す
+export function nowString_(): string {
+  return Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone(),
+    'yyyy-MM-dd HH:mm:ss',
+  );
+}
 
 // 共有ドライブ名を取得する
 export function getDriveName_(driveId: string): string {
@@ -221,11 +232,13 @@ export function resolvePermissions_(
   cache: PermissionCache,
 ): {
   permissionsByFileId: PermissionsByFileId;
+  fetchedAtByFileId: FetchedAtByFileId;
   newCache: PermissionCache;
   fetched: number;
   remaining: number;
 } {
   const permissionsByFileId: PermissionsByFileId = {};
+  const fetchedAtByFileId: FetchedAtByFileId = {};
   const newCache: PermissionCache = {};
   const start = Date.now();
   let fetched = 0;
@@ -237,27 +250,54 @@ export function resolvePermissions_(
     const modifiedTime = file.modifiedTime ?? '';
     const cached = cache[file.id];
     if (cached && cached.modifiedTime === modifiedTime) {
-      // 前回から未更新 → 再利用（API 呼び出しなし）
+      // 前回から未更新 → 再利用（API 呼び出しなし。取得日時も前回のまま）
       newCache[file.id] = cached;
       permissionsByFileId[file.id] = cached.permissions;
+      fetchedAtByFileId[file.id] = cached.fetchedAt ?? '';
       continue;
     }
     if (Date.now() - start < FETCH_BUDGET_MS) {
-      // 更新/新規 → 取り直し
+      // 更新/新規 → 取り直し（取得日時を記録）
       const permissions = fetchPermissions_(file.id);
-      newCache[file.id] = {modifiedTime, permissions};
+      const fetchedAt = nowString_();
+      newCache[file.id] = {modifiedTime, fetchedAt, permissions};
       permissionsByFileId[file.id] = permissions;
+      fetchedAtByFileId[file.id] = fetchedAt;
       fetched++;
     } else {
       // 時間切れ：今回は取得しない。古いキャッシュがあれば暫定で残す（次回再取得）
       if (cached) {
         newCache[file.id] = cached;
         permissionsByFileId[file.id] = cached.permissions;
+        fetchedAtByFileId[file.id] = cached.fetchedAt ?? '';
       }
       remaining++;
     }
   }
-  return {permissionsByFileId, newCache, fetched, remaining};
+  return {permissionsByFileId, fetchedAtByFileId, newCache, fetched, remaining};
+}
+
+// キャッシュ済みの権限・取得日時を、再取得せずに取り出す（formatPermissions 用）
+export function permissionsFromCache_(
+  files: DriveFile[],
+  cache: PermissionCache,
+): {
+  permissionsByFileId: PermissionsByFileId;
+  fetchedAtByFileId: FetchedAtByFileId;
+} {
+  const permissionsByFileId: PermissionsByFileId = {};
+  const fetchedAtByFileId: FetchedAtByFileId = {};
+  for (const file of files) {
+    if (!file.id) {
+      continue;
+    }
+    const cached = cache[file.id];
+    if (cached) {
+      permissionsByFileId[file.id] = cached.permissions;
+      fetchedAtByFileId[file.id] = cached.fetchedAt ?? '';
+    }
+  }
+  return {permissionsByFileId, fetchedAtByFileId};
 }
 
 // 1行分の生データ（ラベル変換・補完前）。HEADER の各列に対応する
@@ -275,6 +315,7 @@ export interface RawRow {
   allowFileDiscovery?: boolean;
   deleted?: boolean;
   view: string;
+  fetchedAt: string;
 }
 
 // 生データの行（1ファイルの各権限明細ごとに1行）を作る。ラベル変換はしない
@@ -283,12 +324,14 @@ export function buildRows_(
   driveId: string,
   driveName: string,
   permissionsByFileId: PermissionsByFileId,
+  fetchedAtByFileId: FetchedAtByFileId,
 ): RawRow[] {
   const resolvePath = createPathResolver_(files, driveId, driveName);
   const rows: RawRow[] = [];
   for (const file of files) {
     const path = resolvePath(file);
     const permissions = file.id ? (permissionsByFileId[file.id] ?? []) : [];
+    const fetchedAt = file.id ? (fetchedAtByFileId[file.id] ?? '') : '';
     for (const permission of permissions) {
       // permissionDetails が空でも1行は出力する
       const details =
@@ -310,6 +353,7 @@ export function buildRows_(
           allowFileDiscovery: permission.allowFileDiscovery,
           deleted: permission.deleted,
           view: permission.view ?? '',
+          fetchedAt,
         });
       }
     }
@@ -317,34 +361,6 @@ export function buildRows_(
   // パス順に並べる（同一ファイルの行はパスが同じなので隣接したまま）
   rows.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return rows;
-}
-
-// 生データ(RawRow[])を生データシート用の2次元配列に変換する
-export function rawRowsToValues_(rawRows: RawRow[]): (string | boolean)[][] {
-  const values: (string | boolean)[][] = [RAW_HEADER];
-  for (const row of rawRows) {
-    values.push([
-      row.path,
-      row.fileId,
-      row.name,
-      row.mimeType,
-      row.displayName,
-      row.type,
-      row.emailAddress,
-      row.domain,
-      row.role,
-      row.inherited ?? '',
-      row.allowFileDiscovery ?? '',
-      row.deleted ?? '',
-      row.view,
-    ]);
-  }
-  return values;
-}
-
-// セル値を任意のboolean（未設定は undefined）に変換する
-function toOptionalBoolean_(value: unknown): boolean | undefined {
-  return value === '' || value === undefined ? undefined : Boolean(value);
 }
 
 // 備考シートを読み込み、ファイルID → 説明 のマップを返す。シートが無ければ空
@@ -366,34 +382,13 @@ export function readNotes_(): {[fileId: string]: string} {
   return notes;
 }
 
-// 生データシートを読み込んで RawRow[] に戻す
-export function readRawRows_(sheetName: string): RawRow[] {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) {
-    throw new Error(`シート ${sheetName} が見つかりません`);
+// 指定シートが存在すれば削除する（旧 permissions_raw の掃除用）
+export function deleteSheetIfExists_(sheetName: string): void {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (sheet) {
+    ss.deleteSheet(sheet);
   }
-  const values = sheet.getDataRange().getValues();
-  const rawRows: RawRow[] = [];
-  // 先頭行はヘッダなのでスキップ
-  for (let i = 1; i < values.length; i++) {
-    const v = values[i];
-    rawRows.push({
-      path: String(v[0]),
-      fileId: String(v[1]),
-      name: String(v[2]),
-      mimeType: String(v[3]),
-      displayName: String(v[4]),
-      type: String(v[5]),
-      emailAddress: String(v[6]),
-      domain: String(v[7]),
-      role: String(v[8]),
-      inherited: toOptionalBoolean_(v[9]),
-      allowFileDiscovery: toOptionalBoolean_(v[10]),
-      deleted: toOptionalBoolean_(v[11]),
-      view: String(v[12]),
-    });
-  }
-  return rawRows;
 }
 
 // 結果をバインド先スプレッドシートの指定シートへ書き込む（既存内容はクリア）

@@ -17,7 +17,6 @@
 import {
   SHARED_DRIVE_ID_KEY,
   OUTPUT_SHEET_NAME,
-  OUTPUT_RAW_SHEET_NAME,
   CACHE_FILE_ID_KEY,
 } from './constants';
 import {
@@ -25,13 +24,14 @@ import {
   fetchAllFiles_,
   fetchPermissions_,
   buildRows_,
-  rawRowsToValues_,
-  readRawRows_,
   readNotes_,
   writeToSheet_,
+  deleteSheetIfExists_,
   loadCache_,
   saveCache_,
   resolvePermissions_,
+  permissionsFromCache_,
+  nowString_,
 } from './functions';
 import {formatRows_} from './format';
 
@@ -65,16 +65,22 @@ function exportSharedDrivePermissions(): void {
       `スクリプトプロパティ ${SHARED_DRIVE_ID_KEY} に共有ドライブIDを設定してください`,
     );
   }
+  // 旧仕様の生データシートが残っていれば削除（セル数の節約）
+  deleteSheetIfExists_('permissions_raw');
   const driveName = getDriveName_(driveId);
   const files = fetchAllFiles_(driveId);
   const cache = loadCache_();
   // 時間予算内で取得し、できたところまで出力する（残りは次回実行で取得）
-  const {permissionsByFileId, newCache, fetched, remaining} =
+  const {permissionsByFileId, fetchedAtByFileId, newCache, fetched, remaining} =
     resolvePermissions_(files, cache);
   saveCache_(newCache);
-  const rawRows = buildRows_(files, driveId, driveName, permissionsByFileId);
-  // 生データシートと整形済みシート（備考付き）の両方を出力する
-  writeToSheet_(rawRowsToValues_(rawRows), OUTPUT_RAW_SHEET_NAME);
+  const rawRows = buildRows_(
+    files,
+    driveId,
+    driveName,
+    permissionsByFileId,
+    fetchedAtByFileId,
+  );
   writeToSheet_(formatRows_(rawRows, readNotes_()), OUTPUT_SHEET_NAME);
   console.log(
     `今回取得 ${fetched} 件 / 残り ${remaining} 件 ` +
@@ -82,12 +88,48 @@ function exportSharedDrivePermissions(): void {
   );
 }
 
-// 生データシート(permissions_raw)を読み込み、整形し直して permissions シートへ出力する。
-// 取得し直さずにフォーマット・備考だけ反映したいときに使う
+// 権限を取得し直さず、キャッシュ済みの権限とファイル一覧から整形し直して
+// permissions シートへ出力する。フォーマット・備考だけ反映したいときに使う
 function formatPermissions(): void {
-  const rawRows = readRawRows_(OUTPUT_RAW_SHEET_NAME);
+  const driveId =
+    PropertiesService.getScriptProperties().getProperty(SHARED_DRIVE_ID_KEY);
+  if (!driveId) {
+    throw new Error(
+      `スクリプトプロパティ ${SHARED_DRIVE_ID_KEY} に共有ドライブIDを設定してください`,
+    );
+  }
+  const driveName = getDriveName_(driveId);
+  const files = fetchAllFiles_(driveId);
+  const cache = loadCache_();
+  // キャッシュにある権限だけを使う（permissions.list は呼ばない）
+  const {permissionsByFileId, fetchedAtByFileId} = permissionsFromCache_(
+    files,
+    cache,
+  );
+  const rawRows = buildRows_(
+    files,
+    driveId,
+    driveName,
+    permissionsByFileId,
+    fetchedAtByFileId,
+  );
   writeToSheet_(formatRows_(rawRows, readNotes_()), OUTPUT_SHEET_NAME);
-  console.log(`整形のみ実行: ${rawRows.length} 行（ヘッダ除く）`);
+  console.log(`整形のみ実行（キャッシュから再構築）: ${rawRows.length} 明細行`);
+}
+
+// 作業用：取得日時の無い既存キャッシュに、暫定で現在時刻をセットする（手動で一度だけ実行）
+function backfillFetchedAt(): void {
+  const cache = loadCache_();
+  const now = nowString_();
+  let updated = 0;
+  for (const fileId of Object.keys(cache)) {
+    if (!cache[fileId].fetchedAt) {
+      cache[fileId].fetchedAt = now;
+      updated++;
+    }
+  }
+  saveCache_(cache);
+  console.log(`取得日時を補完: ${updated} 件に ${now} をセットしました`);
 }
 
 // 権限キャッシュの参照を消し、次回実行を全件取得に戻す（取りこぼし時の手動フル再取得）
@@ -116,9 +158,12 @@ function testExportSharedDrivePermissions(): void {
   const permissionsByFileId: {
     [fileId: string]: ReturnType<typeof fetchPermissions_>;
   } = {};
+  const fetchedAtByFileId: {[fileId: string]: string} = {};
+  const fetchedAt = nowString_();
   for (const file of files) {
     if (file.id) {
       permissionsByFileId[file.id] = fetchPermissions_(file.id);
+      fetchedAtByFileId[file.id] = fetchedAt;
     }
   }
   // 先頭ファイルの権限（permissions.list が取れているか確認用）
@@ -128,7 +173,13 @@ function testExportSharedDrivePermissions(): void {
         JSON.stringify(permissionsByFileId[files[0].id]),
     );
   }
-  const rawRows = buildRows_(files, driveId, driveName, permissionsByFileId);
+  const rawRows = buildRows_(
+    files,
+    driveId,
+    driveName,
+    permissionsByFileId,
+    fetchedAtByFileId,
+  );
   const rows = formatRows_(rawRows, readNotes_());
   writeToSheet_(rows, OUTPUT_SHEET_NAME + '_test');
   console.log(
@@ -144,4 +195,5 @@ globalScope.setupSharedDriveId = setupSharedDriveId;
 globalScope.exportSharedDrivePermissions = exportSharedDrivePermissions;
 globalScope.formatPermissions = formatPermissions;
 globalScope.testExportSharedDrivePermissions = testExportSharedDrivePermissions;
+globalScope.backfillFetchedAt = backfillFetchedAt;
 globalScope.clearPermissionCache = clearPermissionCache;

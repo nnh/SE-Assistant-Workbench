@@ -20,28 +20,8 @@ export const SHARED_DRIVE_ID_KEY = 'SHARED_DRIVE_ID';
 // 整形済みの結果を書き込むシート名
 export const OUTPUT_SHEET_NAME = 'permissions';
 
-// 生データを書き込むシート名（formatRows_ の入力元）
-export const OUTPUT_RAW_SHEET_NAME = 'permissions_raw';
-
 // 備考シート名。A列=ファイルID, B列=ファイル名, C列=説明（1行目は見出し）
 export const NOTES_SHEET_NAME = '備考';
-
-// 生データシートのヘッダ（RawRow のフィールドに対応）
-export const RAW_HEADER = [
-  'path',
-  'fileId',
-  'name',
-  'mimeType',
-  'displayName',
-  'type',
-  'emailAddress',
-  'domain',
-  'role',
-  'inherited',
-  'allowFileDiscovery',
-  'deleted',
-  'view',
-];
 
 // 取得するPermissionのフィールド（Drive API v3）
 export const PERMISSION_FIELDS =
@@ -74,6 +54,7 @@ export const HEADER = [
   '種類',
   'メール/ロール/継承/検索結果/アカウント削除/ビュー',
   '説明',
+  '取得日時',
 ];
 
 // view（ビュー）の日本語ラベル
