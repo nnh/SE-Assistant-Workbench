@@ -47,8 +47,24 @@ javascript: (function () {
     return a.allReplace({ ":": "：", "\\[": "［", "\\]": "］" }) + "\n" + document.URL;
   };
 
+  global.COPY_TO_CLIPBOARD.writeToClipboard = async function (text) {
+    window.focus();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.log("navigator.clipboard.writeText failed. Falling back to execCommand.", error);
+      const textarea = document.createElement("textarea");
+      textarea.textContent = text;
+      const body = document.getElementsByTagName("body")[0];
+      body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      body.removeChild(textarea);
+    }
+  };
+
   global.COPY_TO_CLIPBOARD.copyTextAndTitle = function () {
-    navigator.clipboard.writeText(this.getUrlInfo());
+    this.writeToClipboard(this.getUrlInfo());
   };
 
   global.COPY_TO_CLIPBOARD.copyToClipboard = async function () {
@@ -89,7 +105,7 @@ javascript: (function () {
     const boxPathStr = "/Box/" + folderAndFileName + "\n";
     const res = boxPathStr + document.URL;
 
-    navigator.clipboard.writeText(res);
+    await this.writeToClipboard(res);
     console.log(res);
     return;
   };
