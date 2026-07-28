@@ -1,0 +1,46 @@
+{
+  "regexIdentifier": "%%",
+  "ignore": [
+    ".claspignore",
+    ".editorconfig",
+    ".eslintignore",
+    ".gitignore",
+    ".husky/**",
+    ".prettierignore",
+    ".prettierrc.cjs",
+    ".prettierrc.js",
+    "*.txt",
+    ".github",
+    "CONTRIBUTING",
+    "build",
+    "dist",
+    "eslint.ignores.js",
+    "eslint.ignores.cjs",
+    "eslint.config.js",
+    "eslint.config.cjs",
+    "src/ui/.angular",
+    "src/ui/.prettierrc",
+    "node_modules",
+    "license-config.json"
+  ],
+  "license": "license-header.txt",
+  "licenseFormats": {
+    "js|ts|mjs": {
+      "prepend": "/**",
+      "append": " */",
+      "eachLine": {
+        "prepend": " * "
+      }
+    },
+    "html|md": {
+      "prepend": "<!--",
+      "append": "-->"
+    },
+    "sh|^pre-commit": {
+      "eachLine": {
+        "prepend": "# "
+      }
+    }
+  },
+  "trailingWhitespace": "TRIM"
+}
