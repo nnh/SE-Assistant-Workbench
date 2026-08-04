@@ -9,10 +9,10 @@ sheets <- edc_spec[["sheets"]]
 
 build_cdisc_sheet_config_table <- function(sheet) {
   field_items <- if (length(sheet$field_items) == 0) {
-    tibble(field = character(), default_value = character())
+    tibble(field = character(), default_value = character(), is_invisible = character(), field_type = character())
   } else {
     sheet$field_items %>%
-      map_dfr(~ tibble(field = .$name, default_value = .$default_value))
+      map_dfr(~ tibble(field = .$name, default_value = .$default_value, is_invisible=.$is_invisible,field_type = .$field_type))
   }
 
   prefix_field_table <- if (length(sheet$cdisc_sheet_configs) == 0) {
@@ -40,6 +40,8 @@ df_cdisc <- map_dfr(sheets, build_cdisc_sheet_config_table, .id = "sheet_index")
     TRUE ~ str_c(prefix, value)
   ))
 
+test <- df_cdisc %>% filter(is_invisible & default_value != "")
+
 options <- edc_spec$options %>% map_dfr(function(opt) {
   opt$values %>%
     map_dfr(~ tibble(
@@ -48,8 +50,9 @@ options <- edc_spec$options %>% map_dfr(function(opt) {
       code = .$code,
       is_usable = .$is_usable
     )) %>%
-    mutate(variable = opt$name, .before = 1)
-}) %>% filter(is_usable)
+    mutate(option_name = opt$name, .before = 1)
+}) %>% filter(is_usable) %>% select(-is_usable)
+options[["is_invisible"]] <- FALSE
 
 field_option <- sheets %>% map_dfr( ~ {
   alias_name <- .$alias_name
@@ -62,4 +65,7 @@ field_option <- sheets %>% map_dfr( ~ {
   return(result)
 })
 
-test <- df_cdisc %>% left_join(field_option, by=c("alias_name", "field")) %>% select(prefix, cdisc_variable, default_value, option_name)
+cdisc_variable_spec <- df_cdisc %>% left_join(field_option, by=c("alias_name", "field")) %>% select(prefix, cdisc_variable, default_value, option_name, is_invisible, field_type)
+test <- cdisc_variable_spec %>% left_join(options, by=c("option_name", "is_invisible"), relationship = "many-to-many")
+test <- test %>% select(-option_name) %>% distinct() %>% arrange(prefix, cdisc_variable)
+
