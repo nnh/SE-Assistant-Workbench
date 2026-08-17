@@ -2,3 +2,4 @@
 "kCodingDirId", "<Box folder ID>"
 "kAwsDefaultRegion", "<AWS region>"
 "kAwsBucketName", "<S3 bucket name>"
+"kBoxExtractedDirId", "<Box folder ID>"

@@ -65,6 +65,43 @@ GetTargetPassword <- function(boxDirInfo, inputFilename, footer) {
   return(res)
 }
 
+#' Get a BOX password file's content if it exists
+#'
+#' This function looks for a password file (zip file name without extension + kIdfPasswordFileFooter)
+#' in a BOX folder, and returns its content if found.
+#'
+#' @param dirId The BOX folder ID to search within.
+#' @param zipFilename The zip file name the password file corresponds to.
+#' @return The password string, or NA if no password file is found.
+GetBoxPasswordIfExists <- function(dirId, zipFilename) {
+  passwordFilename <- zipFilename |> str_remove(kZipExtention) |> str_c(kIdfPasswordFileFooter)
+  targetPasswordFile <- GetTargetBoxDir(dirId) |> filter(type == "file" & name == passwordFilename)
+  if (nrow(targetPasswordFile) != 1) {
+    return(NA)
+  }
+  res <- targetPasswordFile[1, "id", drop = T] |>
+    flatten_chr() |>
+    box_read_tsv(header = FALSE) %>%
+    .[1, 1, drop = TRUE]
+  return(res)
+}
+
+#' Download a BOX file by exact name
+#'
+#' This function searches a BOX folder for a file with the exact given name and downloads it locally.
+#'
+#' @param dirId The BOX folder ID to search within.
+#' @param filename The exact file name to download.
+#' @return The local path to the downloaded file.
+DownloadBoxFileByName <- function(dirId, filename) {
+  targetFile <- GetTargetBoxDir(dirId) |> filter(type == "file" & name == filename)
+  if (nrow(targetFile) != 1) {
+    stop("The specified file is not found.")
+  }
+  targetFile[1, "id", drop = T] |> flatten_chr() |> box_dl(downloads_path, overwrite = T)
+  return(file.path(downloads_path, filename))
+}
+
 whoddDownloadFilesFromBox <- function() {
   whoddBoxDirInfo <- GetTargetDirInfo(KWhoddBoxDirName, kWhoddZip)
   if (is.null(whoddBoxDirInfo$zipId)) {

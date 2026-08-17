@@ -21,6 +21,7 @@ temp <- whodd_zip |> UnzipWhodd()
 awsDirName <- temp$awsDirName
 whoddUnzipDir <- temp$unzipDir
 whoddDir <- "/WHODD/" %>% str_c(awsDirName, .)
+unZipDirName <- temp$unZipDirName
 # download and unzip idf
 idfVersion <- temp$version
 targetIdfInfo <- GetIdfDownloadFilesInfoFromBox()
@@ -40,14 +41,17 @@ for (i in 1:nrow(targetIdfInfo)) {
 if (!exists("idfUnzipDir") | !exists("whoddUnzipDir")) {
   stop("unzip error.")
 }
-# upload to s3.
+# upload to s3 and box.
+idfBoxDir <- c(kAwsParentDirName, unZipDirName, "IDF")
+whoddBoxDir <- c(kAwsParentDirName, unZipDirName, "WHODD")
 copyTargetList <- list(
-  list(fromName = "全件.txt", toName = "data.txt", toDir = idfDir, fromDir = idfUnzipDir),
-  list(fromName = "英名＜可変長＞.txt", toName = "full_en.txt", toDir = idfDir, fromDir = idfUnzipDir),
-  list(fromName = "全件＜可変長＞.txt", toName = "full_ja.txt", toDir = idfDir, fromDir = idfUnzipDir),
-  list(fromName = "IDMapping.csv", toName = "IDMapping.csv", toDir = whoddDir, fromDir = whoddUnzipDir),
-  list(fromName = "WHODDsGenericNames.csv", toName = "WHODDsGenericNames.csv", toDir = whoddDir, fromDir = whoddUnzipDir),
-  list(fromName = "Version.txt", toName = "Version.txt", toDir = whoddDir, fromDir = whoddUnzipDir)
+  list(fromName = "全件.txt", toName = "data.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
+  list(fromName = "英名＜可変長＞.txt", toName = "full_en.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
+  list(fromName = "全件＜可変長＞.txt", toName = "full_ja.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
+  list(fromName = "IDMapping.csv", toName = "IDMapping.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
+  list(fromName = "WHODDsGenericNames.csv", toName = "WHODDsGenericNames.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
+  list(fromName = "Version.txt", toName = "Version.txt", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir)
 )
 copyFiles <- GetCopyFileInfo(copyTargetList)
 UploadToS3(copyFiles)
+UploadToBox(copyFiles, kBoxExtractedDirId)

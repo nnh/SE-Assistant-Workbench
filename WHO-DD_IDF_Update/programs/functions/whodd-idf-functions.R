@@ -41,7 +41,7 @@ UnzipWhodd <- function(input_zip_path) {
     str_extract("ver\\d{8}") |>
     str_remove("ver")
   awsDirName <- unZipDirName %>% str_c(kAwsParentDirName, "/", .)
-  return(list(awsDirName = awsDirName, unzipDir = unzipDir, version = version))
+  return(list(awsDirName = awsDirName, unzipDir = unzipDir, version = version, unZipDirName = unZipDirName))
 }
 UnzipMeddra <- function(input_zip_path, meddra_password) {
   if (is.null(input_zip_path)) {
@@ -53,12 +53,17 @@ UnzipMeddra <- function(input_zip_path, meddra_password) {
   version <- str_c(str_sub(temp_version, 1, 2), str_sub(temp_version, 3, -1), sep = ".")
 
   unzipDir <- file.path(downloads_path, "tempUnzipMeddra")
-  #  ExecUnzip(input_zip_path, unzipDir)
-
-  passwordFilePath <- ExecUnzipByPassword(
-    input_zip_path,
-    unzipDir,
-    meddra_password
-  )
+  if (!is.na(meddra_password)) {
+    passwordFilePath <- ExecUnzipByPassword(
+      input_zip_path,
+      unzipDir,
+      meddra_password
+    )
+  } else {
+    passwordFilePath <- ExecUnzip(
+      input_zip_path,
+      unzipDir
+    )
+  }
   return(list(unzipDir = unzipDir, version = version))
 }

@@ -29,11 +29,14 @@ asciiDir <- meddraDir |> file.path("ASCII")
 targetDir <- asciiDir |> list.dirs(full.names=T, recursive=F) |> str_extract("^.*_UTF8$") |> na.omit()
 targetFiles <- targetDir |> list.files(full.names=T)
 aws_dir <- str_c(kMeddraAwsParentDirName, "/", version)
+meddraBoxDir <- c(kMeddraBoxDirName, version)
 copyFiles <- targetFiles |> map( ~ {
   res <- list()
   res$path <- .
   res$filename <- basename(.)
   res$awsDir <- aws_dir
+  res$boxDir <- meddraBoxDir
   return(res)
 })
 UploadToS3(copyFiles)
+UploadToBox(copyFiles, kBoxExtractedDirId)
