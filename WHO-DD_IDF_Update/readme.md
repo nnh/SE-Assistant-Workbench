@@ -60,3 +60,5 @@
 ## ドキュメント
 
 https://docs.google.com/document/d/1dTO-n-SESKSQu9P6SCXZdesxjYtidwTWgnHastHwYjs/edit?tab=t.0
+
+処理の詳細（対象ファイル・リネーム・格納先）は[docs/processing-details.md](docs/processing-details.md)を参照してください。
