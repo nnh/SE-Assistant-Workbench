@@ -1,62 +1,62 @@
 # WHO-DD IDF Update
 
-## Description
+## 概要
 
-This repository contains scripts to manage and update the WHO-DD (World Health Organization Drug Dictionary) and IDF (Integrated Data File). These scripts help in unzipping files, handling password-protected files, uploading files to AWS S3, and saving files to Box.
+このリポジトリには、WHO-DD（WHO Drug Dictionary）とIDF（医薬品名データファイル）を管理・更新するためのスクリプトが含まれています。これらのスクリプトは、ファイルの解凍、パスワード保護ファイルの処理、AWS S3へのファイルのアップロード、Boxへのファイルの保存を支援します。
 
-## Installation
+## インストール
 
-To set up the environment and install necessary dependencies, follow these steps:
+環境を構築し、必要な依存関係をインストールするには、以下の手順に従ってください。
 
-1. Clone the repository:
+1. リポジトリをクローンする:
+   1. https://github.com/nnh/SE-Assistant-Workbench の「Code」から「Download Zip」をクリックします。
+   2. ダウンロードしたファイルを右クリックし、「すべて展開」を選択して保存します。
 
-   1. click on Download Zip from Code at https://github.com/nnh/SE-Assistant-Workbench.
-   2. Right-click on the downloaded file, ‘Extract All’ and save it.
+2. Rで必要なライブラリをインストールします。
+3. 環境変数に7-Zipを追加する: `C:\Program Files\7-Zip;` がシステムの環境変数に追加されていることを確認してください。
 
-2. Install required libraries in R
-3. Add 7-Zip to Environment Variables: Ensure `C:\Program Files\7-Zip;` is added to your system's environment variables.
+## 使い方
 
-## Usage
+### スクリプト実行前の設定
 
-### Configuration Before Running the Scripts
-
-Before running the scripts, set up the config.txt file in the ext folder with the following content:
+スクリプトを実行する前に、`ext`フォルダ内に以下の内容でconfig.txtファイルを設定してください。
 
 ```config.txt
 "itemname", "item"
-"kCodingDirId", "BOX folder ID"
-"kAwsDefaultRegion", "AWS region"
-"kAwsBucketName", "AWS bucket name"
+"kCodingDirId", "BOXフォルダID"
+"kAwsDefaultRegion", "AWSリージョン"
+"kAwsBucketName", "AWSバケット名"
 ```
 
-### How to Run the Scripts
+### スクリプトの実行方法
 
-1. Open RStudio: Launch RStudio on your computer.
-2. Set Up New Project: Open the WHO-DD_IDF_Update directory as a New Project.
-3. Open the Script.
-4. Run the Script: Click on the source button to execute the script.
+1. RStudioを開く: コンピュータでRStudioを起動します。
+2. 新規プロジェクトを設定する: WHO-DD_IDF_Updateディレクトリを新規プロジェクトとして開きます。
+3. スクリプトを開きます。
+4. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
-### Steps to Upload a Downloaded ZIP File to BOX
+### ダウンロードしたZIPファイルをBOXにアップロードする手順
 
-1. Open `programs/box-authentication.R`.
-   You may need to enter your BOX Secret ID and AWS Access Key; refer to section 15 of the WHODrug Data Storage Manual in the D013-4 SE Assistance Manual.
-2. Run the Script: Click the source button to execute the script.
-3. Open `programs/upload-box.R`.
-4. Run the Script: Click the source button to execute the script.
+1. `programs/box-authentication.R`を開きます。
+   BOXのSecret IDとAWSのAccess Keyの入力が必要な場合があります。
+   D013-4 SEアシスタントマニュアル（随時）の15. WHODrug, IDF, MedDRAデータ格納マニュアルを参照してください。
+2. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
+3. `programs/upload-box.R`を開きます。
+4. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
-### Steps to Upload a ZIP File from Box to AWS
+### BoxからAWSへZIPファイルをアップロードする手順
 
-1. Ensure that the latest WHO-DD and IDF are saved in Box.
-2. Open `programs/box-authentication.R`.
-3. Run the Script: Click the source button to execute the script.
-4. Open `programs/upload-s3.R`.
-5. Run the Script: Click the source button to execute the script.
+1. 最新のWHO-DDとIDFがBoxに保存されていることを確認します。
+2. `programs/box-authentication.R`を開きます。
+3. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
+4. `programs/upload-s3.R`を開きます。
+5. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
-### Test
+### テスト
 
-1. Open `tools/test-main.R`.
-2. Run the Script: Click the source button to execute the script.
+1. `tools/test-main.R`を開きます。
+2. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
-## Document
+## ドキュメント
 
 https://docs.google.com/document/d/1dTO-n-SESKSQu9P6SCXZdesxjYtidwTWgnHastHwYjs/edit?tab=t.0

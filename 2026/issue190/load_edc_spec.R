@@ -1,0 +1,108 @@
+rm(list = ls())
+library(jsonlite)
+library(tidyverse)
+library(here)
+
+source(here("constant.R"))
+source(here("generate_random_date.R"))
+source(here("generate_brthdtc.R"))
+source(here("build_dm_domain.R"))
+registration_n <- 100
+registration_start_date <- "2024-04-01"
+
+json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
+
+edc_spec <- jsonlite::read_json(json_path)
+sheets <- edc_spec[["sheets"]]
+
+build_cdisc_sheet_config_table <- function(sheet) {
+  field_items <- if (length(sheet$field_items) == 0) {
+    tibble(field = character(), default_value = character(), is_invisible = character(), field_type = character())
+  } else {
+    sheet$field_items %>%
+      map_dfr(~ tibble(field = .$name, default_value = .$default_value, is_invisible=.$is_invisible,field_type = .$field_type))
+  }
+
+  prefix_field_table <- if (length(sheet$cdisc_sheet_configs) == 0) {
+    tibble(prefix = character(), field = character(), value = character())
+  } else {
+    sheet$cdisc_sheet_configs %>%
+      map_dfr(~ tibble(
+        prefix = .x[["prefix"]],
+        field = names(.x[["table"]]),
+        value = map_chr(.x[["table"]], ~ if (is.null(.x)) NA_character_ else .x)
+      ))
+  }
+
+  result <- prefix_field_table %>%
+    inner_join(field_items, by = "field") %>%
+    filter(!is.na(value), !str_starts(value, "_"))
+  result[["alias_name"]] <- sheet$alias_name
+  return(result)
+}
+
+df_cdisc <- map_dfr(sheets, build_cdisc_sheet_config_table, .id = "sheet_index") %>%
+  mutate(cdisc_variable = case_when(
+    prefix == "DM" ~ value,
+    value == "VISITNUM" ~ value,
+    value == "SPDEVID" ~ value,
+    TRUE ~ str_c(prefix, value)
+  ))
+
+options <- edc_spec$options %>% map_dfr(function(opt) {
+  opt$values %>%
+    map_dfr(~ tibble(
+      value_name = .$name,
+      seq = .$seq,
+      code = .$code,
+      is_usable = .$is_usable
+    )) %>%
+    mutate(option_name = opt$name, .before = 1)
+}) %>% filter(is_usable) %>% select(-is_usable)
+options[["is_invisible"]] <- FALSE
+
+field_option <- sheets %>% map_dfr( ~ {
+  alias_name <- .$alias_name
+  field_items <- .$field_items %>% keep( ~ "option_name" %in% names(.x))
+  if (length(field_items) == 0) {
+    return()
+  }
+  result <- field_items %>% map_dfr( ~ tibble(field=.$name, option_name=.$option_name))
+  result[["alias_name"]] <- alias_name
+  return(result)
+})
+
+cdisc_variable_spec <- df_cdisc %>% left_join(field_option, by=c("alias_name", "field")) %>% select(prefix, cdisc_variable, default_value, option_name, is_invisible, field_type, alias_name)
+cdisc_variable_values <- cdisc_variable_spec %>% left_join(options, by=c("option_name", "is_invisible"), relationship = "many-to-many")
+cdisc_variable_values <- cdisc_variable_values %>% select(-option_name) %>% distinct() %>% arrange(prefix, cdisc_variable)
+# DM
+dm <- build_dm_domain(n = registration_n)
+tmp_dm_colnames <- colnames(dm)
+tmp_dm <- cdisc_variable_values %>% filter(prefix == "DM")
+dm_options <- tmp_dm %>% filter(field_type == "radio_button")
+dm_options[["code"]] <- ifelse(is.na(dm_options[["code"]]), dm_options[["default_value"]], dm_options[["code"]])
+dm_options_variables <- dm_options$cdisc_variable %>% unique()
+dm_options_target_vars <- setdiff(dm_options_variables, tmp_dm_colnames)
+dm_input_data <- tmp_dm %>% filter(field_type != "radio_button")
+dm_input_data_variables <- dm_input_data$cdisc_variable %>% unique()
+dm_input_data_target_vars <- setdiff(dm_input_data_variables, tmp_dm_colnames)
+for (i in seq_along(dm_input_data_target_vars)) {
+  var_name <- dm_input_data_target_vars[i]
+  print(var_name)
+  dm <- generate_random_date(dm, registration_start_date, Sys.Date(), var_name)
+}
+for (i in seq_along(dm_options_target_vars)) {
+  var_name <- dm_options_target_vars[i]
+  print(var_name)
+
+  # 選択肢となるコード値を取得（重複を除外）
+  choices <- dm_options %>%
+    filter(cdisc_variable == var_name) %>%
+    pull(code) %>%
+    unique()
+
+  # コード値が存在する場合のみ、dm の行数分だけランダムに割り振る
+  if (length(choices) > 0) {
+    dm[[var_name]] <- sample(choices, size = nrow(dm), replace = TRUE)
+  }
+}
