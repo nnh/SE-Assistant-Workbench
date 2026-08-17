@@ -19,7 +19,7 @@
 
 ### スクリプト実行前の設定
 
-スクリプトを実行する前に、`ext`フォルダ内に以下の内容でconfig.txtファイルを設定してください。
+スクリプトを実行する前に、`ext/config.txt.example`を`ext/config.txt`としてコピーし、各項目を実際の値に置き換えてください。
 
 ```config.txt
 "itemname", "item"
