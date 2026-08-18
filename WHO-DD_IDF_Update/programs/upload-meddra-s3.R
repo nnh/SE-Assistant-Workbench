@@ -24,19 +24,9 @@ version <- temp$version
 if (!exists("unzipDir")) {
   stop("unzip error.")
 }
-meddraDir <- unzipDir|> list.dirs(full.names=T, recursive=F)
-asciiDir <- meddraDir |> file.path("ASCII")
-targetDir <- asciiDir |> list.dirs(full.names=T, recursive=F) |> str_extract("^.*_UTF8$") |> na.omit()
-targetFiles <- targetDir |> list.files(full.names=T)
+targetFiles <- GetMeddraTargetFiles(unzipDir)
 aws_dir <- str_c(kMeddraAwsParentDirName, "/", version)
 meddraBoxDir <- c(kMeddraBoxDirName, version)
-copyFiles <- targetFiles |> map( ~ {
-  res <- list()
-  res$path <- .
-  res$filename <- basename(.)
-  res$awsDir <- aws_dir
-  res$boxDir <- meddraBoxDir
-  return(res)
-})
+copyFiles <- BuildMeddraCopyFiles(targetFiles, meddraBoxDir, aws_dir)
 UploadToS3(copyFiles)
 UploadToBox(copyFiles, kBoxExtractedDirId)

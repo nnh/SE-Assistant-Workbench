@@ -22,36 +22,14 @@ awsDirName <- temp$awsDirName
 whoddUnzipDir <- temp$unzipDir
 whoddDir <- "/WHODD/" %>% str_c(awsDirName, .)
 unZipDirName <- temp$unZipDirName
+version <- temp$version
 # download and unzip idf
-idfVersion <- temp$version
-targetIdfInfo <- GetIdfDownloadFilesInfoFromBox()
-for (i in 1:nrow(targetIdfInfo)) {
-  idf_zip <- targetIdfInfo[i, "id", drop = T] |>
-    flatten_chr() |>
-    box_dl(downloads_path, overwrite = T)
-  idf_password <- targetIdfInfo[i, "password", drop = T]
-  temp <- UnzipIdf(idf_zip, idf_password)
-  checkTargetYMD <- temp |> findFolder(str_c(idfVersion, "提供"))
-  if (length(checkTargetYMD) > 0) {
-    idfUnzipDir <- temp
-    idfDir <- "/IDF/" %>% str_c(awsDirName, .)
-    break
-  }
-}
-if (!exists("idfUnzipDir") | !exists("whoddUnzipDir")) {
-  stop("unzip error.")
-}
+idfUnzipDir <- version |> FindMatchingIdfUnzipDir()
+idfDir <- "/IDF/" %>% str_c(awsDirName, .)
 # upload to s3 and box.
 idfBoxDir <- c(kAwsParentDirName, unZipDirName, "IDF")
 whoddBoxDir <- c(kAwsParentDirName, unZipDirName, "WHODD")
-copyTargetList <- list(
-  list(fromName = "全件.txt", toName = "data.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
-  list(fromName = "英名＜可変長＞.txt", toName = "full_en.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
-  list(fromName = "全件＜可変長＞.txt", toName = "full_ja.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
-  list(fromName = "IDMapping.csv", toName = "IDMapping.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
-  list(fromName = "WHODDsGenericNames.csv", toName = "WHODDsGenericNames.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
-  list(fromName = "Version.txt", toName = "Version.txt", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir)
-)
+copyTargetList <- BuildWhoddIdfCopyTargetList(idfUnzipDir, whoddUnzipDir, idfBoxDir, whoddBoxDir, idfDir, whoddDir)
 copyFiles <- GetCopyFileInfo(copyTargetList)
 UploadToS3(copyFiles)
 UploadToBox(copyFiles, kBoxExtractedDirId)

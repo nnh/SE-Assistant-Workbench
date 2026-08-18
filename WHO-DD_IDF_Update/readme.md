@@ -57,9 +57,9 @@
 
 1. `programs/box-authentication.R`を開きます。
 2. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
-3. `programs/upload-box-extracted.R`を開きます。
-4. 一度スクリプトを実行し、対象フォルダ内のZIPファイル一覧を確認します。
-5. `whodd_zip_filename`・`idf_zip_filename`・`meddra_zip_filename`に、対象とするZIPファイル名を設定します（対象がない種別は空文字のままにします）。
+3. `programs/list-box-zip-files.R`を開き、実行して対象フォルダ内のZIPファイル一覧を確認します。
+4. `programs/upload-box-extracted.R`を開きます。
+5. `whodd_zip_filename`・`meddra_zip_filename`に、対象とするZIPファイル名を設定します（対象がない種別は空文字のままにします。IDFはWHO-DDのバージョンから自動判定されます）。
 6. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
 ### テスト
