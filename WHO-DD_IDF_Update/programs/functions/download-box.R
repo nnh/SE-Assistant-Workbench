@@ -26,12 +26,12 @@ GetLatestWhoddFile <- function(whoddBoxDirInfo) {
   res <- targetWhoddFiles |> GetLatestFileInfo()
 }
 
-GetTargetIdfFile <- function(idfBoxDirInfo) {
+GetTargetIdfFile <- function(idfBoxDirInfo, version) {
   targetIdfFiles <- idfBoxDirInfo$zipId |> GetBoxTargetFiles(str_c(kIdfFileNameParts, kIdfAllFooter, kZipExtention))
   targetIdfFiles$ym <- targetIdfFiles$name |> str_extract("2[0-9]{5}")
-  targetIdfFiles$year <- targetIdfFiles$ym |> str_sub(1, 4) |> as.numeric() 
+  targetIdfFiles$year <- targetIdfFiles$ym |> str_sub(1, 4) |> as.numeric()
   targetIdfFiles$month <- targetIdfFiles$ym |> str_sub(5, 6) |> as.numeric()
-  targetYear <- idfVersion |> str_sub(1, 4) |> as.numeric()
+  targetYear <- version |> str_sub(1, 4) |> as.numeric()
   target <- targetIdfFiles |> filter((targetYear - 1) <= year & year <= targetYear)
   target$password <- NA
   for (i in 1:nrow(target)) {
@@ -65,6 +65,43 @@ GetTargetPassword <- function(boxDirInfo, inputFilename, footer) {
   return(res)
 }
 
+#' Get a BOX password file's content if it exists
+#'
+#' This function looks for a password file (zip file name without extension + kIdfPasswordFileFooter)
+#' in a BOX folder, and returns its content if found.
+#'
+#' @param dirId The BOX folder ID to search within.
+#' @param zipFilename The zip file name the password file corresponds to.
+#' @return The password string, or NA if no password file is found.
+GetBoxPasswordIfExists <- function(dirId, zipFilename) {
+  passwordFilename <- zipFilename |> str_remove(kZipExtention) |> str_c(kIdfPasswordFileFooter)
+  targetPasswordFile <- GetTargetBoxDir(dirId) |> filter(type == "file" & name == passwordFilename)
+  if (nrow(targetPasswordFile) != 1) {
+    return(NA)
+  }
+  res <- targetPasswordFile[1, "id", drop = T] |>
+    flatten_chr() |>
+    box_read_tsv(header = FALSE) %>%
+    .[1, 1, drop = TRUE]
+  return(res)
+}
+
+#' Download a BOX file by exact name
+#'
+#' This function searches a BOX folder for a file with the exact given name and downloads it locally.
+#'
+#' @param dirId The BOX folder ID to search within.
+#' @param filename The exact file name to download.
+#' @return The local path to the downloaded file.
+DownloadBoxFileByName <- function(dirId, filename) {
+  targetFile <- GetTargetBoxDir(dirId) |> filter(type == "file" & name == filename)
+  if (nrow(targetFile) != 1) {
+    stop("The specified file is not found.")
+  }
+  targetFile[1, "id", drop = T] |> flatten_chr() |> box_dl(downloads_path, overwrite = T)
+  return(file.path(downloads_path, filename))
+}
+
 whoddDownloadFilesFromBox <- function() {
   whoddBoxDirInfo <- GetTargetDirInfo(KWhoddBoxDirName, kWhoddZip)
   if (is.null(whoddBoxDirInfo$zipId)) {
@@ -76,12 +113,12 @@ whoddDownloadFilesFromBox <- function() {
   return(localPathWhodd)
 }
 
-GetIdfDownloadFilesInfoFromBox <- function() {
+GetIdfDownloadFilesInfoFromBox <- function(version) {
   idfBoxDirInfo <- GetTargetDirInfo(KIdfBoxDirName, kIdf)
   if (is.null(idfBoxDirInfo$zipId)) {
     stop("The specified directory is not found.")
-  }  
-  idfFileInfo <- GetTargetIdfFile(idfBoxDirInfo)
+  }
+  idfFileInfo <- GetTargetIdfFile(idfBoxDirInfo, version)
   return(idfFileInfo)
 }
 

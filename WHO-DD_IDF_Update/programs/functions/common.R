@@ -18,6 +18,7 @@ kZipExtention <- ".zip"
 kIdfFileNameHeader <- "mtlt"
 kIdfFileNameParts <- str_c("(?i)^", kIdfFileNameHeader, "2[0-9]{5}")
 kIdfFileNameString <- str_c(kIdfFileNameParts, ".*", kZipExtention, "$")
+kIdfDisplayPattern <- str_c(kIdfFileNameParts, "(", kIdfAllFooter, "|\\+)", ".*\\.(zip|txt)$")
 kWhoddJapanCrtParts <- "(?i)^WHODrug\\sJapan\\sCRT"
 kMeddraZipParts <- "(?i)^MEDDRAJ[0-9]+"
 KIdfBoxDirName <- "IDF"

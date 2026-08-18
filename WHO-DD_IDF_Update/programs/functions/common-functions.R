@@ -237,6 +237,7 @@ GetCopyFileInfo <- function(targetList) {
     toName <- .$toName
     awsDir <- .$toDir
     fromDir <- .$fromDir
+    boxDir <- .$boxDir
     findFilePathAndToName <- fromDir |> FindFiles(fromName)
     if (length(findFilePathAndToName) == 0) {
       stop("File with the specified name does not exist.")
@@ -244,7 +245,7 @@ GetCopyFileInfo <- function(targetList) {
     if (length(findFilePathAndToName) > 1) {
       stop("Multiple files with the same name.")
     }
-    return(list(path=findFilePathAndToName, filename=toName, awsDir=awsDir))
-  })  
+    return(list(path=findFilePathAndToName, filename=toName, awsDir=awsDir, boxDir=boxDir))
+  })
   return(copyFiles)
 }

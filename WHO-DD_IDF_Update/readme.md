@@ -26,6 +26,7 @@
 "kCodingDirId", "BOXフォルダID"
 "kAwsDefaultRegion", "AWSリージョン"
 "kAwsBucketName", "AWSバケット名"
+"kBoxExtractedDirId", "展開ファイルの格納先BOXフォルダID"
 ```
 
 ### スクリプトの実行方法
@@ -51,6 +52,15 @@
 3. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 4. `programs/upload-s3.R`を開きます。
 5. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
+
+### 展開ファイルをBOXに格納する手順（旧バージョン等、S3にはアップロードしない場合）
+
+1. `programs/box-authentication.R`を開きます。
+2. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
+3. `programs/list-box-zip-files.R`を開き、実行して対象フォルダ内のZIPファイル一覧を確認します。
+4. `programs/upload-box-extracted.R`を開きます。
+5. `whodd_zip_filename`・`meddra_zip_filename`に、対象とするZIPファイル名を設定します（対象がない種別は空文字のままにします。IDFはWHO-DDのバージョンから自動判定されます）。
+6. スクリプトを実行する: sourceボタンをクリックしてスクリプトを実行します。
 
 ### テスト
 

@@ -44,3 +44,17 @@ ZIP内を展開せず、ダウンロードしたZIPファイル自体をその�
 - **格納先:** `MedDRA/<version>/`（例: `MedDRA/28.1/`。versionはZIPファイル名の数字部分を整形したもの）
 
 （[upload-meddra-s3.R](../programs/upload-meddra-s3.R)）
+
+## BOX格納（展開後ファイル、S3と同じファイル群）
+
+S3にアップロードする対象ファイル・リネーム内容は上記と同じ。格納先はconfig.txtの`kBoxExtractedDirId`で指定したフォルダの配下で、フォルダが存在しない場合は自動作成される。
+
+| 対象 | 格納先フォルダ |
+|---|---|
+| WHO-DD | `<kBoxExtractedDirId>/WHO-DD_IDF/<バージョンフォルダ名>/WHODD/` |
+| IDF | `<kBoxExtractedDirId>/WHO-DD_IDF/<バージョンフォルダ名>/IDF/` |
+| MedDRA | `<kBoxExtractedDirId>/MedDRA/<version>/` |
+
+WHO-DD・IDFの`<バージョンフォルダ名>`はS3格納時と同じ（WHO-DD ZIPのファイル名から `WHODrug Japan CRT` と `.zip` を除去した文字列。例: `2025 Sep 1`）。MedDRAの`<version>`はS3格納時と同じバージョン文字列（例: `28.1`）。
+
+（[box-functions.R](../programs/functions/box-functions.R)の`UploadToBox`）
