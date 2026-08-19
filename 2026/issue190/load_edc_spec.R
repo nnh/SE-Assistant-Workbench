@@ -7,6 +7,7 @@ source(here("constant.R"))
 source(here("generate_random_date.R"))
 source(here("generate_brthdtc.R"))
 source(here("build_dm_domain.R"))
+source(here("build_ae_domain.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -75,34 +76,11 @@ field_option <- sheets %>% map_dfr( ~ {
 cdisc_variable_spec <- df_cdisc %>% left_join(field_option, by=c("alias_name", "field")) %>% select(prefix, cdisc_variable, default_value, option_name, is_invisible, field_type, alias_name)
 cdisc_variable_values <- cdisc_variable_spec %>% left_join(options, by=c("option_name", "is_invisible"), relationship = "many-to-many")
 cdisc_variable_values <- cdisc_variable_values %>% select(-option_name) %>% distinct() %>% arrange(prefix, cdisc_variable)
+
+
 # DM
 dm <- build_dm_domain(n = registration_n)
-tmp_dm_colnames <- colnames(dm)
-tmp_dm <- cdisc_variable_values %>% filter(prefix == "DM")
-dm_options <- tmp_dm %>% filter(field_type == "radio_button")
-dm_options[["code"]] <- ifelse(is.na(dm_options[["code"]]), dm_options[["default_value"]], dm_options[["code"]])
-dm_options_variables <- dm_options$cdisc_variable %>% unique()
-dm_options_target_vars <- setdiff(dm_options_variables, tmp_dm_colnames)
-dm_input_data <- tmp_dm %>% filter(field_type != "radio_button")
-dm_input_data_variables <- dm_input_data$cdisc_variable %>% unique()
-dm_input_data_target_vars <- setdiff(dm_input_data_variables, tmp_dm_colnames)
-for (i in seq_along(dm_input_data_target_vars)) {
-  var_name <- dm_input_data_target_vars[i]
-  print(var_name)
-  dm <- generate_random_date(dm, registration_start_date, Sys.Date(), var_name)
-}
-for (i in seq_along(dm_options_target_vars)) {
-  var_name <- dm_options_target_vars[i]
-  print(var_name)
-
-  # 選択肢となるコード値を取得（重複を除外）
-  choices <- dm_options %>%
-    filter(cdisc_variable == var_name) %>%
-    pull(code) %>%
-    unique()
-
-  # コード値が存在する場合のみ、dm の行数分だけランダムに割り振る
-  if (length(choices) > 0) {
-    dm[[var_name]] <- sample(choices, size = nrow(dm), replace = TRUE)
-  }
-}
+dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date)
+# AE
+ae <- dm %>% build_ae_domain()
+ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date)
