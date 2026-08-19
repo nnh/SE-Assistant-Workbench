@@ -10,8 +10,9 @@ compute_target_vars <- function(data, spec) {
 
 # radio_button: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
 # required_vars(presence型のvalidatorを持つcdisc_variable)に含まれず、かつis_invisibleがFALSE(可視項目)の場合は
-# 必須ではないため、空白("")も選択肢に加える
-populate_radio_button_fields <- function(data, spec, target_vars, required_vars = character(0)) {
+# 必須ではないため、空白("")も選択肢に加える。
+# numeric_bounds(cdisc_variable, min_value, max_value)がある場合、数値として範囲外のcodeは選択肢から除く
+populate_radio_button_fields <- function(data, spec, target_vars, required_vars = character(0), numeric_bounds = NULL) {
   options_spec <- spec %>% filter(field_type == "radio_button")
   options_spec[["code"]] <- ifelse(is.na(options_spec[["code"]]), options_spec[["default_value"]], options_spec[["code"]])
   options_target_vars <- intersect(unique(options_spec[["cdisc_variable"]]), target_vars)
@@ -22,6 +23,19 @@ populate_radio_button_fields <- function(data, spec, target_vars, required_vars 
     if (!(var_name %in% required_vars) && is_visible) {
       choices <- union(choices, "")
     }
+
+    if (!is.null(numeric_bounds)) {
+      bound_row <- numeric_bounds %>% filter(cdisc_variable == var_name)
+      if (nrow(bound_row) > 0) {
+        min_value <- bound_row[["min_value"]][1]
+        max_value <- bound_row[["max_value"]][1]
+        numeric_choices <- suppressWarnings(as.numeric(choices))
+        within_bounds <- is.na(numeric_choices) |
+          ((is.na(min_value) | numeric_choices >= min_value) & (is.na(max_value) | numeric_choices <= max_value))
+        choices <- choices[within_bounds]
+      }
+    }
+
     if (length(choices) > 0) {
       data[[var_name]] <- sample(choices, size = nrow(data), replace = TRUE)
     }
@@ -146,7 +160,7 @@ domain_front_cols <- function(prefix) {
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。USUBJIDごとに1レコード作り、
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_nameをそのまま付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, add_coding_block = FALSE) {
   data <- dm %>% select(USUBJID, STUDYID)
   data[["DOMAIN"]] <- prefix
 
@@ -158,7 +172,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   seq_var <- str_c(prefix, "SEQ")
 
   data <- data %>%
-    populate_radio_button_fields(spec, target_vars, required_vars) %>%
+    populate_radio_button_fields(spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq(seq_var)
@@ -183,13 +197,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # cdisc_variable_valuesに含まれるprefixのうち、個別ロジックを持つドメイン(既定でDM/AE/DS)を除いた
 # 全てについてbuild_generic_domain()を適用し、prefixをキーにした名前付きリストで返す。
 # MedDRAコーディングブロック(LLT〜SOC)はcoding_block_prefixes(既定でMH)に該当するドメインのみ付与する
-build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0),
+build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL,
                                  exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH")) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
   prefixes %>%
     set_names() %>%
     map(function(px) {
       spec <- cdisc_variable_values %>% filter(prefix == px)
-      build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, add_coding_block = px %in% coding_block_prefixes)
+      build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, add_coding_block = px %in% coding_block_prefixes)
     })
 }

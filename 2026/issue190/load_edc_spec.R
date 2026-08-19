@@ -112,6 +112,38 @@ extract_presence_ref_value <- function(validator_type, validator_key, value) {
   if_else(is_target, ref_value, NA_character_)
 }
 
+# validator_type=="formula" & validator_key=="validate_formula_if"の場合、
+# value(例: f18<=3)が単一フィールドに対する条件のときだけ判定する(f18 -> field18)。
+# age(f2, f3)>=20のような複数フィールドにまたがる式は対象外(NA)とする
+formula_single_field_pattern <- "^f([0-9]+)\\s*(<=|>=|==|<|>)\\s*(-?[0-9]+(?:\\.[0-9]+)?)$"
+
+extract_formula_ref_field <- function(validator_type, validator_key, value) {
+  is_target <- validator_type == "formula" & validator_key == "validate_formula_if"
+  m <- str_match(value, formula_single_field_pattern)
+  ref_field <- if_else(!is.na(m[, 1]), str_c("field", m[, 2]), NA_character_)
+  if_else(is_target, ref_field, NA_character_)
+}
+
+# 上記と同じ条件式から、演算子に応じて上限(max_value)/下限(min_value)を判定する
+classify_formula_bound_type <- function(validator_type, validator_key, value) {
+  is_target <- validator_type == "formula" & validator_key == "validate_formula_if"
+  operator <- str_match(value, formula_single_field_pattern)[, 3]
+  bound_type <- case_when(
+    operator %in% c("<=", "<") ~ "max_value",
+    operator %in% c(">=", ">") ~ "min_value",
+    operator == "==" ~ "exact_value",
+    TRUE ~ NA_character_
+  )
+  if_else(is_target, bound_type, NA_character_)
+}
+
+# 上記と同じ条件式から、比較対象の数値を取り出す
+extract_formula_bound_value <- function(validator_type, validator_key, value) {
+  is_target <- validator_type == "formula" & validator_key == "validate_formula_if"
+  bound_value <- suppressWarnings(as.numeric(str_match(value, formula_single_field_pattern)[, 4]))
+  if_else(is_target, bound_value, NA_real_)
+}
+
 build_cdisc_sheet_config_table <- function(sheet) {
   field_items <- if (length(sheet$field_items) == 0) {
     tibble(field = character(), default_value = character(), is_invisible = character(), field_type = character())
@@ -180,9 +212,18 @@ cdisc_variable_values <- cdisc_variable_values %>% left_join(sheet_order, by = "
 validator_table <- build_validator_table(sheets) %>%
   mutate(
     resolved_value = resolve_validator_value(validator_type, value),
-    bound_type = classify_bound_type(validator_type, validator_key),
-    ref_field = extract_ref_field(validator_type, value),
-    numeric_value = extract_numeric_value(validator_type, value),
+    bound_type = coalesce(
+      classify_bound_type(validator_type, validator_key),
+      classify_formula_bound_type(validator_type, validator_key, value)
+    ),
+    ref_field = coalesce(
+      extract_ref_field(validator_type, value),
+      extract_formula_ref_field(validator_type, validator_key, value)
+    ),
+    numeric_value = coalesce(
+      extract_numeric_value(validator_type, value),
+      extract_formula_bound_value(validator_type, validator_key, value)
+    ),
     presence_ref_field = extract_presence_ref_field(validator_type, validator_key, value),
     presence_ref_value = extract_presence_ref_value(validator_type, validator_key, value)
   )
@@ -212,21 +253,40 @@ required_vars <- validator_table %>%
   unique() %>%
   na.omit()
 
+# bound_type/numeric_valueが入っている行(date/numericality/formulaの数値上限・下限)を
+# field名からcdisc_variable名に変換し、(cdisc_variable, min_value, max_value)のワイド形式にする。
+# 同じ変数に複数の制約がある場合は、より厳しい方(min_valueは最大、max_valueは最小)を採用する
+numeric_bounds <- validator_table %>%
+  filter(!is.na(bound_type), !is.na(numeric_value), bound_type %in% c("min_value", "max_value")) %>%
+  distinct(alias_name, field_name, bound_type, numeric_value) %>%
+  left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+  filter(!is.na(cdisc_variable)) %>%
+  group_by(cdisc_variable) %>%
+  summarise(
+    min_value = suppressWarnings(max(numeric_value[bound_type == "min_value"], na.rm = TRUE)),
+    max_value = suppressWarnings(min(numeric_value[bound_type == "max_value"], na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    min_value = if_else(is.infinite(min_value), NA_real_, min_value),
+    max_value = if_else(is.infinite(max_value), NA_real_, max_value)
+  )
+
 # MedDRA
 meddra <- build_meddra_hierarchy()
 
 # DM
 dm <- build_dm_domain(n = registration_n)
-dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars)
+dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
-ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars)
+ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds)
 death_date <- build_death_date_table(ae)
 # DS
 ds <- build_ds_domain(dm, cdisc_variable_values)
-ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars)
+ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds)
 ds <- finalize_ds_disposition(ds, death_date)
 discontinuation_date <- build_discontinuation_date_table(ds)
 
 # その他のドメイン(DM/AE/DS以外)
-other_domains <- build_other_domains(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars)
+other_domains <- build_other_domains(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds)

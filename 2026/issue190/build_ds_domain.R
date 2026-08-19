@@ -25,12 +25,12 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
   ds %>% select(STUDYID, DOMAIN, USUBJID, any_of("DSEPOCH"))
 }
 
-populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
+populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL) {
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS")
   target_vars <- compute_target_vars(ds, ds_spec)
 
   ds <- ds %>%
-    populate_radio_button_fields(ds_spec, target_vars, required_vars) %>%
+    populate_radio_button_fields(ds_spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(ds_spec, target_vars, registration_start_date) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq("DSSEQ")

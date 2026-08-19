@@ -19,12 +19,12 @@ build_dm_domain <- function(n = 100) {
   dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM)
 }
 
-populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
+populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL) {
   dm_spec <- cdisc_variable_values %>% filter(prefix == "DM")
   target_vars <- compute_target_vars(dm, dm_spec)
 
   dm <- dm %>%
-    populate_radio_button_fields(dm_spec, target_vars, required_vars) %>%
+    populate_radio_button_fields(dm_spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(dm_spec, target_vars, registration_start_date) %>%
     populate_dummy_fields(target_vars)
 
