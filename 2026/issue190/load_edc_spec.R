@@ -8,6 +8,7 @@ source(here("generate_random_date.R"))
 source(here("generate_brthdtc.R"))
 source(here("build_dm_domain.R"))
 source(here("build_ae_domain.R"))
+source(here("build_meddra_soc_pt_llt.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -77,10 +78,14 @@ cdisc_variable_spec <- df_cdisc %>% left_join(field_option, by=c("alias_name", "
 cdisc_variable_values <- cdisc_variable_spec %>% left_join(options, by=c("option_name", "is_invisible"), relationship = "many-to-many")
 cdisc_variable_values <- cdisc_variable_values %>% select(-option_name) %>% distinct() %>% arrange(prefix, cdisc_variable)
 
+# MedDRA
+meddra <- build_meddra_hierarchy()
 
 # DM
 dm <- build_dm_domain(n = registration_n)
 dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date)
 # AE
 ae <- dm %>% build_ae_domain()
-ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date)
+ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra)
+death_date <- build_death_date_table(ae)
+
