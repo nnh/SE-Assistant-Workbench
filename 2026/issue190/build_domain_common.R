@@ -85,6 +85,49 @@ apply_presence_conditions <- function(data, presence_conditions) {
   data
 }
 
+# field_ref_bounds(cdisc_variable, ref_cdisc_variable, bound_type)に基づき、
+# cdisc_variableの値がref_cdisc_variableの値との大小関係(max_value/min_value/exact_value)を
+# 満たさない場合、条件を満たすradio_button選択肢から選び直す。
+# 空白("")や、ref_cdisc_variableが数値でない場合は対象外(そのまま)とする
+apply_field_ref_bounds <- function(data, spec, field_ref_bounds) {
+  if (is.null(field_ref_bounds) || nrow(field_ref_bounds) == 0) {
+    return(data)
+  }
+  applicable <- field_ref_bounds %>%
+    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
+
+  for (i in seq_len(nrow(applicable))) {
+    var_name <- applicable[["cdisc_variable"]][i]
+    ref_var <- applicable[["ref_cdisc_variable"]][i]
+    bound_type <- applicable[["bound_type"]][i]
+
+    choices <- spec %>%
+      filter(cdisc_variable == var_name, field_type == "radio_button") %>%
+      mutate(code = ifelse(is.na(code), default_value, code)) %>%
+      pull(code) %>%
+      unique()
+    numeric_choices <- suppressWarnings(as.numeric(choices))
+    ref_values <- suppressWarnings(as.numeric(data[[ref_var]]))
+
+    data[[var_name]] <- map2_chr(data[[var_name]], ref_values, function(current, ref_value) {
+      if (is.na(current) || current == "" || is.na(ref_value)) {
+        return(current)
+      }
+      valid <- switch(bound_type,
+        max_value = choices[!is.na(numeric_choices) & numeric_choices <= ref_value],
+        min_value = choices[!is.na(numeric_choices) & numeric_choices >= ref_value],
+        exact_value = choices[!is.na(numeric_choices) & numeric_choices == ref_value],
+        choices
+      )
+      if (length(valid) == 0 || current %in% valid) {
+        return(current)
+      }
+      sample(valid, 1)
+    })
+  }
+  data
+}
+
 # LLTコードを少数に絞り、Zipf的な重みでサンプリングすることで、頻出病名と稀な病名が混在するようにする
 # 1レコードにつき1つのLLT〜SOCの階層をまとめて返すため、各コード値の対応関係が崩れない
 sample_meddra_rows <- function(meddra, n, pool_size = 20) {
@@ -164,7 +207,7 @@ domain_front_cols <- function(prefix) {
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。USUBJIDごとに1レコード作り、
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_nameをそのまま付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, add_coding_block = FALSE) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE) {
   data <- dm %>% select(USUBJID, STUDYID)
   data[["DOMAIN"]] <- prefix
 
@@ -192,22 +235,103 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     }
   }
 
-  data <- data %>% apply_presence_conditions(presence_conditions)
+  data <- data %>%
+    apply_presence_conditions(presence_conditions) %>%
+    apply_field_ref_bounds(spec, field_ref_bounds)
 
   data %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), meddra_vars, coding_cols))
 }
 
+# TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
+# USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
+# 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/dummyの基本パターンのみ対応
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, required_vars = character(0)) {
+  repeat_units <- spec %>% distinct(alias_name, label) %>% filter(!is.na(label))
+
+  data <- dm %>%
+    select(USUBJID, STUDYID) %>%
+    tidyr::crossing(repeat_units)
+  data[["DOMAIN"]] <- prefix
+
+  spid_var <- str_c(prefix, "SPID")
+  data[[spid_var]] <- data[["alias_name"]]
+
+  target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
+
+  # (alias_name, label)ごとにdplyr::filter()/which()で行を探すと「組み合わせ数×行数」のスキャンになり、
+  # labelの種類が多いドメインで遅くなる。group_by()のハッシュ化されたグループ処理に任せることで、
+  # スキャンを行わずに値を割り振る
+  for (var_name in target_vars) {
+    var_spec <- spec %>% filter(cdisc_variable == var_name)
+
+    lookup <- var_spec %>%
+      group_by(alias_name, label) %>%
+      summarise(
+        field_type = first(field_type),
+        codes = list(unique(ifelse(is.na(code), default_value, code))),
+        is_invisible_any = any(is_invisible, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(codes = map2(codes, is_invisible_any, function(cs, inv) {
+        if (!(var_name %in% required_vars) && !inv) union(cs, "") else cs
+      }))
+
+    # case_when()は条件に関係なく全分岐のRHSを評価してしまい、labelが一致しないグループで
+    # codes=NAのままsample()を呼んでエラーになるため、if/elseで短絡評価する
+    data <- data %>%
+      left_join(lookup, by = c("alias_name", "label")) %>%
+      group_by(alias_name, label) %>%
+      mutate(!!var_name := {
+        ft <- field_type[1]
+        nn <- n()
+        if (is.na(ft)) {
+          rep(NA_character_, nn)
+        } else if (ft == "radio_button") {
+          cs <- codes[[1]]
+          if (length(cs) > 0) sample(cs, nn, replace = TRUE) else rep(NA_character_, nn)
+        } else if (ft == "date") {
+          as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
+        } else {
+          rep("DUMMY", nn)
+        }
+      }) %>%
+      ungroup() %>%
+      select(-field_type, -codes, -is_invisible_any)
+  }
+
+  data %>%
+    select(-alias_name, -label) %>%
+    add_seq(str_c(prefix, "SEQ")) %>%
+    reorder_domain_columns(front_cols = domain_front_cols(prefix))
+}
+
+# 同じalias_name内で同じcdisc_variableが複数のlabelを持つ行が存在するかどうか(TR/LBなどの繰り返し項目判定)
+has_repeated_labels <- function(spec) {
+  label_counts <- spec %>%
+    filter(!is.na(label)) %>%
+    distinct(alias_name, cdisc_variable, label) %>%
+    count(alias_name, cdisc_variable)
+  nrow(label_counts) > 0 && any(label_counts[["n"]] > 1)
+}
+
 # cdisc_variable_valuesに含まれるprefixのうち、個別ロジックを持つドメイン(既定でDM/AE/DS)を除いた
 # 全てについてbuild_generic_domain()を適用し、prefixをキーにした名前付きリストで返す。
-# MedDRAコーディングブロック(LLT〜SOC)はcoding_block_prefixes(既定でMH)に該当するドメインのみ付与する
-build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH")) {
+# MedDRAコーディングブロック(LLT〜SOC)はcoding_block_prefixes(既定でMH)に該当するドメインのみ付与する。
+# 同じalias_name内でcdisc_variableが複数labelを持つドメイン(TR/LBなど)は、
+# ドメインを限定せず自動判定してbuild_repeated_domain()で生成する。
+# repeated_prefixesは自動判定に加えて明示的に強制したい場合に使う
+build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0)) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
   prefixes %>%
     set_names() %>%
     map(function(px) {
       spec <- cdisc_variable_values %>% filter(prefix == px)
-      build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, add_coding_block = px %in% coding_block_prefixes)
+      if (px %in% repeated_prefixes || has_repeated_labels(spec)) {
+        build_repeated_domain(dm, spec, px, registration_start_date, required_vars)
+      } else {
+        build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, add_coding_block = px %in% coding_block_prefixes)
+      }
     })
 }

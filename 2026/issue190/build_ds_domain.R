@@ -25,7 +25,7 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
   ds %>% select(STUDYID, DOMAIN, USUBJID, any_of("DSEPOCH"))
 }
 
-populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL) {
+populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS")
   target_vars <- compute_target_vars(ds, ds_spec)
 
@@ -41,7 +41,9 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
     ds <- ds %>% populate_meddra_fields(ds_spec, meddra_vars, meddra, meddra_sample)
   }
 
-  ds <- ds %>% apply_presence_conditions(presence_conditions)
+  ds <- ds %>%
+    apply_presence_conditions(presence_conditions) %>%
+    apply_field_ref_bounds(ds_spec, field_ref_bounds)
 
   ds %>% reorder_domain_columns(front_cols = domain_front_cols("DS"))
 }

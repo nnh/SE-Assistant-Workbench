@@ -13,7 +13,7 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
   # レコードごとにalias_nameを割り当て
@@ -52,7 +52,8 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   # 上記以外のfield_type: とりあえずダミー値を格納
   ae <- ae %>%
     populate_dummy_fields(target_vars) %>%
-    apply_presence_conditions(presence_conditions)
+    apply_presence_conditions(presence_conditions) %>%
+    apply_field_ref_bounds(ae_spec, field_ref_bounds)
 
   # USUBJIDごとにAETOXGR=5のレコードが最後になるよう並べ替え
   if ("AETOXGR" %in% colnames(ae)) {
