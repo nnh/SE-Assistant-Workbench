@@ -97,19 +97,43 @@ extract_ref_field <- function(validator_type, value) {
   if_else(validator_type == "date" & str_detect(value, "^field[0-9]+$"), value, NA_character_)
 }
 
-# validator_type=="presence" & validator_key=="validate_presence_if"の場合、
-# value(例: field2=='ADVERSE EVENT')から参照フィールド名を取り出す。この条件を満たす時のみ値を設定する
-extract_presence_ref_field <- function(validator_type, validator_key, value) {
-  is_target <- validator_type == "presence" & validator_key == "validate_presence_if"
-  ref_field <- str_match(value, "^\\s*(field[0-9]+)\\s*==")[, 2]
-  if_else(is_target, ref_field, NA_character_)
+# value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N')を"||"で分割し、
+# 全断片が同一フィールドに対する fieldN=='値'(または fN=='値') の形であれば、
+# フィールド名と値の一覧を返す。異なるフィールドが混ざる場合やパースできない断片があればNULL(未対応)
+parse_presence_or_conditions <- function(value) {
+  fragments <- value %>% str_split("\\|\\|") %>% pluck(1) %>% str_trim()
+  m <- str_match(fragments, "^(?:field|f)([0-9]+)\\s*==\\s*'([^']*)'$")
+  if (any(is.na(m[, 1]))) {
+    return(NULL)
+  }
+  field_nums <- unique(m[, 2])
+  if (length(field_nums) != 1) {
+    return(NULL)
+  }
+  list(field = str_c("field", field_nums), values = m[, 3])
 }
 
-# 上記と同じ条件式から、条件が真になるための期待値(例: 'ADVERSE EVENT')を取り出す
+# validator_type=="presence" & validator_key=="validate_presence_if"の場合、
+# 同一フィールドに対するOR条件から参照フィールド名を取り出す。この条件を満たす時のみ値を設定する
+extract_presence_ref_field <- function(validator_type, validator_key, value) {
+  is_target <- coalesce(validator_type == "presence" & validator_key == "validate_presence_if", FALSE)
+  map2_chr(is_target, value, function(target, v) {
+    if (!target) return(NA_character_)
+    parsed <- parse_presence_or_conditions(v)
+    if (is.null(parsed)) return(NA_character_)
+    parsed[["field"]]
+  })
+}
+
+# 上記と同じ条件式から、条件が真になるための期待値の一覧を","区切りで取り出す(例: 'Y, N')
 extract_presence_ref_value <- function(validator_type, validator_key, value) {
-  is_target <- validator_type == "presence" & validator_key == "validate_presence_if"
-  ref_value <- str_match(value, "==\\s*'([^']*)'")[, 2]
-  if_else(is_target, ref_value, NA_character_)
+  is_target <- coalesce(validator_type == "presence" & validator_key == "validate_presence_if", FALSE)
+  map2_chr(is_target, value, function(target, v) {
+    if (!target) return(NA_character_)
+    parsed <- parse_presence_or_conditions(v)
+    if (is.null(parsed)) return(NA_character_)
+    str_c(parsed[["values"]], collapse = ", ")
+  })
 }
 
 # validator_type=="formula" & validator_key=="validate_formula_if"の場合、
@@ -241,7 +265,8 @@ presence_conditions <- validator_table %>%
     by = c("alias_name", "presence_ref_field" = "field")
   ) %>%
   transmute(cdisc_variable, ref_cdisc_variable, expected_value = presence_ref_value) %>%
-  filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
+  filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
+  separate_rows(expected_value, sep = ",\\s*")
 
 # validator_type=="presence"のレコードを持つcdisc_variable(必須項目)の一覧。
 # ここに含まれないradio_button項目は空白も選択肢として許容する

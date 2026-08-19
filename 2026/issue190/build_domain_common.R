@@ -67,15 +67,19 @@ populate_dummy_fields <- function(data, target_vars) {
 
 # presence_conditions(cdisc_variable, ref_cdisc_variable, expected_value)に基づき、
 # ref_cdisc_variableの値がexpected_valueと一致しないレコードのcdisc_variableをNAにする。
-# インデックス代入を使うことで、日付型など列の型を問わず安全に適用できる
+# インデックス代入を使うことで、日付型など列の型を問わず安全に適用できる。
+# 同じ(cdisc_variable, ref_cdisc_variable)に複数行(expected_valueが複数)ある場合はOR条件として扱う
 apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
-    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
+    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data)) %>%
+    group_by(cdisc_variable, ref_cdisc_variable) %>%
+    summarise(expected_values = list(unique(expected_value)), .groups = "drop")
+
   for (i in seq_len(nrow(applicable))) {
     var_name <- applicable[["cdisc_variable"]][i]
     ref_var <- applicable[["ref_cdisc_variable"]][i]
-    expected <- applicable[["expected_value"]][i]
-    mismatch <- data[[ref_var]] != expected
+    expected_values <- applicable[["expected_values"]][[i]]
+    mismatch <- !(data[[ref_var]] %in% expected_values)
     data[[var_name]][mismatch] <- NA
   }
   data
