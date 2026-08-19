@@ -19,12 +19,20 @@ build_dm_domain <- function(n = 100) {
   dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM)
 }
 
-populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date) {
+populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
   dm_spec <- cdisc_variable_values %>% filter(prefix == "DM")
   target_vars <- compute_target_vars(dm, dm_spec)
 
-  dm %>%
-    populate_radio_button_fields(dm_spec, target_vars) %>%
+  dm <- dm %>%
+    populate_radio_button_fields(dm_spec, target_vars, required_vars) %>%
     populate_date_fields(dm_spec, target_vars, registration_start_date) %>%
     populate_dummy_fields(target_vars)
+
+  meddra_vars <- compute_meddra_vars(dm_spec, target_vars)
+  if (length(meddra_vars) > 0) {
+    meddra_sample <- sample_meddra_rows(meddra, nrow(dm))
+    dm <- dm %>% populate_meddra_fields(dm_spec, meddra_vars, meddra, meddra_sample)
+  }
+
+  dm %>% apply_presence_conditions(presence_conditions)
 }

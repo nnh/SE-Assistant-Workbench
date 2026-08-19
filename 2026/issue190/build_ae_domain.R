@@ -13,17 +13,7 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-# LLTコードを少数に絞り、Zipf的な重みでサンプリングすることで、頻出病名と稀な病名が混在するようにする
-# 1レコードにつき1つのLLT〜SOCの階層をまとめて返すため、各コード値の対応関係が崩れない
-sample_meddra_rows <- function(meddra, n, pool_size = 20) {
-  pool <- meddra %>%
-    distinct(llt_code, .keep_all = TRUE) %>%
-    slice_sample(n = min(pool_size, n_distinct(meddra[["llt_code"]])))
-  weights <- 1 / seq_len(nrow(pool))
-  pool[sample(seq_len(nrow(pool)), size = n, replace = TRUE, prob = weights), ]
-}
-
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
   # レコードごとにalias_nameを割り当て
@@ -31,7 +21,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   ae[["alias_name"]] <- sample(alias_names, size = nrow(ae), replace = TRUE)
 
   target_vars <- compute_target_vars(ae, ae_spec)
-  ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars)
+  ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars, required_vars)
 
   # date: AESTDTC -> それ以外 -> AEENDTC(AESTDTC以降になるよう制御)の順に生成
   ae_date_vars <- ae_spec %>%
@@ -52,33 +42,17 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     }
   }
 
-  # meddra: field_type=="meddra"に該当する変数はLLT名を直接格納
-  meddra_vars <- ae_spec %>%
-    filter(field_type == "meddra") %>%
-    pull(cdisc_variable) %>%
-    unique() %>%
-    intersect(target_vars)
+  # meddra: field_type=="meddra"に該当する変数はLLT名を直接格納し、MedDRAコーディングブロック(LLT〜SOC)を追加
+  meddra_vars <- compute_meddra_vars(ae_spec, target_vars)
   meddra_sample <- sample_meddra_rows(meddra, nrow(ae))
-  for (var_name in meddra_vars) {
-    ae[[var_name]] <- meddra_sample[["llt_name"]]
-  }
-
-  # MedDRAコーディングブロック(LLT〜SOC)を追加。meddra_sampleと同じ階層を使い、コード間の対応関係を保つ
-  ae[["AELLT"]] <- meddra_sample[["llt_name"]]
-  ae[["AELLTCD"]] <- meddra_sample[["llt_code"]]
-  ae[["AEDECOD"]] <- meddra_sample[["pt_name"]]
-  ae[["AEPTCD"]] <- meddra_sample[["pt_code"]]
-  ae[["AEHLT"]] <- meddra_sample[["hlt_name"]]
-  ae[["AEHLTCD"]] <- meddra_sample[["hlt_code"]]
-  ae[["AEHLGT"]] <- meddra_sample[["hlgt_name"]]
-  ae[["AEHLGTCD"]] <- meddra_sample[["hlgt_code"]]
-  ae[["AESOC"]] <- meddra_sample[["soc_name"]]
-  ae[["AESOCCD"]] <- meddra_sample[["soc_code"]]
-  ae[["AEBODSYS"]] <- meddra_sample[["soc_name"]]
-  ae[["AEBDSYCD"]] <- meddra_sample[["soc_code"]]
+  ae <- ae %>%
+    populate_meddra_fields(ae_spec, meddra_vars, meddra, meddra_sample) %>%
+    add_meddra_coding_block(meddra_sample, "AE")
 
   # 上記以外のfield_type: とりあえずダミー値を格納
-  ae <- ae %>% populate_dummy_fields(target_vars)
+  ae <- ae %>%
+    populate_dummy_fields(target_vars) %>%
+    apply_presence_conditions(presence_conditions)
 
   # USUBJIDごとにAETOXGR=5のレコードが最後になるよう並べ替え
   if ("AETOXGR" %in% colnames(ae)) {
@@ -110,13 +84,9 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     select(-alias_name)
 
   # 列順を整理: STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 -> MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC
-  meddra_coding_cols <- c(
-    "AELLT", "AELLTCD", "AEDECOD", "AEPTCD", "AEHLT", "AEHLTCD",
-    "AEHLGT", "AEHLGTCD", "AEBODSYS", "AEBDSYCD", "AESOC", "AESOCCD"
-  )
   ae %>%
     reorder_domain_columns(
-      front_cols = c("STUDYID", "DOMAIN", "USUBJID", "AESEQ", "AESPID", meddra_vars, meddra_coding_cols),
+      front_cols = c(domain_front_cols("AE"), meddra_vars, meddra_coding_cols("AE")),
       end_cols = c("AETOXGR", "AESTDTC", "AEENDTC")
     )
 }
