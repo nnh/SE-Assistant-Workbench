@@ -1,7 +1,7 @@
 library(tidyverse)
 library(here)
 
-source(here("generate_random_date.R"))
+source(here("build_domain_common.R"))
 
 build_ae_domain <- function(dm, n = 100) {
   ae <- tibble(
@@ -30,22 +30,8 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   alias_names <- ae_spec[["alias_name"]] %>% unique()
   ae[["alias_name"]] <- sample(alias_names, size = nrow(ae), replace = TRUE)
 
-  tmp_ae_colnames <- colnames(ae)
-  target_vars <- setdiff(unique(ae_spec[["cdisc_variable"]]), tmp_ae_colnames)
-
-  # radio_button: 全codeパターンからランダムに割り振り
-  ae_options <- ae_spec %>% filter(field_type == "radio_button")
-  ae_options[["code"]] <- ifelse(is.na(ae_options[["code"]]), ae_options[["default_value"]], ae_options[["code"]])
-  ae_options_target_vars <- intersect(unique(ae_options[["cdisc_variable"]]), target_vars)
-  for (var_name in ae_options_target_vars) {
-    choices <- ae_options %>%
-      filter(cdisc_variable == var_name) %>%
-      pull(code) %>%
-      unique()
-    if (length(choices) > 0) {
-      ae[[var_name]] <- sample(choices, size = nrow(ae), replace = TRUE)
-    }
-  }
+  target_vars <- compute_target_vars(ae, ae_spec)
+  ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars)
 
   # date: AESTDTC -> それ以外 -> AEENDTC(AESTDTC以降になるよう制御)の順に生成
   ae_date_vars <- ae_spec %>%
@@ -92,10 +78,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   ae[["AEBDSYCD"]] <- meddra_sample[["soc_code"]]
 
   # 上記以外のfield_type: とりあえずダミー値を格納
-  remaining_vars <- setdiff(target_vars, colnames(ae))
-  for (var_name in remaining_vars) {
-    ae[[var_name]] <- "DUMMY"
-  }
+  ae <- ae %>% populate_dummy_fields(target_vars)
 
   # USUBJIDごとにAETOXGR=5のレコードが最後になるよう並べ替え
   if ("AETOXGR" %in% colnames(ae)) {
@@ -118,30 +101,23 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
       select(-DTHDTC)
   }
 
-  # AESPIDはUSUBJID内の通番 (例: sae_report1, sae_report2)、AESEQはデータセット全体の通番
+  # AESPIDはUSUBJID内の通番 (例: sae_report1, sae_report2)
   ae <- ae %>%
     group_by(USUBJID) %>%
     mutate(AESPID = str_c(alias_name, row_number())) %>%
     ungroup() %>%
-    mutate(AESEQ = row_number())
-
-  ae <- ae %>% select(-alias_name)
+    add_seq("AESEQ") %>%
+    select(-alias_name)
 
   # 列順を整理: STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 -> MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC
-  front_cols <- c("STUDYID", "DOMAIN", "USUBJID", "AESEQ", "AESPID")
   meddra_coding_cols <- c(
     "AELLT", "AELLTCD", "AEDECOD", "AEPTCD", "AEHLT", "AEHLTCD",
     "AEHLGT", "AEHLGTCD", "AEBODSYS", "AEBDSYCD", "AESOC", "AESOCCD"
   )
-  end_cols <- c("AETOXGR", "AESTDTC", "AEENDTC")
-
   ae %>%
-    select(
-      any_of(front_cols),
-      any_of(meddra_vars),
-      any_of(meddra_coding_cols),
-      everything(), -any_of(end_cols),
-      any_of(end_cols)
+    reorder_domain_columns(
+      front_cols = c("STUDYID", "DOMAIN", "USUBJID", "AESEQ", "AESPID", meddra_vars, meddra_coding_cols),
+      end_cols = c("AETOXGR", "AESTDTC", "AEENDTC")
     )
 }
 

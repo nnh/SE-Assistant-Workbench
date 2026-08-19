@@ -9,6 +9,7 @@ source(here("generate_brthdtc.R"))
 source(here("build_dm_domain.R"))
 source(here("build_ae_domain.R"))
 source(here("build_meddra_soc_pt_llt.R"))
+source(here("build_ds_domain.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -78,6 +79,10 @@ cdisc_variable_spec <- df_cdisc %>% left_join(field_option, by=c("alias_name", "
 cdisc_variable_values <- cdisc_variable_spec %>% left_join(options, by=c("option_name", "is_invisible"), relationship = "many-to-many")
 cdisc_variable_values <- cdisc_variable_values %>% select(-option_name) %>% distinct() %>% arrange(prefix, cdisc_variable)
 
+# sheet_orders(シートの表示順)をalias_name(=sheet)で結合
+sheet_order <- edc_spec$sheet_orders %>% map_dfr(~ tibble(alias_name = .$sheet, sheet_seq = .$seq))
+cdisc_variable_values <- cdisc_variable_values %>% left_join(sheet_order, by = "alias_name")
+
 # MedDRA
 meddra <- build_meddra_hierarchy()
 
@@ -88,4 +93,9 @@ dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date)
 ae <- dm %>% build_ae_domain()
 ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra)
 death_date <- build_death_date_table(ae)
+# DS
+ds <- build_ds_domain(dm, cdisc_variable_values)
+ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date)
+ds <- finalize_ds_disposition(ds, death_date)
+discontinuation_date <- build_discontinuation_date_table(ds)
 
