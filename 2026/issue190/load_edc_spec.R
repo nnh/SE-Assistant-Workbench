@@ -13,6 +13,7 @@ source(here("build_ds_domain.R"))
 source(here("build_validator_table.R"))
 source(here("build_cdisc_variable_values.R"))
 source(here("build_generation_constraints.R"))
+source(here("lb_reference_ranges.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -63,3 +64,8 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 
 # その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される
 other_domains <- build_other_domains(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
+
+# LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)
+if ("LB" %in% names(other_domains)) {
+  other_domains[["LB"]] <- populate_lb_orres(other_domains[["LB"]])
+}

@@ -106,13 +106,23 @@ extract_presence_ref_value <- function(validator_type, validator_key, value) {
   })
 }
 
-# value(例: STAT.blank?)が"接尾辞.blank?"の形の場合、その接尾辞(例: STAT)を取り出す。
-# これは"fieldN=='値'"とは別の書き方で、同じcdisc_sheet_configsブロック内でこの接尾辞を持つ
-# フィールド(=同じprefixのcdisc_variable、例: FASTAT)が空白のときだけ値を設定する、という意味
-extract_presence_blank_suffix <- function(validator_type, validator_key, value) {
-  is_target <- coalesce(validator_type == "presence" & validator_key == "validate_presence_if", FALSE)
-  m <- str_match(value, "^([A-Za-z_][A-Za-z0-9_]*)\\.blank\\?$")
+# value(例: STAT.blank?、ORRES.present?)が"接尾辞.blank?"/"接尾辞.present?"の形の場合、
+# その接尾辞(例: STAT)を取り出す。これは"fieldN=='値'"とは別の書き方で、同じcdisc_sheet_configsブロック内で
+# この接尾辞を持つフィールド(=同じprefixのcdisc_variable、例: FASTAT)が空白/非空白のときだけ値を設定する、という意味。
+# validator_typeは"presence"の場合も"formula"の場合もあるため、validator_keyとパターンだけで判定する
+presence_predicate_pattern <- "^([A-Za-z_][A-Za-z0-9_]*)\\.(blank|present)\\?$"
+
+extract_presence_predicate_suffix <- function(validator_key, value) {
+  is_target <- coalesce(validator_key %in% c("validate_presence_if", "validate_formula_if"), FALSE)
+  m <- str_match(value, presence_predicate_pattern)
   if_else(is_target, m[, 2], NA_character_)
+}
+
+# 上記と同じ条件式から、blank(空白であること)かpresent(非空白であること)かを取り出す
+extract_presence_predicate_type <- function(validator_key, value) {
+  is_target <- coalesce(validator_key %in% c("validate_presence_if", "validate_formula_if"), FALSE)
+  m <- str_match(value, presence_predicate_pattern)
+  if_else(is_target, m[, 3], NA_character_)
 }
 
 # validator_type=="formula" & validator_key=="validate_formula_if"の場合、
@@ -194,6 +204,7 @@ build_validator_table <- function(sheets) {
       ),
       presence_ref_field = extract_presence_ref_field(validator_type, validator_key, value),
       presence_ref_value = extract_presence_ref_value(validator_type, validator_key, value),
-      presence_blank_suffix = extract_presence_blank_suffix(validator_type, validator_key, value)
+      presence_predicate_suffix = extract_presence_predicate_suffix(validator_key, value),
+      presence_predicate_type = extract_presence_predicate_type(validator_key, value)
     )
 }

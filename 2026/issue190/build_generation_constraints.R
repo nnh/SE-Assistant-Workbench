@@ -16,24 +16,30 @@ build_generation_constraints <- function(validator_table, df_cdisc) {
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
       by = c("alias_name", "presence_ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, expected_value = presence_ref_value) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, expected_value = presence_ref_value, condition_type = "equals") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
 
-  # validate_presence_if(例: STAT.blank?)を、"接尾辞.blank?"形式として解釈する。
-  # 同じcdisc_sheet_configsブロック(=同じprefix)内でその接尾辞を持つcdisc_variable(例: FASTAT)が
-  # 空白のときだけ値を設定する、という意味なので expected_value="" として扱う
+  # validate_presence_if/validate_formula_if(例: STAT.blank?、ORRES.present?)を
+  # "接尾辞.blank?"/"接尾辞.present?"形式として解釈する。同じcdisc_sheet_configsブロック(=同じprefix)内で
+  # その接尾辞を持つcdisc_variable(例: FASTAT)が空白/非空白のときだけ値を設定する、という意味。
+  # blank -> ref_cdisc_variableが""と一致する場合のみ設定(condition_type="equals")
+  # present -> ref_cdisc_variableが空白でない場合のみ設定(condition_type="not_blank")
   field_to_prefix <- df_cdisc %>% distinct(alias_name, field, prefix)
-  presence_blank_conditions <- validator_table %>%
-    filter(!is.na(presence_blank_suffix)) %>%
-    distinct(alias_name, field_name, presence_blank_suffix) %>%
+  presence_predicate_conditions <- validator_table %>%
+    filter(!is.na(presence_predicate_suffix)) %>%
+    distinct(alias_name, field_name, presence_predicate_suffix, presence_predicate_type) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
     left_join(field_to_prefix, by = c("alias_name", "field_name" = "field")) %>%
-    mutate(ref_cdisc_variable = str_c(prefix, presence_blank_suffix), expected_value = "") %>%
-    transmute(cdisc_variable, ref_cdisc_variable, expected_value) %>%
+    mutate(
+      ref_cdisc_variable = str_c(prefix, presence_predicate_suffix),
+      condition_type = if_else(presence_predicate_type == "blank", "equals", "not_blank"),
+      expected_value = if_else(presence_predicate_type == "blank", "", NA_character_)
+    ) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, expected_value, condition_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
-  presence_conditions <- bind_rows(presence_conditions, presence_blank_conditions)
+  presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
 
   # validator_type=="presence"のレコードを持つcdisc_variable(必須項目)の一覧。
   # ここに含まれないradio_button項目は空白も選択肢として許容する

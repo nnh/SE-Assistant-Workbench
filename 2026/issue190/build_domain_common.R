@@ -65,23 +65,37 @@ populate_dummy_fields <- function(data, target_vars) {
   data
 }
 
-# presence_conditions(cdisc_variable, ref_cdisc_variable, expected_value)に基づき、
-# ref_cdisc_variableの値がexpected_valueと一致しないレコードのcdisc_variableをNAにする。
-# インデックス代入を使うことで、日付型など列の型を問わず安全に適用できる。
-# 同じ(cdisc_variable, ref_cdisc_variable)に複数行(expected_valueが複数)ある場合はOR条件として扱う
+# presence_conditions(cdisc_variable, ref_cdisc_variable, expected_value, condition_type)に基づき、
+# 条件を満たさないレコードのcdisc_variableをNAにする。インデックス代入を使うことで、
+# 日付型など列の型を問わず安全に適用できる。
+# condition_type=="equals": ref_cdisc_variableの値がexpected_value(複数行ならOR)と一致しない場合NAにする
+# condition_type=="not_blank": ref_cdisc_variableが空白/NAの場合NAにする(expected_valueは使わない)
 apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
-    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data)) %>%
+    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
+
+  equals_conditions <- applicable %>%
+    filter(condition_type == "equals") %>%
     group_by(cdisc_variable, ref_cdisc_variable) %>%
     summarise(expected_values = list(unique(expected_value)), .groups = "drop")
-
-  for (i in seq_len(nrow(applicable))) {
-    var_name <- applicable[["cdisc_variable"]][i]
-    ref_var <- applicable[["ref_cdisc_variable"]][i]
-    expected_values <- applicable[["expected_values"]][[i]]
+  for (i in seq_len(nrow(equals_conditions))) {
+    var_name <- equals_conditions[["cdisc_variable"]][i]
+    ref_var <- equals_conditions[["ref_cdisc_variable"]][i]
+    expected_values <- equals_conditions[["expected_values"]][[i]]
     mismatch <- !(data[[ref_var]] %in% expected_values)
     data[[var_name]][mismatch] <- NA
   }
+
+  not_blank_conditions <- applicable %>%
+    filter(condition_type == "not_blank") %>%
+    distinct(cdisc_variable, ref_cdisc_variable)
+  for (i in seq_len(nrow(not_blank_conditions))) {
+    var_name <- not_blank_conditions[["cdisc_variable"]][i]
+    ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
+    mismatch <- is.na(data[[ref_var]]) | data[[ref_var]] == ""
+    data[[var_name]][mismatch] <- NA
+  }
+
   data
 }
 
@@ -246,7 +260,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE) {
   repeat_units <- spec %>% distinct(alias_name, label) %>% filter(!is.na(label))
 
   data <- dm %>%
@@ -309,11 +323,30 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
       select(-field_type, -default_value, -codes, -is_invisible_any)
   }
 
+  # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
+  # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、
+  # 対応するmeddra_varsの値がNAのままなのでコード列も自動的にNAになる
+  coding_cols <- character(0)
+  if (add_coding_block) {
+    meddra_type_vars <- spec %>%
+      filter(field_type == "meddra") %>%
+      distinct(cdisc_variable) %>%
+      pull(cdisc_variable) %>%
+      intersect(colnames(data))
+    if (length(meddra_type_vars) > 0) {
+      representative_llt_name <- exec(coalesce, !!!as.list(data[meddra_type_vars]))
+      llt_lookup <- meddra %>% distinct(llt_name, .keep_all = TRUE)
+      meddra_sample <- tibble(llt_name = representative_llt_name) %>% left_join(llt_lookup, by = "llt_name")
+      data <- data %>% add_meddra_coding_block(meddra_sample, prefix)
+      coding_cols <- meddra_coding_cols(prefix)
+    }
+  }
+
   data %>%
     apply_presence_conditions(presence_conditions) %>%
     select(-alias_name, -label) %>%
     add_seq(str_c(prefix, "SEQ")) %>%
-    reorder_domain_columns(front_cols = domain_front_cols(prefix))
+    reorder_domain_columns(front_cols = c(domain_front_cols(prefix), coding_cols))
 }
 
 # 同じalias_name内で同じcdisc_variableが複数のlabelを持つ行が存在するかどうか(TR/LBなどの繰り返し項目判定)
@@ -339,7 +372,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
     map(function(px) {
       spec <- cdisc_variable_values %>% filter(prefix == px)
       if (px %in% repeated_prefixes || has_repeated_labels(spec)) {
-        build_repeated_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars)
+        build_repeated_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, add_coding_block = px %in% coding_block_prefixes)
       } else {
         build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, add_coding_block = px %in% coding_block_prefixes)
       }
