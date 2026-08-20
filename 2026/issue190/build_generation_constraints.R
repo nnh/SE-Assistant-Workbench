@@ -51,6 +51,79 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
 
+  # validate_presence_if/validate_formula_ifで、"&&"により種類の異なる複数条件
+  # (STAT.blank?のような述語、ref('sheet', N)=='値'のような別シート参照、fieldN=='値')が
+  # 組み合わさっている場合、断片ごとに独立したpresence_conditions行に分解する。
+  # AND条件は「いずれかの行が条件を満たさなければ値をNAにする」という既存の仕組みで表現できるため、
+  # 断片数だけ行を作ればよい。age(fN,fM)>=X && age(fN,fM)<=Yはage_ref_fieldで別途処理済みのため除外する。
+  # &&での分解に失敗する場合(ref()以外の部分がOR/ANDの入れ子など複雑な式)や、&&を伴わない
+  # ref('sheet', N)=='値'単独の行は、ref()部分の条件だけを抽出する(それ以外の条件は無視される)
+  ref_condition_rows <- validator_table %>%
+    filter(
+      validator_key %in% c("validate_presence_if", "validate_formula_if"),
+      is.na(age_ref_field),
+      str_detect(value, "&&") | str_detect(value, "ref\\(")
+    ) %>%
+    distinct(alias_name, field_name, value) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    filter(!is.na(cdisc_variable))
+
+  and_presence_conditions <- ref_condition_rows %>%
+    pmap_dfr(function(alias_name, field_name, value, cdisc_variable) {
+      parsed <- parse_and_conditions(value)
+      if (is.null(parsed)) {
+        clause <- extract_cross_ref_clause(value)
+        if (is.null(clause)) {
+          return(tibble())
+        }
+        parsed <- list(list(kind = "cross_ref", ref_alias_name = clause[["ref_alias_name"]], ref_field = clause[["ref_field"]], value = clause[["value"]]))
+      }
+
+      parsed %>%
+        map_dfr(function(clause) {
+          if (clause[["kind"]] == "predicate") {
+            own_prefix <- field_to_prefix %>% filter(alias_name == .env$alias_name, field == .env$field_name) %>% pull(prefix) %>% unname()
+            if (length(own_prefix) == 0) return(tibble())
+            tibble(
+              cdisc_variable = cdisc_variable,
+              ref_cdisc_variable = str_c(own_prefix[1], clause[["suffix"]]),
+              ref_alias_name = alias_name,
+              ref_label = NA_character_,
+              expected_value = if_else(clause[["predicate_type"]] == "blank", "", NA_character_),
+              condition_type = if_else(clause[["predicate_type"]] == "blank", "equals", "not_blank")
+            )
+          } else if (clause[["kind"]] == "cross_ref") {
+            ref_var <- field_to_cdisc_variable %>% filter(alias_name == clause[["ref_alias_name"]], field == clause[["ref_field"]]) %>% pull(cdisc_variable) %>% unname()
+            if (length(ref_var) == 0) return(tibble())
+            ref_lbl <- field_to_label %>% filter(alias_name == clause[["ref_alias_name"]], field == clause[["ref_field"]]) %>% pull(label) %>% unname()
+            tibble(
+              cdisc_variable = cdisc_variable,
+              ref_cdisc_variable = ref_var[1],
+              ref_alias_name = clause[["ref_alias_name"]],
+              ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
+              expected_value = clause[["value"]],
+              condition_type = "equals"
+            )
+          } else if (clause[["kind"]] == "field_ref") {
+            ref_var <- field_to_cdisc_variable %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(cdisc_variable) %>% unname()
+            if (length(ref_var) == 0) return(tibble())
+            ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
+            tibble(
+              cdisc_variable = cdisc_variable,
+              ref_cdisc_variable = ref_var[1],
+              ref_alias_name = alias_name,
+              ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
+              expected_value = clause[["value"]],
+              condition_type = "equals"
+            )
+          } else {
+            tibble()
+          }
+        })
+    })
+
+  presence_conditions <- bind_rows(presence_conditions, and_presence_conditions)
+
   # FieldItem::Reference(同じシート内の別フィールドの値をそのまま使うフィールド)を、
   # condition_type="copy"のpresence_conditions行として追加する。
   # reference_type=="sheet"(同じシート内参照)のみ対応。それ以外は未対応のためスキップする

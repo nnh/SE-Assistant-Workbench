@@ -236,6 +236,80 @@ extract_age_condition <- function(field_name, validator_type, validator_key, val
   })
 }
 
+# value(例: (STAT.blank?) && (ref('registration', 4)=='F'))を"&&"で分割し、各断片の
+# 括弧を取り除いた文字列の一覧を返す(&&を含まない場合はNULL)
+parse_and_clauses <- function(value) {
+  if (!str_detect(value, "&&")) {
+    return(NULL)
+  }
+  value %>%
+    str_split("&&") %>%
+    pluck(1) %>%
+    str_trim() %>%
+    str_remove("^\\(") %>%
+    str_remove("\\)$") %>%
+    str_trim()
+}
+
+# ref('sheet_alias', N)=='値' のような、field番号を明示して別シートを参照する条件式のパターン
+cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$"
+# fieldN==値(または fN==値) の形の条件式のパターン(同一シート内の別フィールド参照)
+and_field_ref_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$"
+
+# parse_and_clauses()で分割した1断片を種類ごとに分類する。対応する断片:
+#   - "STAT.blank?"/"STAT.present?"のような接尾辞述語 -> kind="predicate"
+#   - "ref('sheet_alias', N)=='値'"のような別シート参照 -> kind="cross_ref"
+#   - "fieldN=='値'"のような同一シート内の別フィールド参照 -> kind="field_ref"
+# どれにも一致しなければNULL(未対応)
+classify_and_clause <- function(clause) {
+  m_pred <- str_match(clause, presence_predicate_pattern)
+  if (!is.na(m_pred[1, 1])) {
+    return(list(kind = "predicate", suffix = m_pred[1, 2], predicate_type = m_pred[1, 3]))
+  }
+  m_ref <- str_match(clause, cross_ref_pattern)
+  if (!is.na(m_ref[1, 1])) {
+    return(list(
+      kind = "cross_ref",
+      ref_alias_name = m_ref[1, 2],
+      ref_field = str_c("field", m_ref[1, 3]),
+      value = coalesce(m_ref[1, 4], m_ref[1, 5])
+    ))
+  }
+  m_field <- str_match(clause, and_field_ref_pattern)
+  if (!is.na(m_field[1, 1])) {
+    return(list(kind = "field_ref", ref_field = str_c("field", m_field[1, 2]), value = coalesce(m_field[1, 3], m_field[1, 4])))
+  }
+  NULL
+}
+
+# value(例: (STAT.blank?) && (ref('registration', 4)=='F'))を"&&"で分割し、全断片が解釈できた場合、
+# 断片ごとの分類結果(classify_and_clauseの返り値)のリストを返す。
+# 1つでも解釈できない断片があればNULL(未対応)
+parse_and_conditions <- function(value) {
+  clauses <- parse_and_clauses(value)
+  if (is.null(clauses)) {
+    return(NULL)
+  }
+  parsed <- map(clauses, classify_and_clause)
+  if (any(map_lgl(parsed, is.null))) {
+    return(NULL)
+  }
+  parsed
+}
+
+# valueのどこかにref('sheet_alias', N)=='値'という断片が含まれていれば、その最初の1箇所を抽出する。
+# STAT.blank? && ((ORRES.blank? && ...) || (...))のような、ref()以外の部分がどれだけ複雑(入れ子のOR/AND)でも
+# 構造は解析せず、ref()部分の条件だけを取り出す簡易フォールバック用。見つからなければNULL
+cross_ref_pattern_loose <- "ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|([^\\s)]+))"
+
+extract_cross_ref_clause <- function(value) {
+  m <- str_match(value, cross_ref_pattern_loose)
+  if (is.na(m[1, 1])) {
+    return(NULL)
+  }
+  list(ref_alias_name = m[1, 2], ref_field = str_c("field", m[1, 3]), value = coalesce(m[1, 4], m[1, 5]))
+}
+
 # sheetsからvalidator_tableを組み立て、resolved_value/bound_type/ref_field/numeric_value/
 # presence_ref_field/presence_ref_valueまで付与した最終形を返す
 build_validator_table <- function(sheets) {
