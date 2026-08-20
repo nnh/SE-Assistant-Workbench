@@ -74,12 +74,13 @@ javascript: (function () {
       return;
     }
 
-    const fileId = document.URL.split("/").pop().split("?")[0];
-    if (!/^\d+$/.test(fileId)) {
+    const match = document.URL.match(/\/(file|folder)\/(\d+)/);
+    if (!match) {
       return;
     }
 
-    const isFolder = /folder/.test(document.URL);
+    const isFolder = match[1] === "folder";
+    const fileId = match[2];
     let fileName = null;
     let folderId = fileId;
 
