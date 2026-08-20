@@ -4,10 +4,13 @@ library(tidyverse)
 # presence_conditions, required_vars, numeric_bounds, field_ref_bounds
 build_generation_constraints <- function(validator_table, df_cdisc) {
   field_to_cdisc_variable <- df_cdisc %>% distinct(alias_name, field, cdisc_variable)
+  field_to_label <- df_cdisc %>% distinct(alias_name, field, label)
 
-  # validate_presence_if(例: field6=='Y')を、field名からcdisc_variable名に変換したうえで
-  # (cdisc_variable, ref_cdisc_variable, expected_value)のテーブルにする。
-  # ref_cdisc_variableの値がexpected_valueと一致しない場合、cdisc_variableは空白にする
+  # validate_presence_if(例: field22==2 || field22=='5<=')を、field名からcdisc_variable名に変換したうえで
+  # (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, expected_value)のテーブルにする。
+  # ref_alias_name/ref_labelは参照先フィールド(例: field22)自身が属するブロックを指す。
+  # RS(繰り返し項目)がSC(別labelの繰り返し項目)を参照するような場合、参照元自身のlabelではなく、
+  # この固定されたref_labelのレコードを見る必要があるため
   presence_conditions <- validator_table %>%
     filter(!is.na(presence_ref_field)) %>%
     distinct(alias_name, field_name, presence_ref_field, presence_ref_value) %>%
@@ -16,13 +19,18 @@ build_generation_constraints <- function(validator_table, df_cdisc) {
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
       by = c("alias_name", "presence_ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, expected_value = presence_ref_value, condition_type = "equals") %>%
+    left_join(
+      field_to_label %>% rename(ref_label = label),
+      by = c("alias_name", "presence_ref_field" = "field")
+    ) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
 
   # validate_presence_if/validate_formula_if(例: STAT.blank?、ORRES.present?)を
-  # "接尾辞.blank?"/"接尾辞.present?"形式として解釈する。同じcdisc_sheet_configsブロック(=同じprefix)内で
+  # "接尾辞.blank?"/"接尾辞.present?"形式として解釈する。同じcdisc_sheet_configsブロック(=同じlabel)内で
   # その接尾辞を持つcdisc_variable(例: FASTAT)が空白/非空白のときだけ値を設定する、という意味。
+  # ref_labelはNAのままにし、参照元自身のlabel(同じブロック)で突き合わせる
   # blank -> ref_cdisc_variableが""と一致する場合のみ設定(condition_type="equals")
   # present -> ref_cdisc_variableが空白でない場合のみ設定(condition_type="not_blank")
   field_to_prefix <- df_cdisc %>% distinct(alias_name, field, prefix)
@@ -33,10 +41,12 @@ build_generation_constraints <- function(validator_table, df_cdisc) {
     left_join(field_to_prefix, by = c("alias_name", "field_name" = "field")) %>%
     mutate(
       ref_cdisc_variable = str_c(prefix, presence_predicate_suffix),
+      ref_alias_name = alias_name,
+      ref_label = NA_character_,
       condition_type = if_else(presence_predicate_type == "blank", "equals", "not_blank"),
       expected_value = if_else(presence_predicate_type == "blank", "", NA_character_)
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, expected_value, condition_type) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, expected_value, condition_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)

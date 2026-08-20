@@ -14,6 +14,7 @@ source(here("build_validator_table.R"))
 source(here("build_cdisc_variable_values.R"))
 source(here("build_generation_constraints.R"))
 source(here("lb_reference_ranges.R"))
+source(here("tr_orres_values.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -62,10 +63,20 @@ ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, med
 ds <- finalize_ds_disposition(ds, death_date)
 discontinuation_date <- build_discontinuation_date_table(ds)
 
-# その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される
-other_domains <- build_other_domains(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
+# その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される。
+# 他ドメイン(DM/AE/DS含む)の変数を参照するpresence_conditions/field_ref_boundsがある場合は、
+# 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
+other_domains <- build_other_domains(
+  dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
+  built_domains = list(DM = dm, AE = ae, DS = ds)
+)
 
 # LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)
 if ("LB" %in% names(other_domains)) {
   other_domains[["LB"]] <- populate_lb_orres(other_domains[["LB"]])
+}
+
+# TRORRESはTRTESTCDがLDIAM/SDIAMのときだけそれらしい数値(mm)に置き換える(それ以外は変更しない)
+if ("TR" %in% names(other_domains)) {
+  other_domains[["TR"]] <- populate_tr_orres(other_domains[["TR"]])
 }

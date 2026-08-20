@@ -67,12 +67,13 @@ extract_ref_field <- function(validator_type, value) {
   if_else(validator_type == "date" & str_detect(value, "^field[0-9]+$"), value, NA_character_)
 }
 
-# value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N')を"||"で分割し、
-# 全断片が同一フィールドに対する fieldN=='値'(または fN=='値') の形であれば、
-# フィールド名と値の一覧を返す。異なるフィールドが混ざる場合やパースできない断片があればNULL(未対応)
+# value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field22==2 || field22=='5<=')を"||"で分割し、
+# 全断片が同一フィールドに対する fieldN==値(または fN==値) の形であれば、フィールド名と値の一覧を返す。
+# 値は 'X' のように引用符付きの場合と、2 のように引用符無しの数値/文字列の場合の両方に対応する。
+# 異なるフィールドが混ざる場合やパースできない断片があればNULL(未対応)
 parse_presence_or_conditions <- function(value) {
   fragments <- value %>% str_split("\\|\\|") %>% pluck(1) %>% str_trim()
-  m <- str_match(fragments, "^(?:field|f)([0-9]+)\\s*==\\s*'([^']*)'$")
+  m <- str_match(fragments, "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$")
   if (any(is.na(m[, 1]))) {
     return(NULL)
   }
@@ -80,7 +81,7 @@ parse_presence_or_conditions <- function(value) {
   if (length(field_nums) != 1) {
     return(NULL)
   }
-  list(field = str_c("field", field_nums), values = m[, 3])
+  list(field = str_c("field", field_nums), values = coalesce(m[, 3], m[, 4]))
 }
 
 # validator_type=="presence" & validator_key=="validate_presence_if"の場合、
