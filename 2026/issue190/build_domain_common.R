@@ -153,6 +153,46 @@ apply_field_ref_bounds <- function(data, spec, field_ref_bounds) {
   data
 }
 
+# age_bounds(cdisc_variable, ref_cdisc_variable, min_age, max_age)に基づき、
+# cdisc_variable(日付)をref_cdisc_variable(日付)からの経過年数がmin_age〜max_ageに収まるよう
+# 生成し直す(片方だけ、あるいは両方無い場合もある)。生成範囲はregistration_start_date〜今日にも収める。
+# ref_cdisc_variableがNA、またはcdisc_variableが既にNA(そのlabelに存在しない等)の行は変更しない
+apply_age_date_bounds <- function(data, age_bounds, registration_start_date) {
+  if (is.null(age_bounds) || nrow(age_bounds) == 0) {
+    return(data)
+  }
+  applicable <- age_bounds %>%
+    filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
+
+  for (i in seq_len(nrow(applicable))) {
+    var_name <- applicable[["cdisc_variable"]][i]
+    ref_var <- applicable[["ref_cdisc_variable"]][i]
+    min_age <- applicable[["min_age"]][i]
+    max_age <- applicable[["max_age"]][i]
+
+    ref_dates <- as.Date(data[[ref_var]])
+    raw_lower <- if (!is.na(min_age)) ref_dates + round(min_age * 365.25) else as.Date(registration_start_date)
+    raw_upper <- if (!is.na(max_age)) ref_dates + round(max_age * 365.25) else Sys.Date()
+
+    # registration_start_date〜今日でクランプすると逆転してしまう行(高齢のため年齢条件と
+    # 登録期間が両立しない等)は、年齢条件を優先してクランプせずそのまま使う
+    lower <- pmax(raw_lower, as.Date(registration_start_date))
+    upper <- pmin(raw_upper, Sys.Date())
+    invalid <- lower > upper
+    lower[invalid] <- raw_lower[invalid]
+    upper[invalid] <- raw_upper[invalid]
+    upper <- pmax(upper, lower)
+
+    current <- data[[var_name]]
+    target <- !is.na(current) & !is.na(ref_dates)
+    if (any(target)) {
+      new_dates <- as.Date(runif(sum(target), as.numeric(lower[target]), as.numeric(upper[target])), origin = "1970-01-01")
+      data[[var_name]][target] <- new_dates
+    }
+  }
+  data
+}
+
 # cdisc_variable_valuesから、cdisc_variable名 -> prefix の対応表を作る
 build_cdisc_variable_to_prefix <- function(cdisc_variable_values) {
   cdisc_variable_values %>% distinct(cdisc_variable, prefix)
@@ -160,10 +200,14 @@ build_cdisc_variable_to_prefix <- function(cdisc_variable_values) {
 
 # presence_conditions/field_ref_boundsのうち、cdisc_variableとref_cdisc_variableのprefixが異なる
 # (=ドメインをまたぐ参照)行から、(from, to)の依存エッジ一覧を作る。fromはtoに依存する(toを先に生成する必要がある)
-build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix) {
+build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds = NULL) {
+  if (is.null(age_bounds)) {
+    age_bounds <- tibble(cdisc_variable = character(0), ref_cdisc_variable = character(0))
+  }
   bind_rows(
     presence_conditions %>% select(cdisc_variable, ref_cdisc_variable),
-    field_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable)
+    field_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable),
+    age_bounds %>% select(cdisc_variable, ref_cdisc_variable)
   ) %>%
     distinct() %>%
     left_join(cdisc_variable_to_prefix, by = "cdisc_variable") %>%
@@ -200,13 +244,17 @@ topo_sort_prefixes <- function(prefixes, edges) {
 # 無指定(NA)の場合は、両者がalias_name/labelを持てばそれも突き合わせキーにする(同じブロック内の参照)。
 # どちらの情報も無ければUSUBJIDのみで結合する(参照元に複数レコードあると最初の1件を使う)。
 # 戻り値はlist(data=結合後のdata, injected_cols=このために追加した列名)
-inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix) {
+inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL) {
   if (is.null(field_ref_bounds)) {
     field_ref_bounds <- tibble(ref_cdisc_variable = character(0))
   }
+  if (is.null(age_bounds)) {
+    age_bounds <- tibble(ref_cdisc_variable = character(0))
+  }
   ref_instances <- bind_rows(
     presence_conditions %>% select(any_of(c("ref_cdisc_variable", "ref_alias_name", "ref_label"))),
-    field_ref_bounds %>% select(any_of("ref_cdisc_variable"))
+    field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
+    age_bounds %>% select(any_of(c("ref_cdisc_variable", "ref_alias_name", "ref_label")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
     distinct(ref_cdisc_variable, .keep_all = TRUE)
@@ -331,13 +379,16 @@ domain_front_cols <- function(prefix) {
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。USUBJIDごとに1レコード作り、
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_nameをそのまま付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL) {
-  # presence_conditions/field_ref_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL) {
+  # presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
   presence_conditions <- presence_conditions %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
   if (!is.null(field_ref_bounds)) {
     field_ref_bounds <- field_ref_bounds %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
+  }
+  if (!is.null(age_bounds)) {
+    age_bounds <- age_bounds %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
   }
 
   data <- dm %>% select(USUBJID, STUDYID)
@@ -367,12 +418,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     }
   }
 
-  # presence_conditions/field_ref_boundsが他ドメインの変数を参照している場合、
+  # presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   # built_domains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
-  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix)
+  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
     apply_field_ref_bounds(spec, field_ref_bounds) %>%
+    apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
   data %>%
@@ -382,11 +434,14 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL) {
-  # presence_conditionsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL) {
+  # presence_conditions/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
   presence_conditions <- presence_conditions %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
+  if (!is.null(age_bounds)) {
+    age_bounds <- age_bounds %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
+  }
 
   repeat_units <- spec %>% distinct(alias_name, label) %>% filter(!is.na(label))
 
@@ -469,11 +524,12 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
     }
   }
 
-  # presence_conditionsが他ドメインの変数を参照している場合、built_domainsから値を結合してから適用し、
+  # presence_conditions/age_boundsが他ドメインの変数を参照している場合、built_domainsから値を結合してから適用し、
   # 結合用に追加した列は最後に外す(alias_name/labelが揃っている場合はそれも突き合わせキーに使う)
-  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix)
+  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
+    apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
   # alias_name/labelはここでは落とさない(他ドメインからの参照で突き合わせキーとして使うため)。
@@ -502,11 +558,11 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list()) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
-  edges <- build_cross_prefix_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix)
+  edges <- build_cross_prefix_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds)
   ordered_prefixes <- topo_sort_prefixes(prefixes, edges)
 
   for (px in ordered_prefixes) {
@@ -515,13 +571,13 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
       build_repeated_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars,
         add_coding_block = px %in% coding_block_prefixes,
-        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix
+        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds
       )
     } else {
       build_generic_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
         add_coding_block = px %in% coding_block_prefixes,
-        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix
+        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds
       )
     }
   }

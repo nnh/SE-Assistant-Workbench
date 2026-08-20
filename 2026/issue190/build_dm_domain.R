@@ -19,7 +19,7 @@ build_dm_domain <- function(n = 100) {
   dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM)
 }
 
-populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
+populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, age_bounds = NULL) {
   dm_spec <- cdisc_variable_values %>% filter(prefix == "DM")
   target_vars <- compute_target_vars(dm, dm_spec)
 
@@ -36,5 +36,6 @@ populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_dat
 
   dm %>%
     apply_presence_conditions(presence_conditions) %>%
-    apply_field_ref_bounds(dm_spec, field_ref_bounds)
+    apply_field_ref_bounds(dm_spec, field_ref_bounds) %>%
+    apply_age_date_bounds(age_bounds, registration_start_date)
 }

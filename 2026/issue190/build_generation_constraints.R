@@ -115,10 +115,29 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     transmute(cdisc_variable, ref_cdisc_variable, bound_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
+  # age(fN, fM)>=X && age(fN, fM)<=Y のような年齢条件を、field名からcdisc_variable名に変換し、
+  # (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, min_age, max_age)のテーブルにする。
+  # cdisc_variableは年齢制約を受ける側の日付(例: RFICDTC)、ref_cdisc_variableはもう一方の日付(例: BRTHDTC)
+  age_bounds <- validator_table %>%
+    filter(!is.na(age_ref_field)) %>%
+    distinct(alias_name, field_name, age_ref_field, min_age, max_age) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(
+      field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
+      by = c("alias_name", "age_ref_field" = "field")
+    ) %>%
+    left_join(
+      field_to_label %>% rename(ref_label = label),
+      by = c("alias_name", "age_ref_field" = "field")
+    ) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, min_age, max_age) %>%
+    filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
+
   list(
     presence_conditions = presence_conditions,
     required_vars = required_vars,
     numeric_bounds = numeric_bounds,
-    field_ref_bounds = field_ref_bounds
+    field_ref_bounds = field_ref_bounds,
+    age_bounds = age_bounds
   )
 }

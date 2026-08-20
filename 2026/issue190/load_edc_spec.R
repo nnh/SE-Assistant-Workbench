@@ -19,8 +19,8 @@ source(here("tr_orres_values.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
-json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
-#json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_Bev-FOLFOX-SBC/Bev-FOLFOX-SBC_250929_1501.json'
+#json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
+json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_Bev-FOLFOX-SBC/Bev-FOLFOX-SBC_250929_1501.json'
 edc_spec <- jsonlite::read_json(json_path)
 sheets <- edc_spec[["sheets"]]
 sheet_groups <- edc_spec[["sheet_groups"]]
@@ -48,13 +48,14 @@ presence_conditions <- constraints[["presence_conditions"]]
 required_vars <- constraints[["required_vars"]]
 numeric_bounds <- constraints[["numeric_bounds"]]
 field_ref_bounds <- constraints[["field_ref_bounds"]]
+age_bounds <- constraints[["age_bounds"]]
 
 # MedDRA
 meddra <- build_meddra_hierarchy()
 
 # DM
 dm <- build_dm_domain(n = registration_n)
-dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
+dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
 ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
@@ -70,7 +71,7 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
 other_domains <- build_other_domains(
   dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
-  built_domains = list(DM = dm, AE = ae, DS = ds)
+  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds
 )
 
 # LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)

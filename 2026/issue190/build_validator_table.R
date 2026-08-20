@@ -183,6 +183,59 @@ classify_formula_field_ref_bound_type <- function(validator_type, validator_key,
   if_else(is_target, bound_type, NA_character_)
 }
 
+# value(例: age(f2, f3)>=20 && age(f2, f3)<=80)を"&&"で分割し、全断片が同じ2フィールドに対する
+# age(fN, fM)>=数値 / age(fN, fM)<=数値 の形であれば、2つのフィールド名と下限/上限(どちらか無くてもよい)を返す。
+# 断片の解釈に失敗した場合や、2フィールドの組み合わせが断片間で一致しない場合はNULL(未対応)
+age_condition_pattern <- "^age\\(\\s*f([0-9]+)\\s*,\\s*f([0-9]+)\\s*\\)\\s*(>=|<=)\\s*([0-9]+(?:\\.[0-9]+)?)$"
+
+parse_age_condition <- function(value) {
+  clauses <- value %>% str_split("&&") %>% pluck(1) %>% str_trim()
+  m <- str_match(clauses, age_condition_pattern)
+  if (any(is.na(m[, 1]))) {
+    return(NULL)
+  }
+  field_pairs <- unique(str_c(m[, 2], "-", m[, 3]))
+  if (length(field_pairs) != 1) {
+    return(NULL)
+  }
+  min_age <- suppressWarnings(as.numeric(m[m[, 4] == ">=", 5]))
+  max_age <- suppressWarnings(as.numeric(m[m[, 4] == "<=", 5]))
+  list(
+    field1 = str_c("field", m[1, 2]),
+    field2 = str_c("field", m[1, 3]),
+    min_age = if (length(min_age) > 0) min_age[1] else NA_real_,
+    max_age = if (length(max_age) > 0) max_age[1] else NA_real_
+  )
+}
+
+# validator_type=="formula" & validator_key=="validate_formula_if"の場合、
+# 上記のage()条件から、自分自身(field_name)以外のもう一方のフィールド(参照先の日付)と下限/上限年齢を取り出す。
+# field_nameがage()の2引数のどちらとも一致しない場合はNULL(未対応)
+extract_age_condition <- function(field_name, validator_type, validator_key, value) {
+  is_target <- coalesce(validator_key == "validate_formula_if", FALSE)
+  pmap_dfr(list(is_target, field_name, value), function(target, fn, v) {
+    empty <- tibble(age_ref_field = NA_character_, min_age = NA_real_, max_age = NA_real_)
+    if (!target) {
+      return(empty)
+    }
+    parsed <- parse_age_condition(v)
+    if (is.null(parsed)) {
+      return(empty)
+    }
+    other_field <- if (parsed[["field1"]] == fn) {
+      parsed[["field2"]]
+    } else if (parsed[["field2"]] == fn) {
+      parsed[["field1"]]
+    } else {
+      NA_character_
+    }
+    if (is.na(other_field)) {
+      return(empty)
+    }
+    tibble(age_ref_field = other_field, min_age = parsed[["min_age"]], max_age = parsed[["max_age"]])
+  })
+}
+
 # sheetsからvalidator_tableを組み立て、resolved_value/bound_type/ref_field/numeric_value/
 # presence_ref_field/presence_ref_valueまで付与した最終形を返す
 build_validator_table <- function(sheets) {
@@ -207,5 +260,6 @@ build_validator_table <- function(sheets) {
       presence_ref_value = extract_presence_ref_value(validator_type, validator_key, value),
       presence_predicate_suffix = extract_presence_predicate_suffix(validator_key, value),
       presence_predicate_type = extract_presence_predicate_type(validator_key, value)
-    )
+    ) %>%
+    bind_cols(extract_age_condition(.[["field_name"]], .[["validator_type"]], .[["validator_key"]], .[["value"]]))
 }
