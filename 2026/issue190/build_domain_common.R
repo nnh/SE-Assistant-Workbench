@@ -70,6 +70,8 @@ populate_dummy_fields <- function(data, target_vars) {
 # 日付型など列の型を問わず安全に適用できる。
 # condition_type=="equals": ref_cdisc_variableの値がexpected_value(複数行ならOR)と一致しない場合NAにする
 # condition_type=="not_blank": ref_cdisc_variableが空白/NAの場合NAにする(expected_valueは使わない)
+# condition_type=="copy": cdisc_variableの値をref_cdisc_variableの値でそのまま上書きする
+# (FieldItem::Referenceのような「他フィールドの値をそのまま使う」項目向け)
 apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
     filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
@@ -94,6 +96,15 @@ apply_presence_conditions <- function(data, presence_conditions) {
     ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
     mismatch <- is.na(data[[ref_var]]) | data[[ref_var]] == ""
     data[[var_name]][mismatch] <- NA
+  }
+
+  copy_conditions <- applicable %>%
+    filter(condition_type == "copy") %>%
+    distinct(cdisc_variable, ref_cdisc_variable)
+  for (i in seq_len(nrow(copy_conditions))) {
+    var_name <- copy_conditions[["cdisc_variable"]][i]
+    ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
+    data[[var_name]] <- data[[ref_var]]
   }
 
   data

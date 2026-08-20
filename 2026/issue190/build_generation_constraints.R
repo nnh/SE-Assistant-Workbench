@@ -2,7 +2,7 @@ library(tidyverse)
 
 # validator_table + df_cdiscから、ダミーデータ生成で使う制約テーブル一式を組み立てて返す:
 # presence_conditions, required_vars, numeric_bounds, field_ref_bounds
-build_generation_constraints <- function(validator_table, df_cdisc) {
+build_generation_constraints <- function(validator_table, df_cdisc, field_reference_table = NULL) {
   field_to_cdisc_variable <- df_cdisc %>% distinct(alias_name, field, cdisc_variable)
   field_to_label <- df_cdisc %>% distinct(alias_name, field, label)
 
@@ -50,6 +50,27 @@ build_generation_constraints <- function(validator_table, df_cdisc) {
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
+
+  # FieldItem::Reference(同じシート内の別フィールドの値をそのまま使うフィールド)を、
+  # condition_type="copy"のpresence_conditions行として追加する。
+  # reference_type=="sheet"(同じシート内参照)のみ対応。それ以外は未対応のためスキップする
+  if (!is.null(field_reference_table) && nrow(field_reference_table) > 0) {
+    field_copy_conditions <- field_reference_table %>%
+      filter(reference_type == "sheet") %>%
+      left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+      left_join(
+        field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
+        by = c("alias_name", "reference_field" = "field")
+      ) %>%
+      left_join(
+        field_to_label %>% rename(ref_label = label),
+        by = c("alias_name", "reference_field" = "field")
+      ) %>%
+      transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+      filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
+
+    presence_conditions <- bind_rows(presence_conditions, field_copy_conditions)
+  }
 
   # validator_type=="presence"のレコードを持つcdisc_variable(必須項目)の一覧。
   # ここに含まれないradio_button項目は空白も選択肢として許容する

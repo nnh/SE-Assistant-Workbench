@@ -13,6 +13,7 @@ source(here("build_ds_domain.R"))
 source(here("build_validator_table.R"))
 source(here("build_cdisc_variable_values.R"))
 source(here("build_generation_constraints.R"))
+source(here("build_field_reference_table.R"))
 source(here("lb_reference_ranges.R"))
 source(here("tr_orres_values.R"))
 registration_n <- 100
@@ -40,8 +41,9 @@ df_cdisc <- cdisc[["df_cdisc"]]
 cdisc_variable_values <- cdisc[["cdisc_variable_values"]]
 
 validator_table <- build_validator_table(sheets)
+field_reference_table <- build_field_reference_table(sheets)
 
-constraints <- build_generation_constraints(validator_table, df_cdisc)
+constraints <- build_generation_constraints(validator_table, df_cdisc, field_reference_table)
 presence_conditions <- constraints[["presence_conditions"]]
 required_vars <- constraints[["required_vars"]]
 numeric_bounds <- constraints[["numeric_bounds"]]
