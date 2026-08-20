@@ -20,6 +20,21 @@ build_generation_constraints <- function(validator_table, df_cdisc) {
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
 
+  # validate_presence_if(例: STAT.blank?)を、"接尾辞.blank?"形式として解釈する。
+  # 同じcdisc_sheet_configsブロック(=同じprefix)内でその接尾辞を持つcdisc_variable(例: FASTAT)が
+  # 空白のときだけ値を設定する、という意味なので expected_value="" として扱う
+  field_to_prefix <- df_cdisc %>% distinct(alias_name, field, prefix)
+  presence_blank_conditions <- validator_table %>%
+    filter(!is.na(presence_blank_suffix)) %>%
+    distinct(alias_name, field_name, presence_blank_suffix) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_prefix, by = c("alias_name", "field_name" = "field")) %>%
+    mutate(ref_cdisc_variable = str_c(prefix, presence_blank_suffix), expected_value = "") %>%
+    transmute(cdisc_variable, ref_cdisc_variable, expected_value) %>%
+    filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
+
+  presence_conditions <- bind_rows(presence_conditions, presence_blank_conditions)
+
   # validator_type=="presence"のレコードを持つcdisc_variable(必須項目)の一覧。
   # ここに含まれないradio_button項目は空白も選択肢として許容する
   required_vars <- validator_table %>%

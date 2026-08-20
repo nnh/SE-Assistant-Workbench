@@ -245,8 +245,8 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
-# 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/dummyの基本パターンのみ対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, required_vars = character(0)) {
+# 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0)) {
   repeat_units <- spec %>% distinct(alias_name, label) %>% filter(!is.na(label))
 
   data <- dm %>%
@@ -269,6 +269,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, req
       group_by(alias_name, label) %>%
       summarise(
         field_type = first(field_type),
+        default_value = first(default_value),
         codes = list(unique(ifelse(is.na(code), default_value, code))),
         is_invisible_any = any(is_invisible, na.rm = TRUE),
         .groups = "drop"
@@ -292,15 +293,24 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, req
           if (length(cs) > 0) sample(cs, nn, replace = TRUE) else rep(NA_character_, nn)
         } else if (ft == "date") {
           as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
+        } else if (ft == "meddra") {
+          dv <- default_value[1]
+          if (!is.na(dv) && str_detect(dv, "^[0-9]{8}$")) {
+            llt_name <- meddra %>% filter(llt_code == dv) %>% pull(llt_name) %>% unique()
+            rep(llt_name[1], nn)
+          } else {
+            sample_meddra_rows(meddra, nn)[["llt_name"]]
+          }
         } else {
           rep("DUMMY", nn)
         }
       }) %>%
       ungroup() %>%
-      select(-field_type, -codes, -is_invisible_any)
+      select(-field_type, -default_value, -codes, -is_invisible_any)
   }
 
   data %>%
+    apply_presence_conditions(presence_conditions) %>%
     select(-alias_name, -label) %>%
     add_seq(str_c(prefix, "SEQ")) %>%
     reorder_domain_columns(front_cols = domain_front_cols(prefix))
@@ -329,7 +339,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
     map(function(px) {
       spec <- cdisc_variable_values %>% filter(prefix == px)
       if (px %in% repeated_prefixes || has_repeated_labels(spec)) {
-        build_repeated_domain(dm, spec, px, registration_start_date, required_vars)
+        build_repeated_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars)
       } else {
         build_generic_domain(dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, add_coding_block = px %in% coding_block_prefixes)
       }

@@ -61,7 +61,5 @@ ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, med
 ds <- finalize_ds_disposition(ds, death_date)
 discontinuation_date <- build_discontinuation_date_table(ds)
 
-
-source(here("profile_other_domains.R"))
 # その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される
 other_domains <- build_other_domains(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)

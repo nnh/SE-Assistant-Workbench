@@ -57,7 +57,9 @@ build_meddra_hierarchy <- function(target_subfolder = NULL) {
   colnames(hlt_en) <- c("hlt_code", "hlt_name")
   hlt_ja <- meddra_data$hlt_j.asc %>% select("X1", "X2", "X3")
   colnames(hlt_ja) <- c("hlt_code", "hlt_name_j", "hlt_kana")
-  hlt <- hlt_en %>% inner_join(hlt_ja, by = "hlt_code") %>% inner_join(hlgt_hlt_map, by = "hlt_code")
+  hlt <- hlt_en %>%
+    inner_join(hlt_ja, by = "hlt_code") %>%
+    inner_join(hlgt_hlt_map, by = "hlt_code")
 
   soc_hlgt_hlt <- soc_hlgt %>% inner_join(hlt, by = "hlgt_code", relationship = "many-to-many")
 
@@ -68,7 +70,9 @@ build_meddra_hierarchy <- function(target_subfolder = NULL) {
   colnames(pt_en) <- c("pt_code", "pt_name", "pt_soc_code")
   pt_ja <- meddra_data$pt_j.asc %>% select("X1", "X2", "X3")
   colnames(pt_ja) <- c("pt_code", "pt_name_j", "pt_kana")
-  pt <- pt_en %>% inner_join(pt_ja, by = "pt_code") %>% inner_join(hlt_pt_map, by = "pt_code")
+  pt <- pt_en %>%
+    inner_join(pt_ja, by = "pt_code") %>%
+    inner_join(hlt_pt_map, by = "pt_code")
 
   soc_pt_hlgt_hlt <- soc_hlgt_hlt %>% inner_join(pt, by = "hlt_code", relationship = "many-to-many")
 
@@ -78,9 +82,9 @@ build_meddra_hierarchy <- function(target_subfolder = NULL) {
   llt_ja <- meddra_data$llt_j.asc %>% select("X1", "X2", "X3", "X4")
   colnames(llt_ja) <- c("llt_code", "llt_name_j", "llt_jcurr", "llt_kana")
   llt <- llt_en %>%
-    inner_join(llt_ja, by = "llt_code") %>%
-    filter(llt_currency == "Y" & llt_jcurr == "Y") %>%
-    select(-llt_currency, -llt_jcurr)
+    inner_join(llt_ja, by = "llt_code") # %>%
+  # filter(llt_currency == "Y" & llt_jcurr == "Y") %>%
+  # select(-llt_currency, -llt_jcurr)
 
   soc_pt_llt_hlgt_hlt <- soc_pt_hlgt_hlt %>% inner_join(llt, by = "pt_code", relationship = "many-to-many")
 
