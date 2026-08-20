@@ -67,13 +67,14 @@ extract_ref_field <- function(validator_type, value) {
   if_else(validator_type == "date" & str_detect(value, "^field[0-9]+$"), value, NA_character_)
 }
 
-# value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field22==2 || field22=='5<=')を"||"で分割し、
-# 全断片が同一フィールドに対する fieldN==値(または fN==値) の形であれば、フィールド名と値の一覧を返す。
-# 値は 'X' のように引用符付きの場合と、2 のように引用符無しの数値/文字列の場合の両方に対応する。
+# value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field22==2 || field22=='5<='、field6=="Y")を
+# "||"で分割し、全断片が同一フィールドに対する fieldN==値(または fN==値) の形であれば、
+# フィールド名と値の一覧を返す。値は'X'/"X"のように引用符(シングル・ダブルどちらも)付きの場合と、
+# 2 のように引用符無しの数値/文字列の場合の両方に対応する。
 # 異なるフィールドが混ざる場合やパースできない断片があればNULL(未対応)
 parse_presence_or_conditions <- function(value) {
   fragments <- value %>% str_split("\\|\\|") %>% pluck(1) %>% str_trim()
-  m <- str_match(fragments, "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$")
+  m <- str_match(fragments, "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s]+))$")
   if (any(is.na(m[, 1]))) {
     return(NULL)
   }
@@ -81,7 +82,7 @@ parse_presence_or_conditions <- function(value) {
   if (length(field_nums) != 1) {
     return(NULL)
   }
-  list(field = str_c("field", field_nums), values = coalesce(m[, 3], m[, 4]))
+  list(field = str_c("field", field_nums), values = coalesce(m[, 3], m[, 4], m[, 5]))
 }
 
 # validator_type=="presence" & validator_key=="validate_presence_if"の場合、
@@ -251,10 +252,13 @@ parse_and_clauses <- function(value) {
     str_trim()
 }
 
-# ref('sheet_alias', N)=='値' のような、field番号を明示して別シートを参照する条件式のパターン
-cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$"
-# fieldN==値(または fN==値) の形の条件式のパターン(同一シート内の別フィールド参照)
-and_field_ref_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|([^\\s]+))$"
+# ref('sheet_alias', N)=='値' のような、field番号を明示して別シートを参照する条件式のパターン。
+# 値側は 'X'/"X" のようにシングル・ダブルどちらの引用符付きにも対応し、引用符無しの場合は
+# ||や&&・カッコを含まない単純なリテラルのみを対象とする
+# (f6=='Y'&&(f7=='Y'||f8=='Y'||...)のような複合式の断片を誤って値として飲み込まないようにするため)
+cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s|&()]+))$"
+# fieldN==値(または fN==値) の形の条件式のパターン(同一シート内の別フィールド参照)。値側の制約は上記と同様
+and_field_ref_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s|&()]+))$"
 
 # parse_and_clauses()で分割した1断片を種類ごとに分類する。対応する断片:
 #   - "STAT.blank?"/"STAT.present?"のような接尾辞述語 -> kind="predicate"
@@ -272,12 +276,12 @@ classify_and_clause <- function(clause) {
       kind = "cross_ref",
       ref_alias_name = m_ref[1, 2],
       ref_field = str_c("field", m_ref[1, 3]),
-      value = coalesce(m_ref[1, 4], m_ref[1, 5])
+      value = coalesce(m_ref[1, 4], m_ref[1, 5], m_ref[1, 6])
     ))
   }
   m_field <- str_match(clause, and_field_ref_pattern)
   if (!is.na(m_field[1, 1])) {
-    return(list(kind = "field_ref", ref_field = str_c("field", m_field[1, 2]), value = coalesce(m_field[1, 3], m_field[1, 4])))
+    return(list(kind = "field_ref", ref_field = str_c("field", m_field[1, 2]), value = coalesce(m_field[1, 3], m_field[1, 4], m_field[1, 5])))
   }
   NULL
 }
@@ -300,14 +304,14 @@ parse_and_conditions <- function(value) {
 # valueのどこかにref('sheet_alias', N)=='値'という断片が含まれていれば、その最初の1箇所を抽出する。
 # STAT.blank? && ((ORRES.blank? && ...) || (...))のような、ref()以外の部分がどれだけ複雑(入れ子のOR/AND)でも
 # 構造は解析せず、ref()部分の条件だけを取り出す簡易フォールバック用。見つからなければNULL
-cross_ref_pattern_loose <- "ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|([^\\s)]+))"
+cross_ref_pattern_loose <- "ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s|&()]+))"
 
 extract_cross_ref_clause <- function(value) {
   m <- str_match(value, cross_ref_pattern_loose)
   if (is.na(m[1, 1])) {
     return(NULL)
   }
-  list(ref_alias_name = m[1, 2], ref_field = str_c("field", m[1, 3]), value = coalesce(m[1, 4], m[1, 5]))
+  list(ref_alias_name = m[1, 2], ref_field = str_c("field", m[1, 3]), value = coalesce(m[1, 4], m[1, 5], m[1, 6]))
 }
 
 # sheetsからvalidator_tableを組み立て、resolved_value/bound_type/ref_field/numeric_value/

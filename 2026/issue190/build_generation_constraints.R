@@ -106,7 +106,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             )
           } else if (clause[["kind"]] == "field_ref") {
             ref_var <- field_to_cdisc_variable %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(cdisc_variable) %>% unname()
-            if (length(ref_var) == 0) return(tibble())
+            if (length(ref_var) == 0 || ref_var[1] == cdisc_variable) return(tibble())
             ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
             tibble(
               cdisc_variable = cdisc_variable,

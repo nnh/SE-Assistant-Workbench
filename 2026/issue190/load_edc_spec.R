@@ -54,7 +54,7 @@ age_bounds <- constraints[["age_bounds"]]
 meddra <- build_meddra_hierarchy()
 
 # DM
-dm <- build_dm_domain(n = registration_n)
+dm <- build_dm_domain(sheets, n = registration_n)
 dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
@@ -65,6 +65,7 @@ ds <- build_ds_domain(dm, cdisc_variable_values)
 ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
 ds <- finalize_ds_disposition(ds, death_date)
 discontinuation_date <- build_discontinuation_date_table(ds)
+ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 
 # その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される。
 # 他ドメイン(DM/AE/DS含む)の変数を参照するpresence_conditions/field_ref_boundsがある場合は、

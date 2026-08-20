@@ -5,7 +5,25 @@ source(here("constant.R"))
 source(here("generate_brthdtc.R"))
 source(here("build_domain_common.R"))
 
-build_dm_domain <- function(n = 100) {
+# sheetsの中にcategory=="allocation"の要素があれば、その$allocation$groupsのlabel一覧を返す(群あり)。
+# 無ければNULL(単群)
+extract_allocation_arm_labels <- function(sheets) {
+  allocation_sheets <- sheets %>% keep(~ identical(.x[["category"]], "allocation"))
+  if (length(allocation_sheets) == 0) {
+    return(NULL)
+  }
+  labels <- allocation_sheets %>%
+    map(~ .x[["allocation"]][["groups"]]) %>%
+    flatten() %>%
+    map_chr(~ .x[["label"]]) %>%
+    unique()
+  if (length(labels) == 0) {
+    return(NULL)
+  }
+  labels
+}
+
+build_dm_domain <- function(sheets, n = 100) {
   dm <- tibble(
     SITEID = sample(dummy_site$SITEID, n, replace = TRUE),
     SUBJID = str_pad(1:n, width = 4, pad = "0")
@@ -14,7 +32,9 @@ build_dm_domain <- function(n = 100) {
   dm[["DOMAIN"]] <- "DM"
   dm[["USUBJID"]] <- str_c(dm[["STUDYID"]], dm[["SUBJID"]], sep = "-")
   dm <- generate_brthdtc(dm, var_name = "BRTHDTC")
-  dm[["ARM"]] <- ""
+
+  arm_labels <- extract_allocation_arm_labels(sheets)
+  dm[["ARM"]] <- if (is.null(arm_labels)) "" else sample(arm_labels, n, replace = TRUE)
 
   dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM)
 }
