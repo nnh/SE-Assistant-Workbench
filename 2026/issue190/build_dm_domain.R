@@ -14,7 +14,7 @@ extract_allocation_arm_labels <- function(sheets) {
   }
   labels <- allocation_sheets %>%
     map(~ .x[["allocation"]][["groups"]]) %>%
-    flatten() %>%
+    unlist(recursive = FALSE) %>%
     map_chr(~ .x[["label"]]) %>%
     unique()
   if (length(labels) == 0) {

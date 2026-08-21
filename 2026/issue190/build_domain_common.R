@@ -376,10 +376,28 @@ domain_front_cols <- function(prefix) {
   c("STUDYID", "DOMAIN", "USUBJID", str_c(prefix, "SEQ"), str_c(prefix, "SPID"))
 }
 
-# DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。USUBJIDごとに1レコード作り、
+# alias_nameがmulti_record_alias_names(sheetsのcategoryが"ae_report"または"multiple"のalias_name一覧)に
+# 該当する行だけ、AEドメインと同じ形式(alias_name + USUBJID内の連番、例: concomitant_drug1)でSPIDを
+# 付与し直す。該当しない行のSPIDは変更しない
+apply_multi_record_spid <- function(data, spid_var, multi_record_alias_names) {
+  if (length(multi_record_alias_names) == 0 || !("alias_name" %in% colnames(data))) {
+    return(data)
+  }
+  # USUBJID×alias_nameでグループ化することで、連番はalias_nameごとに独立してリセットされる
+  # (対象のalias_nameが複数あっても互いに混ざらない)
+  data %>%
+    group_by(USUBJID, alias_name) %>%
+    mutate(!!spid_var := if (alias_name[1] %in% multi_record_alias_names) str_c(alias_name, row_number()) else .data[[spid_var]]) %>%
+    ungroup()
+}
+
+# DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
+# alias_nameがmulti_record_alias_namesに該当しない場合はUSUBJIDごとに1レコード、
+# 該当する場合(AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、
+# 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
-# prefixSPID(例: CMSPID)にalias_nameをそのまま付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL) {
+# prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0)) {
   # presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -391,12 +409,30 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     age_bounds <- age_bounds %>% filter(cdisc_variable %in% spec[["cdisc_variable"]])
   }
 
-  data <- dm %>% select(USUBJID, STUDYID)
+  alias_names <- spec[["alias_name"]] %>% unique()
+  single_alias_names <- setdiff(alias_names, multi_record_alias_names)
+  multi_alias_names <- intersect(alias_names, multi_record_alias_names)
+
+  single_rows <- if (length(single_alias_names) > 0) {
+    tibble(USUBJID = dm[["USUBJID"]], alias_name = sample(single_alias_names, size = nrow(dm), replace = TRUE))
+  } else {
+    tibble(USUBJID = character(0), alias_name = character(0))
+  }
+
+  multi_rows <- if (length(multi_alias_names) > 0) {
+    multi_alias_names %>%
+      map_dfr(~ tibble(USUBJID = sample(dm[["USUBJID"]], size = nrow(dm), replace = TRUE), alias_name = .x))
+  } else {
+    tibble(USUBJID = character(0), alias_name = character(0))
+  }
+
+  data <- bind_rows(single_rows, multi_rows) %>%
+    left_join(dm %>% select(USUBJID, STUDYID), by = "USUBJID")
   data[["DOMAIN"]] <- prefix
 
-  alias_names <- spec[["alias_name"]] %>% unique()
   spid_var <- str_c(prefix, "SPID")
-  data[[spid_var]] <- sample(alias_names, size = nrow(data), replace = TRUE)
+  data[[spid_var]] <- data[["alias_name"]]
+  data <- data %>% apply_multi_record_spid(spid_var, multi_record_alias_names) %>% select(-alias_name)
 
   target_vars <- compute_target_vars(data, spec)
   seq_var <- str_c(prefix, "SEQ")
@@ -434,7 +470,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0)) {
   # presence_conditions/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -452,6 +488,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   spid_var <- str_c(prefix, "SPID")
   data[[spid_var]] <- data[["alias_name"]]
+  data <- data %>% apply_multi_record_spid(spid_var, multi_record_alias_names)
 
   target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
 
@@ -558,7 +595,7 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0)) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
@@ -571,13 +608,15 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
       build_repeated_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars,
         add_coding_block = px %in% coding_block_prefixes,
-        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds
+        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
+        multi_record_alias_names = multi_record_alias_names
       )
     } else {
       build_generic_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
         add_coding_block = px %in% coding_block_prefixes,
-        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds
+        built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
+        multi_record_alias_names = multi_record_alias_names
       )
     }
   }

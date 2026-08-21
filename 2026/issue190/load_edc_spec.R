@@ -16,6 +16,7 @@ source(here("build_generation_constraints.R"))
 source(here("build_field_reference_table.R"))
 source(here("lb_reference_ranges.R"))
 source(here("tr_orres_values.R"))
+source(here("read_who_drug_idf.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 
@@ -43,6 +44,12 @@ cdisc_variable_values <- cdisc[["cdisc_variable_values"]]
 validator_table <- build_validator_table(sheets)
 field_reference_table <- build_field_reference_table(sheets)
 
+# sheetsのcategoryが"ae_report"または"multiple"のalias_name一覧。
+# 該当するドメインのSPIDはAEドメインと同じ形式(alias_name + USUBJID内の連番)にする
+multi_record_alias_names <- sheets %>%
+  keep(~ !is.null(.x[["category"]]) && .x[["category"]] %in% c("ae_report", "multiple")) %>%
+  map_chr(~ .x[["alias_name"]])
+
 constraints <- build_generation_constraints(validator_table, df_cdisc, field_reference_table)
 presence_conditions <- constraints[["presence_conditions"]]
 required_vars <- constraints[["required_vars"]]
@@ -52,6 +59,9 @@ age_bounds <- constraints[["age_bounds"]]
 
 # MedDRA
 meddra <- build_meddra_hierarchy()
+
+# WhoDrug/IDF
+who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
 
 # DM
 dm <- build_dm_domain(sheets, n = registration_n)
@@ -72,7 +82,7 @@ ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
 other_domains <- build_other_domains(
   dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
-  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds
+  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names
 )
 
 # LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)
