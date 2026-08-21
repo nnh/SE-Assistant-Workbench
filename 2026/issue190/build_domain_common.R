@@ -75,6 +75,17 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
   data
 }
 
+# 変数名が"DOSE"で終わる場合(例: CMDOSE, ECDOSE)、それらしい用量の数値を入れる
+dose_value_choices <- c("50", "100", "150", "200", "250", "300", "400", "500")
+
+populate_dose_fields <- function(data, target_vars) {
+  dose_vars <- target_vars[str_detect(target_vars, "DOSE$")] %>% setdiff(colnames(data))
+  for (var_name in dose_vars) {
+    data[[var_name]] <- sample(dose_value_choices, size = nrow(data), replace = TRUE)
+  }
+  data
+}
+
 # 上記のいずれでも埋まらなかった対象変数はとりあえずダミー値を格納
 populate_dummy_fields <- function(data, target_vars) {
   remaining_vars <- setdiff(target_vars, colnames(data))
@@ -532,6 +543,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   data <- data %>%
     populate_radio_button_fields(spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date) %>%
+    populate_dose_fields(target_vars) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq(seq_var)
 
@@ -657,6 +669,8 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
           } else {
             rep(NA_character_, nn)
           }
+        } else if (str_detect(var_name, "DOSE$")) {
+          sample(dose_value_choices, nn, replace = TRUE)
         } else {
           rep("DUMMY", nn)
         }
