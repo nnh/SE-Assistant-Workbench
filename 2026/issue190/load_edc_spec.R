@@ -82,7 +82,7 @@ ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
 other_domains <- build_other_domains(
   dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
-  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names
+  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
 )
 
 # LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)

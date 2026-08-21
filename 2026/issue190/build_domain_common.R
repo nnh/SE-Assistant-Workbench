@@ -11,19 +11,21 @@ compute_target_vars <- function(data, spec) {
 # radio_button: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
 # required_vars(presence型のvalidatorを持つcdisc_variable)に含まれず、かつis_invisibleがFALSE(可視項目)の場合は
 # 必須ではないため、空白("")も選択肢に加える。
-# numeric_bounds(cdisc_variable, min_value, max_value)がある場合、数値として範囲外のcodeは選択肢から除く
+# numeric_bounds(cdisc_variable, min_value, max_value)がある場合、数値として範囲外のcodeは選択肢から除く。
+# dataにalias_name列がある場合(build_generic_domainなど)は、同じcdisc_variableでも
+# 定義しているalias_nameが違えばcodeを混ぜず、そのalias_nameの行だけ自分のcodeから選ぶ
 populate_radio_button_fields <- function(data, spec, target_vars, required_vars = character(0), numeric_bounds = NULL) {
   options_spec <- spec %>% filter(field_type == "radio_button")
   options_spec[["code"]] <- ifelse(is.na(options_spec[["code"]]), options_spec[["default_value"]], options_spec[["code"]])
   options_target_vars <- intersect(unique(options_spec[["cdisc_variable"]]), target_vars)
-  for (var_name in options_target_vars) {
-    var_rows <- options_spec %>% filter(cdisc_variable == var_name)
-    choices <- var_rows %>% pull(code) %>% unique()
-    is_visible <- !any(var_rows[["is_invisible"]], na.rm = TRUE)
+  has_alias_name <- "alias_name" %in% colnames(data)
+
+  build_choices <- function(rows, var_name) {
+    choices <- rows %>% pull(code) %>% unique()
+    is_visible <- !any(rows[["is_invisible"]], na.rm = TRUE)
     if (!(var_name %in% required_vars) && is_visible) {
       choices <- union(choices, "")
     }
-
     if (!is.null(numeric_bounds)) {
       bound_row <- numeric_bounds %>% filter(cdisc_variable == var_name)
       if (nrow(bound_row) > 0) {
@@ -35,9 +37,26 @@ populate_radio_button_fields <- function(data, spec, target_vars, required_vars 
         choices <- choices[within_bounds]
       }
     }
+    choices
+  }
 
-    if (length(choices) > 0) {
-      data[[var_name]] <- sample(choices, size = nrow(data), replace = TRUE)
+  for (var_name in options_target_vars) {
+    var_rows <- options_spec %>% filter(cdisc_variable == var_name)
+
+    if (has_alias_name) {
+      data[[var_name]] <- NA_character_
+      for (an in unique(var_rows[["alias_name"]])) {
+        choices <- build_choices(var_rows %>% filter(alias_name == an), var_name)
+        target <- data[["alias_name"]] == an
+        if (length(choices) > 0 && any(target)) {
+          data[[var_name]][target] <- sample(choices, size = sum(target), replace = TRUE)
+        }
+      }
+    } else {
+      choices <- build_choices(var_rows, var_name)
+      if (length(choices) > 0) {
+        data[[var_name]] <- sample(choices, size = nrow(data), replace = TRUE)
+      }
     }
   }
   data
@@ -337,6 +356,79 @@ populate_meddra_fields <- function(data, spec, meddra_vars, meddra, meddra_sampl
   data
 }
 
+# field_type=="drug"に該当する変数名を抽出
+compute_drug_vars <- function(spec, target_vars) {
+  spec %>%
+    filter(field_type == "drug") %>%
+    pull(cdisc_variable) %>%
+    unique() %>%
+    intersect(target_vars)
+}
+
+# drug_vars(field_type=="drug"な変数)のspec行が、1つでもdefault_value(固定コード)無し
+# (=ランダムサンプリングされ、実際にwho_drug_idfとの一致を確認する意味がある)場合はTRUE。
+# 全て固定コードで値が確定している場合はFALSE(この場合、xxDECOD列は生成しない)
+drug_vars_need_decod <- function(spec, drug_vars) {
+  drug_rows <- spec %>% filter(field_type == "drug", cdisc_variable %in% drug_vars)
+  any(is.na(drug_rows[["default_value"]]) | drug_rows[["default_value"]] == "")
+}
+
+# drug変数に薬剤名を格納する。default_valueが数値の場合はwho_drug_idf$drug_codeとみなし、
+# 対応するfull_name_enを固定値として使う。それ以外はwho_drug_idf$full_name_enからランダムにサンプリングする。
+# 同じcdisc_variableでも、field_type=="drug"と定義されているalias_nameの行だけを対象にする
+# (同じcdisc_variableが別のalias_nameでは固定値/別のfield_typeとして定義されている場合、その行は変更しない)
+populate_drug_fields <- function(data, spec, drug_vars, who_drug_idf) {
+  drug_names <- who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique()
+  if (length(drug_names) == 0) {
+    return(data)
+  }
+  for (var_name in drug_vars) {
+    drug_spec_rows <- spec %>% filter(field_type == "drug", cdisc_variable == var_name)
+    for (an in unique(drug_spec_rows[["alias_name"]])) {
+      target <- data[["alias_name"]] == an
+      if (!any(target)) {
+        next
+      }
+      default_value <- drug_spec_rows %>% filter(alias_name == an) %>% pull(default_value) %>% discard(~ is.na(.x) | .x == "") %>% unique()
+      fixed_name <- if (length(default_value) == 1 && str_detect(default_value, "^[0-9]+$")) {
+        who_drug_idf %>% filter(drug_code == default_value) %>% pull(full_name_en) %>% discard(is.na) %>% unique()
+      } else {
+        character(0)
+      }
+      if (length(fixed_name) >= 1) {
+        data[[var_name]][target] <- fixed_name[1]
+      } else {
+        data[[var_name]][target] <- sample(drug_names, size = sum(target), replace = TRUE)
+      }
+    }
+  }
+  data
+}
+
+# drug変数の値がwho_drug_idf$full_name_enに完全一致する場合、対応するgeneric_name_enを
+# prefixDECOD(例: CMDECOD)に格納する(一致しない場合はNA)。field_type=="drug"と定義されている
+# alias_nameの行だけを対象にする(他のalias_nameの値がたまたま薬剤名と一致しても対象にしない)。
+# drug_varsが複数ある場合は、最初に一致した変数の値を採用する
+add_drug_decod <- function(data, spec, drug_vars, who_drug_idf, prefix) {
+  if (length(drug_vars) == 0) {
+    return(data)
+  }
+  lookup <- who_drug_idf %>%
+    filter(!is.na(full_name_en)) %>%
+    distinct(full_name_en, .keep_all = TRUE)
+
+  decod_var <- str_c(prefix, "DECOD")
+  data[[decod_var]] <- drug_vars %>%
+    map(function(var_name) {
+      drug_alias_names <- spec %>% filter(field_type == "drug", cdisc_variable == var_name) %>% pull(alias_name) %>% unique()
+      is_drug_row <- data[["alias_name"]] %in% drug_alias_names
+      matched <- lookup[["generic_name_en"]][match(data[[var_name]], lookup[["full_name_en"]])]
+      if_else(is_drug_row, matched, NA_character_)
+    }) %>%
+    reduce(coalesce)
+  data
+}
+
 # MedDRAコーディングブロック(LLT〜SOC)の列名 (例: prefix="MH" -> MHLLT, MHLLTCD, ...)
 meddra_coding_cols <- function(prefix) {
   str_c(prefix, c("LLT", "LLTCD", "DECOD", "PTCD", "HLT", "HLTCD", "HLGT", "HLGTCD", "BODSYS", "BDSYCD", "SOC", "SOCCD"))
@@ -397,7 +489,7 @@ apply_multi_record_spid <- function(data, spid_var, multi_record_alias_names) {
 # 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0)) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
   # presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -432,9 +524,9 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 
   spid_var <- str_c(prefix, "SPID")
   data[[spid_var]] <- data[["alias_name"]]
-  data <- data %>% apply_multi_record_spid(spid_var, multi_record_alias_names) %>% select(-alias_name)
+  data <- data %>% apply_multi_record_spid(spid_var, multi_record_alias_names)
 
-  target_vars <- compute_target_vars(data, spec)
+  target_vars <- compute_target_vars(data %>% select(-alias_name), spec)
   seq_var <- str_c(prefix, "SEQ")
 
   data <- data %>%
@@ -454,6 +546,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     }
   }
 
+  # drug変数(field_type=="drug")には、who_drug_idfから薬剤名をサンプリングして格納する。
+  # alias_nameでスコープを絞る(同じcdisc_variableが別alias_nameで固定値等の場合はそちらを変更しない)
+  drug_vars <- compute_drug_vars(spec, target_vars)
+  if (length(drug_vars) > 0 && !is.null(who_drug_idf)) {
+    data <- data %>% populate_drug_fields(spec, drug_vars, who_drug_idf)
+  }
+
   # presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   # built_domains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
   injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds)
@@ -463,6 +562,15 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
+  # drug変数の値がwho_drug_idfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
+  # generic_name_enを格納する(presence_conditions等で値が変わった後の最終状態を見る)。
+  # 全て固定コード(default_value)で値が確定している場合は、一致確認する意味が無いのでDECOD列自体を作らない。
+  # alias_nameはここまでで役目を終えるため、最後にまとめて落とす
+  if (length(drug_vars) > 0 && !is.null(who_drug_idf) && drug_vars_need_decod(spec, drug_vars)) {
+    data <- data %>% add_drug_decod(spec, drug_vars, who_drug_idf, prefix)
+  }
+  data <- data %>% select(-alias_name)
+
   data %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), meddra_vars, coding_cols))
 }
@@ -470,7 +578,8 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0)) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
+  drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
   # presence_conditions/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -534,6 +643,20 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
           } else {
             sample_meddra_rows(meddra, nn)[["llt_name"]]
           }
+        } else if (ft == "drug") {
+          dv <- default_value[1]
+          fixed_name <- if (!is.na(dv) && str_detect(dv, "^[0-9]+$")) {
+            who_drug_idf %>% filter(drug_code == dv) %>% pull(full_name_en) %>% discard(is.na) %>% unique()
+          } else {
+            character(0)
+          }
+          if (length(fixed_name) >= 1) {
+            rep(fixed_name[1], nn)
+          } else if (length(drug_names) > 0) {
+            sample(drug_names, nn, replace = TRUE)
+          } else {
+            rep(NA_character_, nn)
+          }
         } else {
           rep("DUMMY", nn)
         }
@@ -569,6 +692,14 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
+  # drug変数の値がwho_drug_idfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
+  # generic_name_enを格納する(presence_conditions等で値が変わった後の最終状態を見る)。
+  # 全て固定コード(default_value)で値が確定している場合は、一致確認する意味が無いのでDECOD列自体を作らない
+  drug_vars <- spec %>% filter(field_type == "drug") %>% distinct(cdisc_variable) %>% pull(cdisc_variable) %>% intersect(colnames(data))
+  if (length(drug_vars) > 0 && !is.null(who_drug_idf) && drug_vars_need_decod(spec, drug_vars)) {
+    data <- data %>% add_drug_decod(spec, drug_vars, who_drug_idf, prefix)
+  }
+
   # alias_name/labelはここでは落とさない(他ドメインからの参照で突き合わせキーとして使うため)。
   # build_other_domains側で、返り値を作る最後の段階で取り除く
   data %>%
@@ -595,7 +726,7 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0)) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
@@ -609,14 +740,14 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
-        multi_record_alias_names = multi_record_alias_names
+        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
       )
     } else {
       build_generic_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
-        multi_record_alias_names = multi_record_alias_names
+        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
       )
     }
   }
