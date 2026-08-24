@@ -33,7 +33,14 @@ lb_reference_ranges <- tibble::tribble(
   "FIBRINO", "mg/dL",   200,        400,
   "FDP",     "ug/mL",   0,          5,
   "HCT",     "%",       34,         50,
-  "CL",      "mmol/L",  98,         108
+  "CL",      "mmol/L",  98,         108,
+  "CEA",     "ng/mL",   0,          5.0,
+  "CA19_9AG","U/mL",    0,          37,
+  "GLUC",    "mg/dL",   70,         109,
+  "HBA1C",   "%",       4.6,        6.2,
+  "CHOL",    "mg/dL",   130,        219,
+  "TRIG",    "mg/dL",   30,         149,
+  "CYURIAC", "mg/dL",   2.5,        8.0
 )
 
 # lbtestcdごとに、基準範囲内をベースにランダムな数値を生成する。out_of_range_probの確率で

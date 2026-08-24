@@ -4,10 +4,10 @@ library(tidyverse)
 tr_diameter_ranges <- tibble::tribble(
   ~TRTESTCD, ~min_value, ~max_value,
   "LDIAM",   10,         150,
-  "SDIAM",   10,         80
+  "SAXIS",   10,         80
 )
 
-# TRTESTCDがLDIAM/SDIAMの場合のみ、TRORRESをその範囲内のそれらしい数値(mm)に置き換える。
+# TRTESTCDがLDIAM/SAXISの場合のみ、TRORRESをその範囲内のそれらしい数値(mm)に置き換える。
 # それ以外のTRTESTCDや、TRORRESが既にNA(presence_conditionsで空白化された)の行は変更しない
 populate_tr_orres <- function(tr, diameter_ranges = tr_diameter_ranges) {
   if (!all(c("TRTESTCD", "TRORRES") %in% colnames(tr))) {
