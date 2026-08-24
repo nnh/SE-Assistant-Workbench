@@ -40,7 +40,15 @@ lb_reference_ranges <- tibble::tribble(
   "HBA1C",   "%",       4.6,        6.2,
   "CHOL",    "mg/dL",   130,        219,
   "TRIG",    "mg/dL",   30,         149,
-  "CYURIAC", "mg/dL",   2.5,        8.0
+  "CYURIAC", "mg/dL",   2.5,        8.0,
+  "BLASTLE", "%",       0,          5,
+  "MYBLALE", "%",       0,          5,
+  "DNAINDEX","",        0.9,        1.1,
+  "NEUTLE",  "%",       40,         70,
+  "LYMLE",   "%",       20,         40,
+  "MONOLE",  "%",       2,          10,
+  "EOSLE",   "%",       0,          6,
+  "BASOLE",  "%",       0,          2
 )
 
 # lbtestcdごとに、基準範囲内をベースにランダムな数値を生成する。out_of_range_probの確率で

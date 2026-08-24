@@ -20,7 +20,8 @@ source(here("vs_orres_values.R"))
 source(here("read_who_drug_idf.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
-json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_AML224-FLT3-ITD/AML224-FLT3-ITD_250929_1501.json'
+json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_ALL-B19/ALL-B19_250929_1452.json'
+#json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_AML224-FLT3-ITD/AML224-FLT3-ITD_250929_1501.json'
 #json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
 #json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_Bev-FOLFOX-SBC/Bev-FOLFOX-SBC_250929_1501.json"
 edc_spec <- jsonlite::read_json(json_path)

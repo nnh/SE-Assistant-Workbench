@@ -95,16 +95,48 @@ populate_dummy_fields <- function(data, target_vars) {
   data
 }
 
-# presence_conditions(cdisc_variable, ref_cdisc_variable, expected_value, condition_type)に基づき、
-# 条件を満たさないレコードのcdisc_variableをNAにする。インデックス代入を使うことで、
+# presence_conditions(cdisc_variable, ref_cdisc_variable, ref_alias_name, expected_value, condition_type)に
+# 基づき、条件を満たさないレコードのcdisc_variableをNAにする。インデックス代入を使うことで、
 # 日付型など列の型を問わず安全に適用できる。
 # condition_type=="equals": ref_cdisc_variableの値がexpected_value(複数行ならOR)と一致しない場合NAにする
 # condition_type=="not_blank": ref_cdisc_variableが空白/NAの場合NAにする(expected_valueは使わない)
 # condition_type=="copy": cdisc_variableの値をref_cdisc_variableの値でそのまま上書きする
 # (FieldItem::Referenceのような「他フィールドの値をそのまま使う」項目向け)
+#
+# 同じcdisc_variableでも、ref_alias_nameが異なる複数の条件行がある場合(例: MHTERMのうち
+# thrombophiliaブロックだけがMHOCCUR=='Y'でゲーティングされ、registrationブロックには無関係)、
+# dataがalias_name列を持ち、そのref_alias_nameがdata自身のalias_nameのいずれかと一致するなら、
+# その行(そのブロック)だけにゲーティングを適用する。一致しない(または不明)場合は全行に適用する
+# (真に外部の固定参照とみなす。inject_cross_domain_refs()のスコープ判定と対になる)
 apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
     filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
+  if (!("ref_alias_name" %in% names(applicable))) {
+    applicable[["ref_alias_name"]] <- NA_character_
+  }
+  if (!("ref_label" %in% names(applicable))) {
+    applicable[["ref_label"]] <- NA_character_
+  }
+
+  has_data_alias_name <- "alias_name" %in% colnames(data)
+  has_data_alias <- all(c("alias_name", "label") %in% colnames(data))
+  data_alias_names <- if (has_data_alias_name) unique(data[["alias_name"]]) else character(0)
+
+  # ref_alias_nameがdata自身のalias_nameのいずれかと一致する行だけに絞る(一致しなければ真に外部の
+  # 固定参照とみなして全行を対象にする)。さらに、dataがlabelも持っており、かつref_labelが指定されている
+  # 場合は、同じalias_name内の他labelを巻き込まないようlabelでも絞り込む(例: thrombophilia内の
+  # label="006"のゲーティング条件を、同じalias_nameの他label(000〜005)に誤って適用しないため)
+  target_rows_for <- function(ref_alias_name, ref_label = NA_character_) {
+    if (has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names) {
+      rows <- data[["alias_name"]] == ref_alias_name
+      if (has_data_alias && !is.na(ref_label)) {
+        rows <- rows & data[["label"]] == ref_label
+      }
+      rows
+    } else {
+      rep(TRUE, nrow(data))
+    }
+  }
 
   # copyは先に適用する。同じcdisc_variableにequals/not_blankのゲーティング条件も併せて
   # 存在する場合(例: FAOBJがAETERMをコピーしつつ、AELLTCDが特定コードのときだけ値を持つ)、
@@ -120,23 +152,25 @@ apply_presence_conditions <- function(data, presence_conditions) {
 
   equals_conditions <- applicable %>%
     filter(condition_type == "equals") %>%
-    group_by(cdisc_variable, ref_cdisc_variable) %>%
+    group_by(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label) %>%
     summarise(expected_values = list(unique(expected_value)), .groups = "drop")
   for (i in seq_len(nrow(equals_conditions))) {
     var_name <- equals_conditions[["cdisc_variable"]][i]
     ref_var <- equals_conditions[["ref_cdisc_variable"]][i]
     expected_values <- equals_conditions[["expected_values"]][[i]]
-    mismatch <- !(data[[ref_var]] %in% expected_values)
+    target_rows <- target_rows_for(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i])
+    mismatch <- target_rows & !(data[[ref_var]] %in% expected_values)
     data[[var_name]][mismatch] <- NA
   }
 
   not_blank_conditions <- applicable %>%
     filter(condition_type == "not_blank") %>%
-    distinct(cdisc_variable, ref_cdisc_variable)
+    distinct(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label)
   for (i in seq_len(nrow(not_blank_conditions))) {
     var_name <- not_blank_conditions[["cdisc_variable"]][i]
     ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
-    mismatch <- is.na(data[[ref_var]]) | data[[ref_var]] == ""
+    target_rows <- target_rows_for(not_blank_conditions[["ref_alias_name"]][i], not_blank_conditions[["ref_label"]][i])
+    mismatch <- target_rows & (is.na(data[[ref_var]]) | data[[ref_var]] == "")
     data[[var_name]][mismatch] <- NA
   }
 
@@ -344,9 +378,16 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
 
       # このpinを適用する対象行: dataがalias_nameを持ち、そのpinのref_alias_nameが
       # data自身のalias_nameのいずれかと一致するならその行だけに絞る。一致しない(またはalias_name不明)なら
-      # 真に外部の固定参照とみなして全行を対象にする
+      # 真に外部の固定参照とみなして全行を対象にする。さらに、dataがlabelも持っており、かつ
+      # pin_labelが指定されている場合は、同じalias_name内の他labelを巻き込まないようlabelでも絞り込む
+      # (例: thrombophilia内のlabel="006"へのpinを、同じalias_nameの他label(000〜005)に誤って
+      # 適用しないため)
       target_rows <- if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
-        data[["alias_name"]] == pin_alias
+        rows <- data[["alias_name"]] == pin_alias
+        if (has_data_alias && !is.na(pin_label)) {
+          rows <- rows & data[["label"]] == pin_label
+        }
+        rows
       } else {
         rep(TRUE, nrow(data))
       }
