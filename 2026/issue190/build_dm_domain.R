@@ -17,23 +17,87 @@ default_sheet_alias_names <- function(sheet_groups) {
     unique()
 }
 
-# sheetsの中にcategory=="allocation"の要素があり、かつdefaultグループのシートに含まれるものがあれば、
-# その$allocation$groupsのcode一覧を返す(群あり)。無ければNULL(単群)
-extract_allocation_arm_labels <- function(sheets, default_alias_names) {
-  allocation_sheets <- sheets %>%
-    keep(~ identical(.x[["category"]], "allocation") && .x[["alias_name"]] %in% default_alias_names)
-  if (length(allocation_sheets) == 0) {
-    return(NULL)
+# category=="visit"のシートは、name(シート表示名)の末尾に"(VisitName)"という形でedc_spec$visitsの
+# nameが含まれている(例: "効果判定報告(End of Induction Cycle1)")。これを抽出してvisitsと突き合わせ、
+# (alias_name, VISIT, VISITNUM)のテーブルを作る。一致しない行(末尾が"(...)"形式でない等)は含めない
+build_visit_lookup <- function(sheets, visits) {
+  if (length(visits) == 0) {
+    return(tibble(alias_name = character(0), VISIT = character(0), VISITNUM = character(0)))
   }
-  codes <- allocation_sheets %>%
-    map(~ .x[["allocation"]][["groups"]]) %>%
-    unlist(recursive = FALSE) %>%
-    map_chr(~ .x[["code"]]) %>%
+  visit_table <- visits %>% map_dfr(~ tibble(VISIT = .x[["name"]], VISITNUM = .x[["num"]]))
+
+  sheets %>%
+    keep(~ coalesce(.x[["category"]] == "visit", FALSE)) %>%
+    map_dfr(~ tibble(
+      alias_name = .x[["alias_name"]],
+      VISIT = str_match(.x[["name"]], "\\(([^()]+)\\)$")[, 2]
+    )) %>%
+    filter(!is.na(VISIT)) %>%
+    inner_join(visit_table, by = "VISIT")
+}
+
+# 被験者ごとに、有効なalias_name(そのシートが実際にその被験者に表示される)集合と、
+# 割り付け系シート(category=="allocation")ごとに割り当てたcodeを計算する。
+# defaultグループのシートを起点に、割り付け結果に応じて追加で有効になる非defaultグループのシートを
+# 連鎖的にたどる(sheet_groupsの非defaultグループは、allocation_sheet/allocation_groupが指す
+# 割り付け結果に応じて追加で表示されるシート集合を表す。そのシートの中に別の割り付けシートが
+# 含まれる場合、その結果も再帰的に評価することで、実際の臨床上の前後関係を再現する)。
+# 戻り値: list(active_sheets = USUBJID -> alias_name一覧のnamed list,
+#              assigned_codes = USUBJID -> (alloc_alias -> code)のnamed list)
+build_subject_active_sheets <- function(sheets, sheet_groups, usubjids) {
+  default_alias <- default_sheet_alias_names(sheet_groups)
+
+  # sheet_groups(defaultも非defaultも含む)のどこにも登場しないシート(例: registration)は、
+  # 割り付けによる条件分岐の対象外(=常に表示される)とみなし、defaultと同様に全被験者の
+  # 初期有効集合に含める
+  all_grouped_alias_names <- sheet_groups %>%
+    map(~ map_chr(.x[["sheets"]], "alias_name")) %>%
+    unlist() %>%
     unique()
-  if (length(codes) == 0) {
-    return(NULL)
+  all_sheet_alias_names <- map_chr(sheets, ~ .x[["alias_name"]])
+  ungrouped_alias_names <- setdiff(all_sheet_alias_names, all_grouped_alias_names)
+  initial_active <- union(default_alias, ungrouped_alias_names)
+
+  allocation_sheets <- sheets %>% keep(~ coalesce(.x[["category"]] == "allocation", FALSE))
+  allocation_lookup <- allocation_sheets %>% set_names(map_chr(., ~ .x[["alias_name"]]))
+  non_default_groups <- sheet_groups %>% discard(~ coalesce(.x[["is_default"]], FALSE))
+
+  active <- map(usubjids, ~ initial_active) %>% set_names(usubjids)
+  assigned_codes <- map(usubjids, ~ list()) %>% set_names(usubjids)
+
+  if (length(allocation_lookup) == 0) {
+    return(list(active_sheets = active, assigned_codes = assigned_codes))
   }
-  codes
+
+  repeat {
+    changed <- FALSE
+    for (usubjid in usubjids) {
+      reachable_allocs <- intersect(active[[usubjid]], names(allocation_lookup))
+      unassigned <- setdiff(reachable_allocs, names(assigned_codes[[usubjid]]))
+      for (alloc_alias in unassigned) {
+        codes <- allocation_lookup[[alloc_alias]][["allocation"]][["groups"]] %>% map_chr(~ .x[["code"]])
+        if (length(codes) == 0) next
+        code <- sample(codes, 1)
+        assigned_codes[[usubjid]][[alloc_alias]] <- code
+        changed <- TRUE
+
+        matching_groups <- non_default_groups %>%
+          keep(~ identical(.x[["allocation_sheet"]][["alias_name"]], alloc_alias) && identical(.x[["allocation_group"]], code))
+        for (g in matching_groups) {
+          active[[usubjid]] <- union(active[[usubjid]], map_chr(g[["sheets"]], "alias_name"))
+        }
+      }
+    }
+    if (!changed) break
+  }
+
+  list(active_sheets = active, assigned_codes = assigned_codes)
+}
+
+# active_sheets(USUBJID -> alias_name一覧のnamed list)を(USUBJID, alias_name)の縦持りテーブルにする。
+# ドメイン生成側で、被験者ごとに有効なalias_nameへ絞り込むための結合キーとして使う
+active_sheet_membership_table <- function(active_sheets) {
+  active_sheets %>% imap_dfr(~ tibble(USUBJID = .y, alias_name = .x))
 }
 
 build_dm_domain <- function(sheets, sheet_groups, n = 100) {
@@ -46,10 +110,28 @@ build_dm_domain <- function(sheets, sheet_groups, n = 100) {
   dm[["USUBJID"]] <- str_c(dm[["STUDYID"]], dm[["SUBJID"]], sep = "-")
   dm <- generate_brthdtc(dm, var_name = "BRTHDTC")
 
-  arm_labels <- extract_allocation_arm_labels(sheets, default_sheet_alias_names(sheet_groups))
-  dm[["ARM"]] <- if (is.null(arm_labels)) "" else sample(arm_labels, n, replace = TRUE)
+  active_result <- build_subject_active_sheets(sheets, sheet_groups, dm[["USUBJID"]])
 
-  dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM)
+  # ARMは、defaultグループに属する割り付けシート(通常1つ)に割り当てられたcodeとする
+  default_alias <- default_sheet_alias_names(sheet_groups)
+  default_allocation_alias <- sheets %>%
+    keep(~ identical(.x[["category"]], "allocation") && .x[["alias_name"]] %in% default_alias) %>%
+    map_chr(~ .x[["alias_name"]])
+
+  dm[["ARM"]] <- if (length(default_allocation_alias) == 0) {
+    ""
+  } else {
+    map_chr(dm[["USUBJID"]], function(usubjid) {
+      codes <- active_result[["assigned_codes"]][[usubjid]][default_allocation_alias]
+      codes <- codes[!map_lgl(codes, is.null)]
+      if (length(codes) == 0) "" else codes[[1]]
+    })
+  }
+
+  list(
+    dm = dm %>% select(STUDYID, DOMAIN, USUBJID, SUBJID, SITEID, BRTHDTC, ARM),
+    active_sheets = active_result[["active_sheets"]]
+  )
 }
 
 populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, age_bounds = NULL) {

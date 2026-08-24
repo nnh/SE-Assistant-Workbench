@@ -13,12 +13,24 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL, active_sheet_table = NULL) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
-  # レコードごとにalias_nameを割り当て
+  # レコードごとにalias_nameを割り当てる。active_sheet_table(USUBJID, alias_name)が指定されている場合、
+  # その行のUSUBJIDにとって実際に有効な(そのシートが表示される)alias_nameだけから選ぶ
+  # (どのalias_nameも有効でない被験者の行は、AE報告自体が存在しないとみなして除外する)
   alias_names <- ae_spec[["alias_name"]] %>% unique()
-  ae[["alias_name"]] <- sample(alias_names, size = nrow(ae), replace = TRUE)
+  if (!is.null(active_sheet_table)) {
+    eligible <- active_sheet_table %>% filter(alias_name %in% alias_names)
+    eligible_pool <- split(eligible[["alias_name"]], eligible[["USUBJID"]])
+    ae[["alias_name"]] <- map_chr(ae[["USUBJID"]], function(usubjid) {
+      pool <- eligible_pool[[usubjid]]
+      if (is.null(pool) || length(pool) == 0) NA_character_ else sample(pool, 1)
+    })
+    ae <- ae %>% filter(!is.na(alias_name))
+  } else {
+    ae[["alias_name"]] <- sample(alias_names, size = nrow(ae), replace = TRUE)
+  }
 
   target_vars <- compute_target_vars(ae, ae_spec)
   ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars, required_vars, numeric_bounds)

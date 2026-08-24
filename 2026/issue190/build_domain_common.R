@@ -524,13 +524,28 @@ apply_multi_record_spid <- function(data, spid_var, multi_record_alias_names) {
     ungroup()
 }
 
+# visit_lookup(alias_name, VISIT, VISITNUM)をalias_nameで結合し、VISIT/VISITNUM列を追加する。
+# category=="visit"のシート由来でない行(一致しない行)はNAのまま
+add_visit_columns <- function(data, visit_lookup) {
+  if (is.null(visit_lookup) || nrow(visit_lookup) == 0 || !("alias_name" %in% colnames(data))) {
+    return(data)
+  }
+  data <- data %>% left_join(visit_lookup, by = "alias_name")
+  # このドメインにvisitカテゴリのシート由来の行が1件も無ければ(全行NA)、
+  # 意味の無い空列を出さないようVISIT/VISITNUM列自体を削除する
+  if (all(is.na(data[["VISIT"]]))) {
+    data <- data %>% select(-VISIT, -VISITNUM)
+  }
+  data
+}
+
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 # alias_nameがmulti_record_alias_namesに該当しない場合はUSUBJIDごとに1レコード、
 # 該当する場合(AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、
 # 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
   # presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -546,15 +561,35 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   single_alias_names <- setdiff(alias_names, multi_record_alias_names)
   multi_alias_names <- intersect(alias_names, multi_record_alias_names)
 
+  # active_sheet_table(USUBJID, alias_name)が指定されている場合、被験者ごとに実際に有効な
+  # (=そのシートが表示される)alias_nameだけを対象にする。指定が無い場合は全alias_nameを対象にする(従来通り)
   single_rows <- if (length(single_alias_names) > 0) {
-    tibble(USUBJID = dm[["USUBJID"]], alias_name = sample(single_alias_names, size = nrow(dm), replace = TRUE))
+    candidates <- if (!is.null(active_sheet_table)) {
+      active_sheet_table %>% filter(alias_name %in% single_alias_names)
+    } else {
+      tidyr::crossing(USUBJID = dm[["USUBJID"]], alias_name = single_alias_names)
+    }
+    candidates %>%
+      group_by(USUBJID) %>%
+      slice_sample(n = 1) %>%
+      ungroup()
   } else {
     tibble(USUBJID = character(0), alias_name = character(0))
   }
 
   multi_rows <- if (length(multi_alias_names) > 0) {
     multi_alias_names %>%
-      map_dfr(~ tibble(USUBJID = sample(dm[["USUBJID"]], size = nrow(dm), replace = TRUE), alias_name = .x))
+      map_dfr(function(an) {
+        eligible_usubjids <- if (!is.null(active_sheet_table)) {
+          active_sheet_table %>% filter(alias_name == an) %>% pull(USUBJID) %>% unique()
+        } else {
+          dm[["USUBJID"]]
+        }
+        if (length(eligible_usubjids) == 0) {
+          return(tibble(USUBJID = character(0), alias_name = character(0)))
+        }
+        tibble(USUBJID = sample(eligible_usubjids, size = length(eligible_usubjids), replace = TRUE), alias_name = an)
+      })
   } else {
     tibble(USUBJID = character(0), alias_name = character(0))
   }
@@ -611,7 +646,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   if (length(drug_vars) > 0 && !is.null(who_drug_idf) && drug_vars_need_decod(spec, drug_vars)) {
     data <- data %>% add_drug_decod(spec, drug_vars, who_drug_idf, prefix)
   }
-  data <- data %>% select(-alias_name)
+  data <- data %>% add_visit_columns(visit_lookup) %>% select(-alias_name)
 
   data %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), meddra_vars, coding_cols))
@@ -620,7 +655,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
   drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
   # presence_conditions/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
@@ -632,9 +667,17 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   repeat_units <- spec %>% distinct(alias_name, label) %>% filter(!is.na(label))
 
-  data <- dm %>%
-    select(USUBJID, STUDYID) %>%
-    tidyr::crossing(repeat_units)
+  # active_sheet_table(USUBJID, alias_name)が指定されている場合、被験者ごとに実際に有効な
+  # (=そのシートが表示される)alias_nameのlabelだけを対象にする。指定が無い場合は全被験者×全labelを対象にする(従来通り)
+  data <- if (!is.null(active_sheet_table)) {
+    active_sheet_table %>%
+      inner_join(repeat_units, by = "alias_name", relationship = "many-to-many") %>%
+      left_join(dm %>% select(USUBJID, STUDYID), by = "USUBJID")
+  } else {
+    dm %>%
+      select(USUBJID, STUDYID) %>%
+      tidyr::crossing(repeat_units)
+  }
   data[["DOMAIN"]] <- prefix
 
   spid_var <- str_c(prefix, "SPID")
@@ -747,6 +790,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # alias_name/labelはここでは落とさない(他ドメインからの参照で突き合わせキーとして使うため)。
   # build_other_domains側で、返り値を作る最後の段階で取り除く
   data %>%
+    add_visit_columns(visit_lookup) %>%
     add_seq(str_c(prefix, "SEQ")) %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), coding_cols))
 }
@@ -876,7 +920,7 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
@@ -890,14 +934,16 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
-        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
+        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
+        visit_lookup = visit_lookup
       )
     } else {
       build_generic_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
-        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
+        multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
+        visit_lookup = visit_lookup
       )
     }
   }

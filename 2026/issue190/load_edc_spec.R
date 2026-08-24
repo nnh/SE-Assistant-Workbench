@@ -65,11 +65,14 @@ meddra <- build_meddra_hierarchy()
 who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
 
 # DM
-dm <- build_dm_domain(sheets, sheet_groups, n = registration_n)
+dm_result <- build_dm_domain(sheets, sheet_groups, n = registration_n)
+dm <- dm_result[["dm"]]
+active_sheet_table <- active_sheet_membership_table(dm_result[["active_sheets"]])
+visit_lookup <- build_visit_lookup(sheets, edc_spec[["visits"]])
 dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
-ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf)
+ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf, active_sheet_table)
 ae <- ae_result[["ae"]]
 ae_linked_domains <- ae_result[["linked"]]
 death_date <- build_death_date_table(ae)
@@ -96,7 +99,8 @@ cdisc_variable_values_for_others <- cdisc_variable_values %>%
 # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
 other_domains <- build_other_domains(
   dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
-  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
+  built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf,
+  active_sheet_table = active_sheet_table, visit_lookup = visit_lookup
 )
 
 # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
