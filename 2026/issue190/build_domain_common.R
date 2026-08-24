@@ -283,6 +283,13 @@ topo_sort_prefixes <- function(prefixes, edges) {
 # 分かっていればそのインスタンスに固定して結合する(USUBJIDのみ)。
 # 無指定(NA)の場合は、両者がalias_name/labelを持てばそれも突き合わせキーにする(同じブロック内の参照)。
 # どちらの情報も無ければUSUBJIDのみで結合する(参照元に複数レコードあると最初の1件を使う)。
+#
+# 同じref_cdisc_variableに対して複数の異なる(ref_alias_name, ref_label)の組み合わせがある場合
+# (例: DDORRESが、discon由来の行はdiscon自身のDSTERM、withdrawal由来の行はwithdrawal自身のDSTERMを
+# それぞれ参照する、という"同じ変数名だが参照元シートごとに別インスタンス"のケース)、
+# 各組み合わせをdataの該当行(dataのalias_nameがそのref_alias_nameと一致する行)だけに絞って注入する。
+# dataがalias_nameを持たない場合や、そのref_alias_nameがdata自身のalias_nameのどれとも一致しない場合
+# (=真に外部の固定参照)は、全行に対して適用する
 # 戻り値はlist(data=結合後のdata, injected_cols=このために追加した列名)
 inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL) {
   if (is.null(field_ref_bounds)) {
@@ -297,13 +304,23 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
     age_bounds %>% select(any_of(c("ref_cdisc_variable", "ref_alias_name", "ref_label")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
-    distinct(ref_cdisc_variable, .keep_all = TRUE)
+    distinct()
+  if (!("ref_alias_name" %in% names(ref_instances))) {
+    ref_instances[["ref_alias_name"]] <- NA_character_
+  }
+  if (!("ref_label" %in% names(ref_instances))) {
+    ref_instances[["ref_label"]] <- NA_character_
+  }
+
+  # target_rows(pinごとの行の絞り込み)にはdataのalias_name列だけあれば十分(labelは不要。
+  # build_generic_domain由来のdataはlabel列を持たないため、labelまで要求すると絞り込みが常に無効化されてしまう)。
+  # 一方、has_data_alias(同じブロックのlabelで突き合わせるフォールバック)はalias_nameとlabelの両方が必要
+  has_data_alias_name <- "alias_name" %in% colnames(data)
+  has_data_alias <- all(c("alias_name", "label") %in% colnames(data))
+  data_alias_names <- if (has_data_alias_name) unique(data[["alias_name"]]) else character(0)
 
   injected_cols <- character(0)
-  for (i in seq_len(nrow(ref_instances))) {
-    ref_var <- ref_instances[["ref_cdisc_variable"]][i]
-    ref_alias_name <- if ("ref_alias_name" %in% names(ref_instances)) ref_instances[["ref_alias_name"]][i] else NA_character_
-    ref_label <- if ("ref_label" %in% names(ref_instances)) ref_instances[["ref_label"]][i] else NA_character_
+  for (ref_var in unique(ref_instances[["ref_cdisc_variable"]])) {
     if (ref_var %in% colnames(data)) {
       next
     }
@@ -315,26 +332,55 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
     if (!(ref_var %in% colnames(ref_data))) {
       next
     }
+    has_ref_alias <- all(c("alias_name", "label") %in% colnames(ref_data))
 
-    if (!is.na(ref_label) && all(c("alias_name", "label") %in% colnames(ref_data))) {
-      # 参照先の特定のlabelインスタンスに固定する(参照元自身のlabelとは無関係)
-      ref_slice <- ref_data %>%
-        filter(alias_name == ref_alias_name, label == ref_label) %>%
-        select(USUBJID, !!ref_var) %>%
-        distinct(USUBJID, .keep_all = TRUE)
-      data <- data %>% left_join(ref_slice, by = "USUBJID")
-    } else if (all(c("alias_name", "label") %in% colnames(data)) && all(c("alias_name", "label") %in% colnames(ref_data))) {
-      # 同じブロック(参照元自身のlabel)で突き合わせる
-      ref_slice <- ref_data %>%
-        select(USUBJID, alias_name, label, !!ref_var) %>%
-        distinct(USUBJID, alias_name, label, .keep_all = TRUE)
-      data <- data %>% left_join(ref_slice, by = c("USUBJID", "alias_name", "label"))
-    } else {
-      ref_slice <- ref_data %>%
-        select(USUBJID, !!ref_var) %>%
-        distinct(USUBJID, .keep_all = TRUE)
-      data <- data %>% left_join(ref_slice, by = "USUBJID")
+    # 型をref_data側に合わせた全NA列を用意し、pinごとに該当行だけ値を埋めていく
+    result_col <- ref_data[[ref_var]][rep(NA_integer_, nrow(data))]
+
+    pins <- ref_instances %>% filter(ref_cdisc_variable == ref_var) %>% distinct(ref_alias_name, ref_label)
+    for (i in seq_len(nrow(pins))) {
+      pin_alias <- pins[["ref_alias_name"]][i]
+      pin_label <- pins[["ref_label"]][i]
+
+      # このpinを適用する対象行: dataがalias_nameを持ち、そのpinのref_alias_nameが
+      # data自身のalias_nameのいずれかと一致するならその行だけに絞る。一致しない(またはalias_name不明)なら
+      # 真に外部の固定参照とみなして全行を対象にする
+      target_rows <- if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
+        data[["alias_name"]] == pin_alias
+      } else {
+        rep(TRUE, nrow(data))
+      }
+      if (!any(target_rows)) {
+        next
+      }
+
+      if (!is.na(pin_label) && has_ref_alias) {
+        # 参照先の特定のlabelインスタンスに固定する(参照元自身のlabelとは無関係)
+        ref_slice <- ref_data %>%
+          filter(alias_name == pin_alias, label == pin_label) %>%
+          select(USUBJID, !!ref_var) %>%
+          distinct(USUBJID, .keep_all = TRUE)
+        value_map <- set_names(ref_slice[[ref_var]], ref_slice[["USUBJID"]])
+        result_col[target_rows] <- value_map[data[["USUBJID"]][target_rows]]
+      } else if (has_data_alias && has_ref_alias) {
+        # labelが不明(同じブロック内の述語参照など): 参照元自身の(alias_name, label)で突き合わせる
+        ref_slice <- ref_data %>%
+          select(USUBJID, alias_name, label, !!ref_var) %>%
+          distinct(USUBJID, alias_name, label, .keep_all = TRUE)
+        matched <- data[target_rows, ] %>%
+          select(USUBJID, alias_name, label) %>%
+          left_join(ref_slice, by = c("USUBJID", "alias_name", "label"))
+        result_col[target_rows] <- matched[[ref_var]]
+      } else {
+        ref_slice <- ref_data %>%
+          select(USUBJID, !!ref_var) %>%
+          distinct(USUBJID, .keep_all = TRUE)
+        value_map <- set_names(ref_slice[[ref_var]], ref_slice[["USUBJID"]])
+        result_col[target_rows] <- value_map[data[["USUBJID"]][target_rows]]
+      }
     }
+
+    data[[ref_var]] <- result_col
     injected_cols <- c(injected_cols, ref_var)
   }
   list(data = data, injected_cols = injected_cols)
@@ -539,6 +585,82 @@ add_visit_columns <- function(data, visit_lookup) {
   data
 }
 
+# gated_vars(presence_conditionsで条件付けされている変数)が全てNAの行を除外する。
+# DD(死因)のように、DDTEST/DDTESTCDのような固定値の列は常に埋まっているため、
+# 「ドメインの全列がNA」ではなく「条件付きの列(例: DDORRES)が全てNA」で判定する必要がある。
+# gated_varsが空、またはdomainに1つも存在しない場合は何もしない
+drop_empty_domain_rows <- function(domain, gated_vars) {
+  gated_vars <- intersect(gated_vars, colnames(domain))
+  if (length(gated_vars) == 0) {
+    return(domain)
+  }
+  all_na <- domain %>% select(all_of(gated_vars)) %>% apply(1, function(row) all(is.na(row)))
+  domain[!all_na, ]
+}
+
+# candidates(USUBJID, alias_name)の各USUBJIDについて、1つのalias_nameを選ぶ。
+# presence_conditions(このドメイン自身のcdisc_variableに絞り込み済み)から、候補のalias_nameが
+# 実際にゲーティング条件を満たす(=値が入る)ものであれば、それを優先して選ぶ
+# (例: DD(死因)がdiscon/withdrawalのどちらかを選ぶ際、実際にDSTERM=="DEATH"になっている方を選ぶことで、
+# ランダムに無関係な方を選んでしまい値が常にNAになる、という事態を避ける)。
+# 条件を満たす候補が無い、またはpresence_conditionsに該当するequals条件が無い場合はランダムに1つ選ぶ
+resolve_preferred_alias_name <- function(candidates, presence_conditions, built_domains, cdisc_variable_to_prefix) {
+  equals_conditions <- presence_conditions %>%
+    filter(condition_type == "equals", !is.na(ref_alias_name))
+
+  if (nrow(equals_conditions) == 0) {
+    return(
+      candidates %>%
+        group_by(USUBJID) %>%
+        slice_sample(n = 1) %>%
+        ungroup()
+    )
+  }
+
+  satisfied <- equals_conditions %>%
+    group_by(ref_cdisc_variable, ref_alias_name, ref_label) %>%
+    summarise(expected_values = list(unique(expected_value)), .groups = "drop") %>%
+    pmap_dfr(function(ref_cdisc_variable, ref_alias_name, ref_label, expected_values) {
+      ref_prefix <- cdisc_variable_to_prefix %>% filter(cdisc_variable == ref_cdisc_variable) %>% pull(prefix) %>% first()
+      if (is.na(ref_prefix) || is.null(built_domains) || !(ref_prefix %in% names(built_domains))) {
+        return(tibble())
+      }
+      ref_data <- built_domains[[ref_prefix]]
+      if (!all(c("USUBJID", ref_cdisc_variable) %in% colnames(ref_data))) {
+        return(tibble())
+      }
+      ref_slice <- if (all(c("alias_name", "label") %in% colnames(ref_data)) && !is.na(ref_label)) {
+        ref_data %>% filter(alias_name == ref_alias_name, label == ref_label)
+      } else {
+        ref_data
+      }
+      ref_slice %>%
+        filter(.data[[ref_cdisc_variable]] %in% expected_values) %>%
+        distinct(USUBJID) %>%
+        mutate(alias_name = ref_alias_name)
+    })
+
+  if (nrow(satisfied) == 0) {
+    return(
+      candidates %>%
+        group_by(USUBJID) %>%
+        slice_sample(n = 1) %>%
+        ungroup()
+    )
+  }
+
+  candidates %>%
+    left_join(satisfied %>% mutate(.satisfied = TRUE) %>% distinct(USUBJID, alias_name, .satisfied), by = c("USUBJID", "alias_name")) %>%
+    mutate(.satisfied = coalesce(.satisfied, FALSE)) %>%
+    group_by(USUBJID) %>%
+    group_modify(~ {
+      pool <- if (any(.x[[".satisfied"]])) filter(.x, .satisfied) else .x
+      slice_sample(pool, n = 1)
+    }) %>%
+    ungroup() %>%
+    select(-.satisfied)
+}
+
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 # alias_nameがmulti_record_alias_namesに該当しない場合はUSUBJIDごとに1レコード、
 # 該当する場合(AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、
@@ -569,10 +691,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     } else {
       tidyr::crossing(USUBJID = dm[["USUBJID"]], alias_name = single_alias_names)
     }
-    candidates %>%
-      group_by(USUBJID) %>%
-      slice_sample(n = 1) %>%
-      ungroup()
+    resolve_preferred_alias_name(candidates, presence_conditions, built_domains, cdisc_variable_to_prefix)
   } else {
     tibble(USUBJID = character(0), alias_name = character(0))
   }

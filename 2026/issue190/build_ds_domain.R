@@ -10,22 +10,25 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
   # エポックはsheet_seqの昇順に並べ、その順にレコードを積み上げることで
   # 同一USUBJID内での行の並びがシートの登場順(=経過順)と一致するようにする。
   # 出力列名はSDTM標準に合わせてDSEPOCHではなくEPOCHにする。
-  # DSSPIDには、そのエポックの元になったシートのalias_nameを入れる
+  # DSSPIDには、そのエポックの元になったシートのalias_nameを入れる。
+  # alias_name/labelも保持しておく(他ドメインが「discon」シートのDSTERMのように特定のDSブロックを
+  # 参照する場合、inject_cross_domain_refs()がそのインスタンスを正しく特定できるようにするため。
+  # 最終的な出力からは、load_edc_spec.R側で他ドメイン生成に使い終わった後に取り除く)
   if ("DSEPOCH" %in% ds_spec[["cdisc_variable"]]) {
     epoch_table <- ds_spec %>%
       filter(cdisc_variable == "DSEPOCH") %>%
-      distinct(alias_name, default_value, sheet_seq) %>%
+      distinct(alias_name, label, default_value, sheet_seq) %>%
       arrange(sheet_seq)
     ds <- epoch_table %>%
-      pmap_dfr(function(alias_name, default_value, sheet_seq) {
-        dm %>% select(USUBJID, STUDYID) %>% mutate(EPOCH = default_value, DSSPID = alias_name)
+      pmap_dfr(function(alias_name, label, default_value, sheet_seq) {
+        dm %>% select(USUBJID, STUDYID) %>% mutate(EPOCH = default_value, DSSPID = alias_name, alias_name = alias_name, label = label)
       })
   } else {
     ds <- dm %>% select(USUBJID, STUDYID)
   }
 
   ds[["DOMAIN"]] <- "DS"
-  ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH")))
+  ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH", "alias_name", "label")))
 }
 
 populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
@@ -54,8 +57,12 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
 }
 
 # DSTERMの最終判定を確定する。death_date(AE由来の死亡日)と矛盾しないようDEATHを設定し、
-# 死亡していない被験者は最後のレコードの約completed_rateをCOMPLETEDにする。DSTERMが無ければ何もしない
-finalize_ds_disposition <- function(ds, death_date, completed_rate = 0.6) {
+# 死亡していない被験者は最後のレコードの約completed_rateをCOMPLETEDにする。DSTERMが無ければ何もしない。
+# cdisc_variable_valuesが渡され、DSTERMの選択肢に"DEATH"を含むalias_name(例: discon)が判別できる場合は、
+# そのブロックの行にDEATHを設定する(単に時系列上最後の行に設定すると、DEATHを選択肢に持たない
+# 別ブロック(例: allocation/withdrawal)の行になってしまい、DEATHを参照する他ドメインの判定が
+# 常に不一致になるため)。判別できない場合は、従来通り各被験者の最後の行に設定する
+finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL, completed_rate = 0.6) {
   if (!"DSTERM" %in% colnames(ds)) {
     return(ds)
   }
@@ -68,13 +75,32 @@ finalize_ds_disposition <- function(ds, death_date, completed_rate = 0.6) {
 
   ds_with_row_id <- ds %>% mutate(.row_id = row_number())
 
-  # death_dateにある被験者は、最後のレコードをDEATHとして確定させる
-  death_row_ids <- ds_with_row_id %>%
-    filter(USUBJID %in% died_usubjid) %>%
-    group_by(USUBJID) %>%
-    slice_tail(n = 1) %>%
-    ungroup() %>%
-    pull(.row_id)
+  death_alias_names <- if (!is.null(cdisc_variable_values) && "alias_name" %in% colnames(ds)) {
+    cdisc_variable_values %>%
+      filter(prefix == "DS", cdisc_variable == "DSTERM", code == "DEATH") %>%
+      pull(alias_name) %>%
+      unique()
+  } else {
+    character(0)
+  }
+
+  # death_dateにある被験者は、DEATHを選択肢に持つブロック(あれば)の行、無ければ最後のレコードをDEATHとして確定させる
+  died_data <- ds_with_row_id %>% filter(USUBJID %in% died_usubjid)
+  if (length(death_alias_names) > 0) {
+    preferred <- died_data %>% filter(alias_name %in% death_alias_names)
+    fallback <- died_data %>% filter(!(USUBJID %in% unique(preferred[["USUBJID"]])))
+    death_row_ids <- bind_rows(preferred, fallback) %>%
+      group_by(USUBJID) %>%
+      slice_tail(n = 1) %>%
+      ungroup() %>%
+      pull(.row_id)
+  } else {
+    death_row_ids <- died_data %>%
+      group_by(USUBJID) %>%
+      slice_tail(n = 1) %>%
+      ungroup() %>%
+      pull(.row_id)
+  }
 
   ds$DSTERM[death_row_ids] <- "DEATH"
   if (has_dsdtc) {

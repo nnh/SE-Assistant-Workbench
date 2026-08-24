@@ -79,7 +79,7 @@ death_date <- build_death_date_table(ae)
 # DS
 ds <- build_ds_domain(dm, cdisc_variable_values)
 ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
-ds <- finalize_ds_disposition(ds, death_date)
+ds <- finalize_ds_disposition(ds, death_date, cdisc_variable_values)
 discontinuation_date <- build_discontinuation_date_table(ds)
 ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 
@@ -102,6 +102,9 @@ other_domains <- build_other_domains(
   built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf,
   active_sheet_table = active_sheet_table, visit_lookup = visit_lookup
 )
+
+# alias_name/labelは他ドメイン生成時の突き合わせキーとして使い終わったため、最終出力からは取り除く
+ds <- ds %>% select(-any_of(c("alias_name", "label")))
 
 # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
 for (linked_prefix in names(ae_linked_domains)) {
@@ -129,4 +132,11 @@ if ("TR" %in% names(other_domains)) {
 # VSORRESを基準範囲に基づいたそれらしい数値に置き換える(VSTESTCD/VSORRESが無ければ何もしない)
 if ("VS" %in% names(other_domains)) {
   other_domains[["VS"]] <- populate_vs_orres(other_domains[["VS"]])
+}
+
+# DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、
+# presence_conditionsで条件付けされている列(例: DDORRES)が全てNAの行を除外)
+if ("DD" %in% names(other_domains)) {
+  dd_gated_vars <- presence_conditions %>% filter(cdisc_variable %in% colnames(other_domains[["DD"]])) %>% pull(cdisc_variable) %>% unique()
+  other_domains[["DD"]] <- drop_empty_domain_rows(other_domains[["DD"]], dd_gated_vars)
 }
