@@ -5,12 +5,17 @@ library(tidyverse)
 build_generation_constraints <- function(validator_table, df_cdisc, field_reference_table = NULL) {
   field_to_cdisc_variable <- df_cdisc %>% distinct(alias_name, field, cdisc_variable)
   field_to_label <- df_cdisc %>% distinct(alias_name, field, label)
+  field_to_prefix <- df_cdisc %>% distinct(alias_name, field, prefix)
+  field_to_field_type <- df_cdisc %>% distinct(alias_name, field, field_type)
 
   # validate_presence_if(例: field22==2 || field22=='5<=')を、field名からcdisc_variable名に変換したうえで
   # (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, expected_value)のテーブルにする。
   # ref_alias_name/ref_labelは参照先フィールド(例: field22)自身が属するブロックを指す。
   # RS(繰り返し項目)がSC(別labelの繰り返し項目)を参照するような場合、参照元自身のlabelではなく、
-  # この固定されたref_labelのレコードを見る必要があるため
+  # この固定されたref_labelのレコードを見る必要があるため。
+  # 参照先(presence_ref_field)がfield_type=="meddra"の場合、値(例: 10052464)はLLT名ではなくLLTコードとの
+  # 比較を意図しているため、ref_cdisc_variableをそのcdisc_variable(例: AETERM)ではなく、
+  # MedDRAコーディングブロックのコード列(prefixLLTCD、例: AELLTCD)に差し替える
   presence_conditions <- validator_table %>%
     filter(!is.na(presence_ref_field)) %>%
     distinct(alias_name, field_name, presence_ref_field, presence_ref_value) %>%
@@ -23,6 +28,21 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_label %>% rename(ref_label = label),
       by = c("alias_name", "presence_ref_field" = "field")
     ) %>%
+    left_join(
+      field_to_field_type %>% rename(ref_field_type = field_type),
+      by = c("alias_name", "presence_ref_field" = "field")
+    ) %>%
+    left_join(
+      field_to_prefix %>% rename(ref_prefix = prefix),
+      by = c("alias_name", "presence_ref_field" = "field")
+    ) %>%
+    mutate(
+      ref_cdisc_variable = if_else(
+        coalesce(ref_field_type == "meddra", FALSE),
+        str_c(ref_prefix, "LLTCD"),
+        ref_cdisc_variable
+      )
+    ) %>%
     transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
@@ -33,7 +53,6 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
   # ref_labelはNAのままにし、参照元自身のlabel(同じブロック)で突き合わせる
   # blank -> ref_cdisc_variableが""と一致する場合のみ設定(condition_type="equals")
   # present -> ref_cdisc_variableが空白でない場合のみ設定(condition_type="not_blank")
-  field_to_prefix <- df_cdisc %>% distinct(alias_name, field, prefix)
   presence_predicate_conditions <- validator_table %>%
     filter(!is.na(presence_predicate_suffix)) %>%
     distinct(alias_name, field_name, presence_predicate_suffix, presence_predicate_type) %>%

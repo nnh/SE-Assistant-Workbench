@@ -13,7 +13,7 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0)) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
   # レコードごとにalias_nameを割り当て
@@ -44,7 +44,8 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
 
   # meddra: field_type=="meddra"に該当する変数はLLT名を直接格納し、MedDRAコーディングブロック(LLT〜SOC)を追加
   meddra_vars <- compute_meddra_vars(ae_spec, target_vars)
-  meddra_sample <- sample_meddra_rows(meddra, nrow(ae))
+  meddra_sample <- sample_meddra_rows(meddra, nrow(ae)) %>%
+    inject_required_llt_codes(meddra, required_llt_codes)
   ae <- ae %>%
     populate_meddra_fields(ae_spec, meddra_vars, meddra, meddra_sample) %>%
     add_meddra_coding_block(meddra_sample, "AE")

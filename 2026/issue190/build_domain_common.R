@@ -223,9 +223,16 @@ apply_age_date_bounds <- function(data, age_bounds, registration_start_date) {
   data
 }
 
-# cdisc_variable_valuesから、cdisc_variable名 -> prefix の対応表を作る
+# cdisc_variable_valuesから、cdisc_variable名 -> prefix の対応表を作る。
+# MedDRAコーディングブロックの列(例: AELLTCD)はEDC仕様(cdisc_variable_values)には存在せず
+# add_meddra_coding_block()でこちらが独自に追加する列のため、この対応表にも明示的に加えておく
+# (そうしないとinject_cross_domain_refs()がprefixを解決できず、これらの列を参照する
+# presence_conditions等が他ドメインから結合されないまま無視されてしまう)
 build_cdisc_variable_to_prefix <- function(cdisc_variable_values) {
-  cdisc_variable_values %>% distinct(cdisc_variable, prefix)
+  base <- cdisc_variable_values %>% distinct(cdisc_variable, prefix)
+  prefixes <- unique(cdisc_variable_values[["prefix"]])
+  coding_block <- prefixes %>% map_dfr(~ tibble(prefix = .x, cdisc_variable = meddra_coding_cols(.x)))
+  bind_rows(base, coding_block) %>% distinct(cdisc_variable, prefix)
 }
 
 # presence_conditions/field_ref_boundsのうち、cdisc_variableとref_cdisc_variableのprefixが異なる
@@ -338,6 +345,26 @@ sample_meddra_rows <- function(meddra, n, pool_size = 20) {
     slice_sample(n = min(pool_size, n_distinct(meddra[["llt_code"]])))
   weights <- 1 / seq_len(nrow(pool))
   pool[sample(seq_len(nrow(pool)), size = n, replace = TRUE, prob = weights), ]
+}
+
+# meddra_sample(1行=1つのLLT〜SOC階層)の一部の行を、required_llt_codes(必ずデータに含めたいLLTコード)の
+# 値で上書きする。コードごとに1行を選び、そのLLTコードに対応する階層一式に丸ごと差し替える。
+# required_llt_codesが空、meddra_sampleが0行、または該当コードがmeddraに存在しない場合は何もしない(そのコードは無視される)
+inject_required_llt_codes <- function(meddra_sample, meddra, required_llt_codes) {
+  required_llt_codes <- required_llt_codes[!is.na(required_llt_codes) & required_llt_codes != ""]
+  if (length(required_llt_codes) == 0 || nrow(meddra_sample) == 0) {
+    return(meddra_sample)
+  }
+  n <- nrow(meddra_sample)
+  target_rows <- sample(seq_len(n), size = length(required_llt_codes), replace = length(required_llt_codes) > n)
+  for (i in seq_along(required_llt_codes)) {
+    hierarchy_row <- meddra %>% filter(llt_code == required_llt_codes[i])
+    if (nrow(hierarchy_row) == 0) {
+      next
+    }
+    meddra_sample[target_rows[i], ] <- hierarchy_row[1, ]
+  }
+  meddra_sample
 }
 
 # field_type=="meddra"に該当する変数名を抽出

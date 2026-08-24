@@ -69,7 +69,7 @@ dm <- build_dm_domain(sheets, n = registration_n)
 dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
-ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds)
+ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes)
 death_date <- build_death_date_table(ae)
 # DS
 ds <- build_ds_domain(dm, cdisc_variable_values)

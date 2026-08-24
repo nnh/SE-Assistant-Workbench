@@ -2,7 +2,7 @@ library(tidyverse)
 
 build_cdisc_sheet_config_table <- function(sheet) {
   field_items <- if (length(sheet$field_items) == 0) {
-    tibble(field = character(), default_value = character(), is_invisible = character(), field_type = character())
+    tibble(field = character(), default_value = character(), is_invisible = logical(), field_type = character())
   } else {
     sheet$field_items %>%
       map_dfr(~ tibble(field = .$name, default_value = .$default_value, is_invisible=.$is_invisible,field_type = .$field_type))
