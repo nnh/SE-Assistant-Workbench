@@ -314,6 +314,36 @@ extract_cross_ref_clause <- function(value) {
   list(ref_alias_name = m[1, 2], ref_field = str_c("field", m[1, 3]), value = coalesce(m[1, 4], m[1, 5], m[1, 6]))
 }
 
+# valueのどこかにfieldN==fieldM(または fN==fM)という、リテラル値を伴わない
+# フィールド同士の等号比較が含まれていれば、その2つのフィールド名を取り出す(例: f2==f19 -> field2, field19)。
+# 周囲がどれだけ複雑な式(OR/ANDの入れ子など)でも、この断片だけを取り出す簡易検出用。
+# この関係は「片方がもう片方の値をそのまま使う(コピーする)べき」という意味で使われることが多い
+field_equality_pattern_loose <- "(?:field|f)([0-9]+)\\s*==\\s*(?:field|f)([0-9]+)"
+
+extract_field_equality_clause <- function(value) {
+  m <- str_match(value, field_equality_pattern_loose)
+  if (is.na(m[1, 1])) {
+    return(NULL)
+  }
+  list(field1 = str_c("field", m[1, 2]), field2 = str_c("field", m[1, 3]))
+}
+
+# 上記の断片から、field_name自身(このバリデーターが定義されているフィールド)ではない
+# もう一方のフィールド名を取り出す。field_nameがどちらとも一致しない場合はNA
+extract_field_equality_ref <- function(field_name, value) {
+  clause <- extract_field_equality_clause(value)
+  if (is.null(clause)) {
+    return(NA_character_)
+  }
+  if (clause[["field1"]] == field_name) {
+    return(clause[["field2"]])
+  }
+  if (clause[["field2"]] == field_name) {
+    return(clause[["field1"]])
+  }
+  NA_character_
+}
+
 # sheetsからvalidator_tableを組み立て、resolved_value/bound_type/ref_field/numeric_value/
 # presence_ref_field/presence_ref_valueまで付与した最終形を返す
 build_validator_table <- function(sheets) {

@@ -106,6 +106,18 @@ apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
     filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
 
+  # copyは先に適用する。同じcdisc_variableにequals/not_blankのゲーティング条件も併せて
+  # 存在する場合(例: FAOBJがAETERMをコピーしつつ、AELLTCDが特定コードのときだけ値を持つ)、
+  # 先にコピーしてから後段のゲーティングでNA化できるようにするため
+  copy_conditions <- applicable %>%
+    filter(condition_type == "copy") %>%
+    distinct(cdisc_variable, ref_cdisc_variable)
+  for (i in seq_len(nrow(copy_conditions))) {
+    var_name <- copy_conditions[["cdisc_variable"]][i]
+    ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
+    data[[var_name]] <- data[[ref_var]]
+  }
+
   equals_conditions <- applicable %>%
     filter(condition_type == "equals") %>%
     group_by(cdisc_variable, ref_cdisc_variable) %>%
@@ -126,15 +138,6 @@ apply_presence_conditions <- function(data, presence_conditions) {
     ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
     mismatch <- is.na(data[[ref_var]]) | data[[ref_var]] == ""
     data[[var_name]][mismatch] <- NA
-  }
-
-  copy_conditions <- applicable %>%
-    filter(condition_type == "copy") %>%
-    distinct(cdisc_variable, ref_cdisc_variable)
-  for (i in seq_len(nrow(copy_conditions))) {
-    var_name <- copy_conditions[["cdisc_variable"]][i]
-    ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
-    data[[var_name]] <- data[[ref_var]]
   }
 
   data
@@ -746,6 +749,112 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   data %>%
     add_seq(str_c(prefix, "SEQ")) %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), coding_cols))
+}
+
+# dataの各行が持つalias_name(例: AEドメインの"ae"/"sae_report")について、exclude_prefix以外に
+# 同じalias_nameでフィールドを定義しているprefix(例: FA)がある場合、そのフィールドを同じ行に
+# 直接追加する(FieldItem的な意味で「同じフォーム上の別ブロック」を表す)。
+# これにより、"ae"シートのようにAE報告と同一フォーム上にあるFA項目が同じ行(=同じ報告インスタンス)として
+# 扱われ、ブロックをまたぐpresence_conditions(例: FAOBJがAELLTCDを参照)がドメインをまたぐ結合なしに
+# 正しく判定できるようになる。戻り値のlinked_specは、実際に追加したprefix/alias_nameの一覧
+# (呼び出し側で、二重生成を避けるための除外や、後でsplit_linked_domains()に分離する際に使う)
+populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, registration_start_date, meddra, required_vars = character(0), who_drug_idf = NULL) {
+  own_alias_names <- data[["alias_name"]] %>% unique()
+  linked_spec <- cdisc_variable_values %>%
+    filter(prefix != exclude_prefix, alias_name %in% own_alias_names)
+
+  if (nrow(linked_spec) == 0) {
+    return(list(data = data, linked_spec = linked_spec))
+  }
+
+  drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
+  linked_vars <- linked_spec %>% distinct(cdisc_variable) %>% pull(cdisc_variable)
+
+  for (var_name in linked_vars) {
+    var_spec <- linked_spec %>% filter(cdisc_variable == var_name)
+
+    lookup <- var_spec %>%
+      group_by(alias_name) %>%
+      summarise(
+        field_type = first(field_type),
+        default_value = first(default_value),
+        codes = list(unique(ifelse(is.na(code), default_value, code))),
+        is_invisible_any = any(is_invisible, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(codes = map2(codes, is_invisible_any, function(cs, inv) {
+        if (!(var_name %in% required_vars) && !inv) union(cs, "") else cs
+      }))
+
+    data <- data %>%
+      left_join(lookup, by = "alias_name") %>%
+      group_by(alias_name) %>%
+      mutate(!!var_name := {
+        ft <- field_type[1]
+        nn <- n()
+        if (is.na(ft)) {
+          rep(NA_character_, nn)
+        } else if (ft == "radio_button") {
+          cs <- codes[[1]]
+          if (length(cs) > 0) sample(cs, nn, replace = TRUE) else rep(NA_character_, nn)
+        } else if (ft == "date") {
+          as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
+        } else if (ft == "meddra") {
+          dv <- default_value[1]
+          if (!is.na(dv) && str_detect(dv, "^[0-9]{8}$")) {
+            llt_name <- meddra %>% filter(llt_code == dv) %>% pull(llt_name) %>% unique()
+            rep(llt_name[1], nn)
+          } else {
+            sample_meddra_rows(meddra, nn)[["llt_name"]]
+          }
+        } else if (ft == "drug") {
+          dv <- default_value[1]
+          fixed_name <- if (!is.na(dv) && str_detect(dv, "^[0-9]+$")) {
+            who_drug_idf %>% filter(drug_code == dv) %>% pull(full_name_en) %>% discard(is.na) %>% unique()
+          } else {
+            character(0)
+          }
+          if (length(fixed_name) >= 1) {
+            rep(fixed_name[1], nn)
+          } else if (length(drug_names) > 0) {
+            sample(drug_names, nn, replace = TRUE)
+          } else {
+            rep(NA_character_, nn)
+          }
+        } else if (str_detect(var_name, "DOSE$")) {
+          sample(dose_value_choices, nn, replace = TRUE)
+        } else {
+          rep("DUMMY", nn)
+        }
+      }) %>%
+      ungroup() %>%
+      select(-field_type, -default_value, -codes, -is_invisible_any)
+  }
+
+  list(data = data, linked_spec = linked_spec)
+}
+
+# populate_linked_blocks()で同じ行に追加した列を、prefixごとの別テーブルに分離する。
+# source_spid_col(例: AESPID)の値をそのままprefixSPID(例: FASPID)として引き継ぐことで、
+# どのAE報告インスタンスに対応するリンク行かが分かるようにする
+split_linked_domains <- function(data, linked_spec, source_spid_col) {
+  if (nrow(linked_spec) == 0) {
+    return(list())
+  }
+  linked_alias_by_prefix <- linked_spec %>% distinct(prefix, alias_name)
+  prefixes <- unique(linked_spec[["prefix"]])
+
+  prefixes %>%
+    set_names() %>%
+    map(function(px) {
+      px_alias_names <- linked_alias_by_prefix %>% filter(prefix == px) %>% pull(alias_name)
+      px_vars <- linked_spec %>% filter(prefix == px) %>% distinct(cdisc_variable) %>% pull(cdisc_variable)
+      spid_var <- str_c(px, "SPID")
+      data %>%
+        filter(alias_name %in% px_alias_names) %>%
+        mutate(DOMAIN = px, !!spid_var := .data[[source_spid_col]]) %>%
+        select(STUDYID, DOMAIN, USUBJID, alias_name, all_of(spid_var), any_of(px_vars))
+    })
 }
 
 # 同じalias_name内で同じcdisc_variableが複数のlabelを持つ行が存在するかどうか(TR/LBなどの繰り返し項目判定)

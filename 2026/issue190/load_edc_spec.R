@@ -21,7 +21,7 @@ source(here("read_who_drug_idf.R"))
 registration_n <- 100
 registration_start_date <- "2024-04-01"
 json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_AML224-FLT3-ITD/AML224-FLT3-ITD_250929_1501.json'
-# json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
+json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
 #json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_Bev-FOLFOX-SBC/Bev-FOLFOX-SBC_250929_1501.json"
 edc_spec <- jsonlite::read_json(json_path)
 sheets <- edc_spec[["sheets"]]
@@ -65,11 +65,13 @@ meddra <- build_meddra_hierarchy()
 who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
 
 # DM
-dm <- build_dm_domain(sheets, n = registration_n)
+dm <- build_dm_domain(sheets, sheet_groups, n = registration_n)
 dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds)
 # AE
 ae <- dm %>% build_ae_domain()
-ae <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes)
+ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf)
+ae <- ae_result[["ae"]]
+ae_linked_domains <- ae_result[["linked"]]
 death_date <- build_death_date_table(ae)
 # DS
 ds <- build_ds_domain(dm, cdisc_variable_values)
@@ -78,13 +80,37 @@ ds <- finalize_ds_disposition(ds, death_date)
 discontinuation_date <- build_discontinuation_date_table(ds)
 ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 
+# ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、
+# 既にpopulate_ae_domain側で(AE報告と同じ行として)生成済みのため、
+# build_other_domains側では二重生成しないよう該当のprefix/alias_nameを除外する
+ae_linked_prefix_alias <- if (length(ae_linked_domains) > 0) {
+  ae_linked_domains %>% imap_dfr(~ tibble(prefix = .y, alias_name = unique(.x[["alias_name"]])))
+} else {
+  tibble(prefix = character(0), alias_name = character(0))
+}
+cdisc_variable_values_for_others <- cdisc_variable_values %>%
+  anti_join(ae_linked_prefix_alias, by = c("prefix", "alias_name"))
+
 # その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される。
 # 他ドメイン(DM/AE/DS含む)の変数を参照するpresence_conditions/field_ref_boundsがある場合は、
 # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
 other_domains <- build_other_domains(
-  dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
+  dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
   built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf
 )
+
+# AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
+for (linked_prefix in names(ae_linked_domains)) {
+  fragment <- ae_linked_domains[[linked_prefix]] %>% select(-alias_name)
+  merged <- if (linked_prefix %in% names(other_domains)) {
+    bind_rows(other_domains[[linked_prefix]], fragment)
+  } else {
+    fragment
+  }
+  other_domains[[linked_prefix]] <- merged %>%
+    add_seq(str_c(linked_prefix, "SEQ")) %>%
+    reorder_domain_columns(front_cols = domain_front_cols(linked_prefix))
+}
 
 # LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)
 if ("LB" %in% names(other_domains)) {

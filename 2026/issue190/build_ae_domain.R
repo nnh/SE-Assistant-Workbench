@@ -13,7 +13,7 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0)) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
   # レコードごとにalias_nameを割り当て
@@ -50,6 +50,13 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     populate_meddra_fields(ae_spec, meddra_vars, meddra, meddra_sample) %>%
     add_meddra_coding_block(meddra_sample, "AE")
 
+  # "ae"シートのように、AE報告と同じフォーム上に他prefix(例: FA)のブロックがある場合、
+  # そのフィールドも同じ行に追加する。presence_conditionsが同じ行内で完結するようにするため、
+  # apply_presence_conditionsの前に行う
+  linked <- populate_linked_blocks(ae, cdisc_variable_values, "AE", registration_start_date, meddra, required_vars, who_drug_idf)
+  ae <- linked[["data"]]
+  linked_spec <- linked[["linked_spec"]]
+
   # 上記以外のfield_type: とりあえずダミー値を格納
   ae <- ae %>%
     populate_dummy_fields(target_vars) %>%
@@ -82,15 +89,22 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     group_by(USUBJID) %>%
     mutate(AESPID = str_c(alias_name, row_number())) %>%
     ungroup() %>%
-    add_seq("AESEQ") %>%
-    select(-alias_name)
+    add_seq("AESEQ")
+
+  # populate_linked_blocks()で同じ行に追加した他prefix(例: FA)の列を、対応するドメインの
+  # 断片テーブルに分離する(AESPIDをそのままprefixSPIDとして引き継ぎ、どのAE報告に対応するか分かるようにする)。
+  # AE自身の返り値には、リンク先prefixの列とalias_nameは含めない
+  linked_domains <- split_linked_domains(ae, linked_spec, "AESPID")
+  ae <- ae %>% select(-alias_name, -any_of(linked_spec[["cdisc_variable"]] %>% unique()))
 
   # 列順を整理: STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 -> MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC
-  ae %>%
+  ae <- ae %>%
     reorder_domain_columns(
       front_cols = c(domain_front_cols("AE"), meddra_vars, meddra_coding_cols("AE")),
       end_cols = c("AETOXGR", "AESTDTC", "AEENDTC")
     )
+
+  list(ae = ae, linked = linked_domains)
 }
 
 build_death_date_table <- function(ae) {

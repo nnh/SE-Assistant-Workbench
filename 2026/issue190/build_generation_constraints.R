@@ -143,6 +143,29 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
 
   presence_conditions <- bind_rows(presence_conditions, and_presence_conditions)
 
+  # validator_type=="formula"の式(例: (f2==10052464||...)&&(f2==f19))に、リテラル値を伴わない
+  # フィールド同士の等号比較(fN==fM)が含まれる場合、周囲がOR/ANDの入れ子で複雑でも、その部分だけを
+  # 「このフィールドはもう一方のフィールドの値をそのままコピーする」という意味の
+  # condition_type="copy"行として追加する(例: FAOBJがAETERMをコピーする)
+  field_equality_copy_conditions <- validator_table %>%
+    filter(validator_type == "formula") %>%
+    distinct(alias_name, field_name, value) %>%
+    mutate(copy_ref_field = map2_chr(field_name, value, extract_field_equality_ref)) %>%
+    filter(!is.na(copy_ref_field)) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(
+      field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
+      by = c("alias_name", "copy_ref_field" = "field")
+    ) %>%
+    left_join(
+      field_to_label %>% rename(ref_label = label),
+      by = c("alias_name", "copy_ref_field" = "field")
+    ) %>%
+    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+    filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
+
+  presence_conditions <- bind_rows(presence_conditions, field_equality_copy_conditions)
+
   # FieldItem::Reference(同じシート内の別フィールドの値をそのまま使うフィールド)を、
   # condition_type="copy"のpresence_conditions行として追加する。
   # reference_type=="sheet"(同じシート内参照)のみ対応。それ以外は未対応のためスキップする
