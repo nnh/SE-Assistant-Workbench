@@ -106,15 +106,6 @@ compare_domain_by_index <- function(generated_datasets, datasets, index, sort_co
   compare_domain(generated_datasets, datasets, domain_name, sort_col, view = view)
 }
 
-# AEは専用のsort_colがあるため、名前で個別に指定して確認する(必須確認)。
-# DM/DSはそれぞれtools/validate_dm.R・tools/validate_ds.Rの構造的なチェックで代替するため、ここでは扱わない。
-# 返り値はlist(AE=)、各要素はcompare_domain()の返り値(list(generated=, csv=))
-compare_special_domains <- function(generated_datasets, datasets, view = interactive()) {
-  list(
-    AE = compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"), view = view)
-  )
-}
-
 # AE(AETOXGR==5、死亡)のUSUBJIDと発生日(AEENDTC。死亡に至ったAEの終了日を発生日とみなす)を返す
 build_ae_death_dates <- function(ae) {
   ae %>%
@@ -150,8 +141,7 @@ run_domain_validation <- function(ae, dm, ds, other_domains, csv_dir, view = int
 
   dm_aligned <- compare_domain(generated_datasets, datasets, "DM", "USUBJID", view = view)
   ds_aligned <- compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"), view = view)
-  special <- compare_special_domains(generated_datasets, datasets, view = view)
-  ae_aligned <- special[["AE"]]
+  ae_aligned <- compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"), view = view)
 
   ae_death_dates <- build_ae_death_dates(ae)
   ds_death_dates <- build_ds_death_dates(ds)

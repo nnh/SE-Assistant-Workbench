@@ -29,6 +29,13 @@ validate_dm <- function(dm, cdisc_variable_values, registration_n) {
   # check_boxは複数選択がカンマ区切りで1つの文字列になるため、カンマで分割してから判定する
   dm_choice_spec <- cdisc_variable_values %>% filter(prefix == "DM", field_type %in% c("radio_button", "check_box"))
   for (var_name in intersect(unique(dm_choice_spec[["cdisc_variable"]]), colnames(dm))) {
+    # 同じcdisc_variable名が別のalias_nameでmeddra/drug等の別field_typeとしても定義されている場合、
+    # 単一のコードリストでは判定できないためスキップする
+    all_field_types <- cdisc_variable_values %>% filter(prefix == "DM", cdisc_variable == var_name) %>% pull(field_type) %>% unique()
+    if (!all(all_field_types %in% c("radio_button", "check_box"))) {
+      next
+    }
+
     var_spec <- dm_choice_spec %>% filter(cdisc_variable == var_name)
     valid_codes <- var_spec %>%
       mutate(code = ifelse(is.na(code), default_value, code)) %>%
