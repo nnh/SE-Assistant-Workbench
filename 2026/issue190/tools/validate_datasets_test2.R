@@ -2,7 +2,7 @@ library(here)
 
 # 比較元(生成データ)として、先にload_edc_spec.Rを実行してae/dm/ds/other_domainsを作成しておくこと。
 # その際、load_edc_spec.Rのjson_pathを下記に変更してから実行すること
-# json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
+# json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_Bev-FOLFOX-SBC/Bev-FOLFOX-SBC_250929_1501.json"
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
 rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains")))
@@ -10,7 +10,7 @@ rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains")))
 source(here("tools/validate_common.R"))
 
 # 比較対象のCSVファイルを格納しているディレクトリ(直下のCSVを全て読み込む)
-csv_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/input/rawdata"
+csv_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/Chiken/NHO-Bev-FOLFOX-SBC/input/rawdata/20250715移動_要山本さん確認"
 
 datasets <- load_csv_datasets(csv_dir)
 generated_datasets <- build_generated_datasets(ae, dm, ds, other_domains)
@@ -45,4 +45,4 @@ compare_domain_by_index(generated_datasets, datasets, 10, exclude = special_doma
 compare_domain_by_index(generated_datasets, datasets, 11, exclude = special_domain_names)
 compare_domain_by_index(generated_datasets, datasets, 12, exclude = special_domain_names)
 compare_domain_by_index(generated_datasets, datasets, 13, exclude = special_domain_names)
-
+compare_domain_by_index(generated_datasets, datasets, 14, exclude = special_domain_names)

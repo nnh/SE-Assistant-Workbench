@@ -90,15 +90,33 @@ populate_radio_button_fields <- function(data, spec, target_vars, required_vars 
   data
 }
 
-# date: registration_start_date〜今日の間でランダムな日付を生成
+# date: registration_start_date〜今日の間でランダムな日付を生成。
+# dataにalias_name列がある場合(build_generic_domainなど)は、同じcdisc_variableでも
+# 定義しているalias_nameが違えば日付を入れず、そのcdisc_variableを実際に定義しているalias_nameの
+# 行だけに絞って生成する(例: CMドメインで"concomitant_drug"にしか無いCMSTDTCが、
+# それを定義していない"baseline1"の行にまで入ってしまうのを防ぐ)
 populate_date_fields <- function(data, spec, target_vars, registration_start_date) {
   date_vars <- spec %>%
     filter(field_type == "date") %>%
     pull(cdisc_variable) %>%
     unique() %>%
     intersect(target_vars)
+  has_alias_name <- "alias_name" %in% colnames(data)
   for (var_name in date_vars) {
-    data <- generate_random_date(data, registration_start_date, Sys.Date(), var_name)
+    if (has_alias_name) {
+      date_alias_names <- spec %>%
+        filter(field_type == "date", cdisc_variable == var_name) %>%
+        pull(alias_name) %>%
+        unique()
+      target_rows <- data[["alias_name"]] %in% date_alias_names
+      data[[var_name]] <- as.Date(NA)
+      if (any(target_rows)) {
+        generated <- generate_random_date(data[target_rows, , drop = FALSE], registration_start_date, Sys.Date(), var_name)
+        data[[var_name]][target_rows] <- generated[[var_name]]
+      }
+    } else {
+      data <- generate_random_date(data, registration_start_date, Sys.Date(), var_name)
+    }
   }
   data
 }

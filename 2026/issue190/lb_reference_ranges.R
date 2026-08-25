@@ -48,7 +48,8 @@ lb_reference_ranges <- tibble::tribble(
   "LYMLE",   "%",       20,         40,
   "MONOLE",  "%",       2,          10,
   "EOSLE",   "%",       0,          6,
-  "BASOLE",  "%",       0,          2
+  "BASOLE",  "%",       0,          2,
+  "PBTCCE",  "%",       0,          100
 )
 
 # lbtestcdごとに、基準範囲内をベースにランダムな数値を生成する。out_of_range_probの確率で
@@ -64,7 +65,13 @@ generate_lab_value <- function(lbtestcd, reference_ranges = lb_reference_ranges,
   out_value <- if_else(runif(n) < 0.5, out_low, out_high)
 
   is_out <- runif(n) < out_of_range_prob
-  round(if_else(is_out, out_value, in_range), 2)
+  value <- if_else(is_out, out_value, in_range)
+
+  # %(パーセント)の項目は0〜100を超えられないため、異常値側にクランプする
+  is_percent <- bounds[["unit"]] == "%"
+  value <- pmin(pmax(value, if_else(is_percent, 0, -Inf)), if_else(is_percent, 100, Inf))
+
+  round(value, 2)
 }
 
 # LBTESTCD/LBORRESが両方ある場合のみ、参照範囲にある検査項目のLBORRESをそれらしい数値に置き換える。

@@ -5,12 +5,14 @@ special_domain_names <- c("AE", "DM", "DS")
 
 # csv_dir直下のCSVを全て読み込む。ファイル名(拡張子なし)をキーにしたnamed listを返す(datasets$AE のように参照できる)。
 # 型推定による誤判定(先頭行がT/Fに見えて後方の"NOT DONE"等がパースエラーになる、等)を避けるため、
-# 全列を文字列として読み込む
+# 全列を文字列として読み込む。na=character(0)を指定し、空欄も文字列"NA"も自動でRのNAに
+# 変換しない(コードリストの選択肢として文字列"NA"が使われているケースがあるため、
+# 空欄と文字列"NA"を区別したまま読み込む)
 load_csv_datasets <- function(csv_dir) {
   csv_paths <- list.files(csv_dir, pattern = "\\.csv$", full.names = TRUE)
   csv_paths %>%
     set_names(~ tools::file_path_sans_ext(basename(.x))) %>%
-    map(~ read_csv(.x, col_types = cols(.default = "c")))
+    map(~ read_csv(.x, col_types = cols(.default = "c"), na = character(0)))
 }
 
 # load_edc_spec.Rで生成したae/dm/ds/other_domainsを、CSV側(datasets)と同じ
@@ -43,26 +45,36 @@ compare_colnames <- function(generated_datasets, datasets) {
       )
     })
 
-  colname_diff %>%
-    keep(~ length(.x[["only_in_generated"]]) > 0 || length(.x[["only_in_csv"]]) > 0) %>%
-    iwalk(function(diff, name) {
-      cat("===", name, "===\n")
-      cat("  生成データのみ:", if (length(diff[["only_in_generated"]]) > 0) paste(diff[["only_in_generated"]], collapse = ", ") else "(なし)", "\n")
-      cat("  CSVのみ:", if (length(diff[["only_in_csv"]]) > 0) paste(diff[["only_in_csv"]], collapse = ", ") else "(なし)", "\n")
-    })
+  diff_only <- colname_diff %>%
+    keep(~ length(.x[["only_in_generated"]]) > 0 || length(.x[["only_in_csv"]]) > 0)
+
+  if (length(diff_only) == 0) {
+    cat("列名の差分: なし\n")
+  } else {
+    diff_only %>%
+      iwalk(function(diff, name) {
+        cat("===", name, "===\n")
+        cat("  生成データのみ:", if (length(diff[["only_in_generated"]]) > 0) paste(diff[["only_in_generated"]], collapse = ", ") else "(なし)", "\n")
+        cat("  CSVのみ:", if (length(diff[["only_in_csv"]]) > 0) paste(diff[["only_in_csv"]], collapse = ", ") else "(なし)", "\n")
+      })
+  }
 
   invisible(colname_diff)
 }
 
 # 中身を目視比較しやすいよう列順・行順を揃える。共通の列を先頭(CSV側の並び順)に置き、
-# 片方にしか無い列は末尾に残す(削除はしない)。行順はsort_colで昇順に揃える
+# 片方にしか無い列は末尾に残す(削除はしない)。行順はsort_colで昇順に揃える。
+# 生成データ側のNAとCSV側の空欄("")は同じ「値が無い」状態とみなし、比較上の見た目の差にならないよう
+# どちらも""に統一する(生成データ側はDate等の列も混ざるため、一旦全列を文字列にしてから揃える)
 align_for_comparison <- function(generated_df, csv_df, sort_col) {
   common_cols <- intersect(colnames(csv_df), colnames(generated_df))
   generated_col_order <- c(common_cols, setdiff(colnames(generated_df), common_cols))
   csv_col_order <- c(common_cols, setdiff(colnames(csv_df), common_cols))
   list(
-    generated = generated_df %>% select(all_of(generated_col_order)) %>% arrange(across(all_of(sort_col))),
-    csv = csv_df %>% select(all_of(csv_col_order)) %>% arrange(across(all_of(sort_col)))
+    generated = generated_df %>% select(all_of(generated_col_order)) %>% arrange(across(all_of(sort_col))) %>%
+      mutate(across(everything(), ~ replace_na(as.character(.x), ""))),
+    csv = csv_df %>% select(all_of(csv_col_order)) %>% arrange(across(all_of(sort_col))) %>%
+      mutate(across(everything(), ~ replace_na(as.character(.x), "")))
   )
 }
 
