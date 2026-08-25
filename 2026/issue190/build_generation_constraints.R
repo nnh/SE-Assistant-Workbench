@@ -9,7 +9,11 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
   field_to_field_type <- df_cdisc %>% distinct(alias_name, field, field_type)
 
   # validate_presence_if(例: field22==2 || field22=='5<=')を、field名からcdisc_variable名に変換したうえで
-  # (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, expected_value)のテーブルにする。
+  # (cdisc_variable, label, ref_cdisc_variable, ref_alias_name, ref_label, expected_value)のテーブルにする。
+  # labelは、この条件が対象とするcdisc_variable自身が属するブロック(例: CMTRTが5つのlabelに
+  # 繰り返し定義されている場合、そのうちどのlabelの条件か)を表す。同じcdisc_variable名を持つ
+  # 複数のインスタンス(label違い)がそれぞれ別々の条件を持つ場合に、後段でインスタンスを取り違えないため
+  # (例: CM/baselineのCMTRTが5つのlabelにあり、それぞれ別の閾値でゲーティングされているケース)。
   # ref_alias_name/ref_labelは参照先フィールド(例: field22)自身が属するブロックを指す。
   # RS(繰り返し項目)がSC(別labelの繰り返し項目)を参照するような場合、参照元自身のlabelではなく、
   # この固定されたref_labelのレコードを見る必要があるため。
@@ -20,6 +24,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     filter(!is.na(presence_ref_field)) %>%
     distinct(alias_name, field_name, presence_ref_field, presence_ref_value) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     left_join(
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
       by = c("alias_name", "presence_ref_field" = "field")
@@ -43,7 +48,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
         ref_cdisc_variable
       )
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
+    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
 
@@ -57,6 +62,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     filter(!is.na(presence_predicate_suffix)) %>%
     distinct(alias_name, field_name, presence_predicate_suffix, presence_predicate_type) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     left_join(field_to_prefix, by = c("alias_name", "field_name" = "field")) %>%
     mutate(
       ref_cdisc_variable = str_c(prefix, presence_predicate_suffix),
@@ -65,7 +71,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       condition_type = if_else(presence_predicate_type == "blank", "equals", "not_blank"),
       expected_value = if_else(presence_predicate_type == "blank", "", NA_character_)
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, expected_value, condition_type) %>%
+    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name, ref_label, expected_value, condition_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
@@ -85,10 +91,11 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     ) %>%
     distinct(alias_name, field_name, value) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     filter(!is.na(cdisc_variable))
 
   and_presence_conditions <- ref_condition_rows %>%
-    pmap_dfr(function(alias_name, field_name, value, cdisc_variable) {
+    pmap_dfr(function(alias_name, field_name, value, cdisc_variable, label) {
       parsed <- parse_and_conditions(value)
       if (is.null(parsed)) {
         clause <- extract_cross_ref_clause(value)
@@ -105,6 +112,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             if (length(own_prefix) == 0) return(tibble())
             tibble(
               cdisc_variable = cdisc_variable,
+              label = label,
               ref_cdisc_variable = str_c(own_prefix[1], clause[["suffix"]]),
               ref_alias_name = alias_name,
               ref_label = NA_character_,
@@ -117,6 +125,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             ref_lbl <- field_to_label %>% filter(alias_name == clause[["ref_alias_name"]], field == clause[["ref_field"]]) %>% pull(label) %>% unname()
             tibble(
               cdisc_variable = cdisc_variable,
+              label = label,
               ref_cdisc_variable = ref_var[1],
               ref_alias_name = clause[["ref_alias_name"]],
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
@@ -129,6 +138,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
             tibble(
               cdisc_variable = cdisc_variable,
+              label = label,
               ref_cdisc_variable = ref_var[1],
               ref_alias_name = alias_name,
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
@@ -153,6 +163,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     mutate(copy_ref_field = map2_chr(field_name, value, extract_field_equality_ref)) %>%
     filter(!is.na(copy_ref_field)) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     left_join(
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
       by = c("alias_name", "copy_ref_field" = "field")
@@ -161,7 +172,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_label %>% rename(ref_label = label),
       by = c("alias_name", "copy_ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, field_equality_copy_conditions)
@@ -173,6 +184,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     field_copy_conditions <- field_reference_table %>%
       filter(reference_type == "sheet") %>%
       left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+      left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
       left_join(
         field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
         by = c("alias_name", "reference_field" = "field")
@@ -181,7 +193,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
         field_to_label %>% rename(ref_label = label),
         by = c("alias_name", "reference_field" = "field")
       ) %>%
-      transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+      transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
       filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
     presence_conditions <- bind_rows(presence_conditions, field_copy_conditions)

@@ -141,8 +141,8 @@ populate_dummy_fields <- function(data, target_vars) {
   data
 }
 
-# presence_conditions(cdisc_variable, ref_cdisc_variable, ref_alias_name, expected_value, condition_type)に
-# 基づき、条件を満たさないレコードのcdisc_variableをNAにする。インデックス代入を使うことで、
+# presence_conditions(cdisc_variable, label, ref_cdisc_variable, ref_alias_name, ref_label, expected_value,
+# condition_type)に基づき、条件を満たさないレコードのcdisc_variableをNAにする。インデックス代入を使うことで、
 # 日付型など列の型を問わず安全に適用できる。
 # condition_type=="equals": ref_cdisc_variableの値がexpected_value(複数行ならOR)と一致しない場合NAにする
 # condition_type=="not_blank": ref_cdisc_variableが空白/NAの場合NAにする(expected_valueは使わない)
@@ -153,7 +153,11 @@ populate_dummy_fields <- function(data, target_vars) {
 # thrombophiliaブロックだけがMHOCCUR=='Y'でゲーティングされ、registrationブロックには無関係)、
 # dataがalias_name列を持ち、そのref_alias_nameがdata自身のalias_nameのいずれかと一致するなら、
 # その行(そのブロック)だけにゲーティングを適用する。一致しない(または不明)場合は全行に適用する
-# (真に外部の固定参照とみなす。inject_cross_domain_refs()のスコープ判定と対になる)
+# (真に外部の固定参照とみなす。inject_cross_domain_refs()のスコープ判定と対になる)。
+# さらに、labelはこの条件が対象とするcdisc_variable自身のインスタンス(label)を表す。
+# 同じcdisc_variable名が複数labelに繰り返し定義され、それぞれ別々の条件を持つ場合(例: CM/baselineの
+# 5つのCMTRTが、各々異なる閾値でゲーティングされているケース)、labelでも絞り込むことで
+# 他インスタンスの条件を巻き込まないようにする
 apply_presence_conditions <- function(data, presence_conditions) {
   applicable <- presence_conditions %>%
     filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
@@ -162,6 +166,9 @@ apply_presence_conditions <- function(data, presence_conditions) {
   }
   if (!("ref_label" %in% names(applicable))) {
     applicable[["ref_label"]] <- NA_character_
+  }
+  if (!("label" %in% names(applicable))) {
+    applicable[["label"]] <- NA_character_
   }
 
   has_data_alias_name <- "alias_name" %in% colnames(data)
@@ -175,17 +182,22 @@ apply_presence_conditions <- function(data, presence_conditions) {
   # 同じalias_nameの他label(000〜005)に誤って適用しないため)。
   # 一方、ref_labelがdata自身のlabel群に存在しない場合(例: PC(label=111〜114)がEC側のlabel="054"を
   # 参照するような、別prefixの別の繰り返し軸を参照するケース)は、label不一致で全行が対象外になってしまうのを
-  # 避けるため、alias_nameのみで絞り込む(=そのalias_name内の全labelに同じ参照値を適用する)
-  target_rows_for <- function(ref_alias_name, ref_label = NA_character_) {
-    if (has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names) {
-      rows <- data[["alias_name"]] == ref_alias_name
-      if (has_data_alias && !is.na(ref_label) && ref_label %in% data[["label"]][rows]) {
-        rows <- rows & data[["label"]] == ref_label
+  # 避けるため、alias_nameのみで絞り込む(=そのalias_name内の全labelに同じ参照値を適用する)。
+  # own_labelが指定されている場合は、それとは独立に、cdisc_variable自身のインスタンス(data自身のlabel)でも絞り込む
+  target_rows_for <- function(ref_alias_name, ref_label = NA_character_, own_label = NA_character_) {
+    rows <- if (has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names) {
+      r <- data[["alias_name"]] == ref_alias_name
+      if (has_data_alias && !is.na(ref_label) && ref_label %in% data[["label"]][r]) {
+        r <- r & data[["label"]] == ref_label
       }
-      rows
+      r
     } else {
       rep(TRUE, nrow(data))
     }
+    if (has_data_alias && !is.na(own_label)) {
+      rows <- rows & data[["label"]] == own_label
+    }
+    rows
   }
 
   # copyは先に適用する。同じcdisc_variableにequals/not_blankのゲーティング条件も併せて
@@ -193,33 +205,35 @@ apply_presence_conditions <- function(data, presence_conditions) {
   # 先にコピーしてから後段のゲーティングでNA化できるようにするため
   copy_conditions <- applicable %>%
     filter(condition_type == "copy") %>%
-    distinct(cdisc_variable, ref_cdisc_variable)
+    distinct(cdisc_variable, ref_cdisc_variable, label)
   for (i in seq_len(nrow(copy_conditions))) {
     var_name <- copy_conditions[["cdisc_variable"]][i]
     ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
-    data[[var_name]] <- data[[ref_var]]
+    own_label <- copy_conditions[["label"]][i]
+    target_rows <- if (has_data_alias && !is.na(own_label)) data[["label"]] == own_label else rep(TRUE, nrow(data))
+    data[[var_name]][target_rows] <- data[[ref_var]][target_rows]
   }
 
   equals_conditions <- applicable %>%
     filter(condition_type == "equals") %>%
-    group_by(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label) %>%
+    group_by(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, label) %>%
     summarise(expected_values = list(unique(expected_value)), .groups = "drop")
   for (i in seq_len(nrow(equals_conditions))) {
     var_name <- equals_conditions[["cdisc_variable"]][i]
     ref_var <- equals_conditions[["ref_cdisc_variable"]][i]
     expected_values <- equals_conditions[["expected_values"]][[i]]
-    target_rows <- target_rows_for(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i])
+    target_rows <- target_rows_for(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i], equals_conditions[["label"]][i])
     mismatch <- target_rows & !(data[[ref_var]] %in% expected_values)
     data[[var_name]][mismatch] <- NA
   }
 
   not_blank_conditions <- applicable %>%
     filter(condition_type == "not_blank") %>%
-    distinct(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label)
+    distinct(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, label)
   for (i in seq_len(nrow(not_blank_conditions))) {
     var_name <- not_blank_conditions[["cdisc_variable"]][i]
     ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
-    target_rows <- target_rows_for(not_blank_conditions[["ref_alias_name"]][i], not_blank_conditions[["ref_label"]][i])
+    target_rows <- target_rows_for(not_blank_conditions[["ref_alias_name"]][i], not_blank_conditions[["ref_label"]][i], not_blank_conditions[["label"]][i])
     mismatch <- target_rows & (is.na(data[[ref_var]]) | data[[ref_var]] == "")
     data[[var_name]][mismatch] <- NA
   }

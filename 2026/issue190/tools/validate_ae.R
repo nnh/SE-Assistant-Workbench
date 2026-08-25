@@ -22,10 +22,13 @@ validate_ae <- function(ae, dm, cdisc_variable_values) {
   extra_usubjid <- setdiff(ae[["USUBJID"]], dm[["USUBJID"]])
   add_check("usubjid_subset_of_dm", length(extra_usubjid) == 0, str_c("DM以外: ", paste(extra_usubjid, collapse = ", ")))
 
-  # AESTDTC(開始日)がAEENDTC(終了日)以前であること(両方値がある行のみ対象)
+  # AESTDTC(開始日)がAEENDTC(終了日)以前であること(同日は許容、両方値がある行のみ対象)。
+  # 日付以外の時刻成分が万一残っていても影響しないよう、文字列経由でDate型に変換してから比較する
   if (all(c("AESTDTC", "AEENDTC") %in% colnames(ae))) {
     both_present <- !is.na(ae[["AESTDTC"]]) & !is.na(ae[["AEENDTC"]])
-    reversed <- both_present & (as.Date(ae[["AESTDTC"]]) > as.Date(ae[["AEENDTC"]]))
+    aestdtc_date <- as.Date(as.character(ae[["AESTDTC"]]))
+    aeendtc_date <- as.Date(as.character(ae[["AEENDTC"]]))
+    reversed <- both_present & (aestdtc_date > aeendtc_date)
     add_check("start_before_end", !any(reversed), str_c("逆転している行数: ", sum(reversed)))
   }
 
