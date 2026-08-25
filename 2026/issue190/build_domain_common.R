@@ -123,13 +123,17 @@ apply_presence_conditions <- function(data, presence_conditions) {
   data_alias_names <- if (has_data_alias_name) unique(data[["alias_name"]]) else character(0)
 
   # ref_alias_nameがdata自身のalias_nameのいずれかと一致する行だけに絞る(一致しなければ真に外部の
-  # 固定参照とみなして全行を対象にする)。さらに、dataがlabelも持っており、かつref_labelが指定されている
-  # 場合は、同じalias_name内の他labelを巻き込まないようlabelでも絞り込む(例: thrombophilia内の
-  # label="006"のゲーティング条件を、同じalias_nameの他label(000〜005)に誤って適用しないため)
+  # 固定参照とみなして全行を対象にする)。さらに、dataがlabelも持っており、かつref_labelが
+  # そのalias_name内でdata自身が実際に持っているlabelの1つでもある場合は、同じalias_name内の他labelを
+  # 巻き込まないようlabelでも絞り込む(例: thrombophilia内のlabel="006"のゲーティング条件を、
+  # 同じalias_nameの他label(000〜005)に誤って適用しないため)。
+  # 一方、ref_labelがdata自身のlabel群に存在しない場合(例: PC(label=111〜114)がEC側のlabel="054"を
+  # 参照するような、別prefixの別の繰り返し軸を参照するケース)は、label不一致で全行が対象外になってしまうのを
+  # 避けるため、alias_nameのみで絞り込む(=そのalias_name内の全labelに同じ参照値を適用する)
   target_rows_for <- function(ref_alias_name, ref_label = NA_character_) {
     if (has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names) {
       rows <- data[["alias_name"]] == ref_alias_name
-      if (has_data_alias && !is.na(ref_label)) {
+      if (has_data_alias && !is.na(ref_label) && ref_label %in% data[["label"]][rows]) {
         rows <- rows & data[["label"]] == ref_label
       }
       rows
@@ -379,12 +383,15 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
       # このpinを適用する対象行: dataがalias_nameを持ち、そのpinのref_alias_nameが
       # data自身のalias_nameのいずれかと一致するならその行だけに絞る。一致しない(またはalias_name不明)なら
       # 真に外部の固定参照とみなして全行を対象にする。さらに、dataがlabelも持っており、かつ
-      # pin_labelが指定されている場合は、同じalias_name内の他labelを巻き込まないようlabelでも絞り込む
-      # (例: thrombophilia内のlabel="006"へのpinを、同じalias_nameの他label(000〜005)に誤って
-      # 適用しないため)
+      # pin_labelがそのalias_name内でdata自身が実際に持っているlabelの1つでもある場合は、
+      # 同じalias_name内の他labelを巻き込まないようlabelでも絞り込む(例: thrombophilia内の
+      # label="006"へのpinを、同じalias_nameの他label(000〜005)に誤って適用しないため)。
+      # 一方、pin_labelがdata自身のlabel群に存在しない場合(例: PC(label=111〜114)がEC側の
+      # label="054"を参照するような、別prefixの別の繰り返し軸を参照するケース)は、label不一致で
+      # 全行が対象外になってしまうのを避けるため、alias_nameのみで絞り込む
       target_rows <- if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
         rows <- data[["alias_name"]] == pin_alias
-        if (has_data_alias && !is.na(pin_label)) {
+        if (has_data_alias && !is.na(pin_label) && pin_label %in% data[["label"]][rows]) {
           rows <- rows & data[["label"]] == pin_label
         }
         rows
