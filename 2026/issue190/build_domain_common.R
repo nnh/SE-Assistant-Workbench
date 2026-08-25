@@ -8,14 +8,33 @@ compute_target_vars <- function(data, spec) {
   setdiff(unique(spec[["cdisc_variable"]]), colnames(data))
 }
 
-# radio_button: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
+# check_box: radio_buttonと異なり複数選択が可能なため、実際の選択肢("" を除く)から1個以上を
+# ランダムに選び、カンマ区切りで1つの文字列に結合する(選ぶ個数自体もランダムにすることで、
+# 単一選択と複数選択が混在するようにする)。""が選択肢に含まれる場合(必須でない項目)は、
+# 未選択(空欄)になることもある
+sample_check_box_values <- function(choices, n) {
+  real_choices <- setdiff(choices, "")
+  has_blank <- "" %in% choices
+  if (length(real_choices) == 0) {
+    return(rep(if (has_blank) "" else NA_character_, n))
+  }
+  map_chr(seq_len(n), function(i) {
+    if (has_blank && sample(c(TRUE, FALSE), 1)) {
+      return("")
+    }
+    k <- sample(length(real_choices), size = sample(seq_len(length(real_choices)), 1))
+    str_c(real_choices[k], collapse = ",")
+  })
+}
+
+# radio_button/check_box: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
 # required_vars(presence型のvalidatorを持つcdisc_variable)に含まれず、かつis_invisibleがFALSE(可視項目)の場合は
 # 必須ではないため、空白("")も選択肢に加える。
 # numeric_bounds(cdisc_variable, min_value, max_value)がある場合、数値として範囲外のcodeは選択肢から除く。
 # dataにalias_name列がある場合(build_generic_domainなど)は、同じcdisc_variableでも
 # 定義しているalias_nameが違えばcodeを混ぜず、そのalias_nameの行だけ自分のcodeから選ぶ
 populate_radio_button_fields <- function(data, spec, target_vars, required_vars = character(0), numeric_bounds = NULL) {
-  options_spec <- spec %>% filter(field_type == "radio_button")
+  options_spec <- spec %>% filter(field_type %in% c("radio_button", "check_box"))
   options_spec[["code"]] <- ifelse(is.na(options_spec[["code"]]), options_spec[["default_value"]], options_spec[["code"]])
   options_target_vars <- intersect(unique(options_spec[["cdisc_variable"]]), target_vars)
   has_alias_name <- "alias_name" %in% colnames(data)
@@ -46,16 +65,25 @@ populate_radio_button_fields <- function(data, spec, target_vars, required_vars 
     if (has_alias_name) {
       data[[var_name]] <- NA_character_
       for (an in unique(var_rows[["alias_name"]])) {
-        choices <- build_choices(var_rows %>% filter(alias_name == an), var_name)
+        an_rows <- var_rows %>% filter(alias_name == an)
+        choices <- build_choices(an_rows, var_name)
         target <- data[["alias_name"]] == an
         if (length(choices) > 0 && any(target)) {
-          data[[var_name]][target] <- sample(choices, size = sum(target), replace = TRUE)
+          data[[var_name]][target] <- if (any(an_rows[["field_type"]] == "check_box")) {
+            sample_check_box_values(choices, sum(target))
+          } else {
+            sample(choices, size = sum(target), replace = TRUE)
+          }
         }
       }
     } else {
       choices <- build_choices(var_rows, var_name)
       if (length(choices) > 0) {
-        data[[var_name]] <- sample(choices, size = nrow(data), replace = TRUE)
+        data[[var_name]] <- if (any(var_rows[["field_type"]] == "check_box")) {
+          sample_check_box_values(choices, nrow(data))
+        } else {
+          sample(choices, size = nrow(data), replace = TRUE)
+        }
       }
     }
   }
@@ -882,9 +910,15 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
         nn <- n()
         if (is.na(ft)) {
           rep(NA_character_, nn)
-        } else if (ft == "radio_button") {
+        } else if (ft %in% c("radio_button", "check_box")) {
           cs <- codes[[1]]
-          if (length(cs) > 0) sample(cs, nn, replace = TRUE) else rep(NA_character_, nn)
+          if (length(cs) == 0) {
+            rep(NA_character_, nn)
+          } else if (ft == "check_box") {
+            sample_check_box_values(cs, nn)
+          } else {
+            sample(cs, nn, replace = TRUE)
+          }
         } else if (ft == "date") {
           as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
         } else if (ft == "meddra") {
@@ -1005,9 +1039,15 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
         nn <- n()
         if (is.na(ft)) {
           rep(NA_character_, nn)
-        } else if (ft == "radio_button") {
+        } else if (ft %in% c("radio_button", "check_box")) {
           cs <- codes[[1]]
-          if (length(cs) > 0) sample(cs, nn, replace = TRUE) else rep(NA_character_, nn)
+          if (length(cs) == 0) {
+            rep(NA_character_, nn)
+          } else if (ft == "check_box") {
+            sample_check_box_values(cs, nn)
+          } else {
+            sample(cs, nn, replace = TRUE)
+          }
         } else if (ft == "date") {
           as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
         } else if (ft == "meddra") {
