@@ -9,6 +9,7 @@ rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_val
 
 source(here("tools/validate_common.R"))
 source(here("tools/validate_dm.R"))
+source(here("tools/validate_ds.R"))
 
 # 比較対象のCSVファイルを格納しているディレクトリ(直下のCSVを全て読み込む)
 csv_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/input/rawdata"
@@ -22,10 +23,11 @@ compare_dataset_names(generated_datasets, datasets)
 # 両方に共通して存在するデータセットについて、列名の差分を確認
 compare_colnames(generated_datasets, datasets)
 
-# DMは目視ではなく、構造的な条件による自動チェック(validate_dm())で確認する
+# DM/DSは目視ではなく、構造的な条件による自動チェック(validate_dm()/validate_ds())で確認する
 report_dm_validation(validate_dm(dm, cdisc_variable_values, registration_n))
+report_ds_validation(validate_ds(ds, dm, cdisc_variable_values))
 
-# AE/DSは専用のsort_colがあるため、名前で個別に指定して確認する(必須確認)
+# AEは専用のsort_colがあるため、名前で個別に指定して確認する(必須確認)
 compare_special_domains(generated_datasets, datasets)
 
 # AE/DM/DSを除いた、両方に共通して存在するドメイン名一覧。以下の1行ずつ実行するとき、
