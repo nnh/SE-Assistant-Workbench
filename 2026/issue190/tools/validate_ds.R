@@ -1,4 +1,5 @@
 library(tidyverse)
+library(lubridate)
 
 # 先にload_edc_spec.Rを実行してds/dm/cdisc_variable_valuesを作成しておくこと。
 # 乱数で値が変わるDSドメインを、値そのものではなく「満たすべき構造的な条件」で自動チェックする
@@ -65,19 +66,21 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
     )
   }
 
-  # date型の列は、日付としてパースでき、未来日でない
+  # date型の列は、日付(YYYY-MM-DD)としてパースでき、未来日でない。
+  # as.Date()は完全に書式が崩れた文字列(数値がそのまま文字列化されてしまった等)だとエラーで
+  # 停止してしまうため、パースできない値はNAを返すlubridate::ymd()を使う
   ds_date_vars <- cdisc_variable_values %>% filter(prefix == "DS", field_type == "date") %>% pull(cdisc_variable) %>% unique()
   for (var_name in intersect(ds_date_vars, colnames(ds))) {
     raw <- ds[[var_name]]
     non_na <- raw[!is.na(raw)]
-    parsed <- suppressWarnings(as.Date(non_na))
+    parsed <- suppressWarnings(ymd(non_na))
     unparsable <- non_na[is.na(parsed)]
     future_dates <- parsed[!is.na(parsed) & parsed > Sys.Date()]
 
     add_check(
       str_c("valid_date: ", var_name),
       length(unparsable) == 0 && length(future_dates) == 0,
-      str_c("パース不可: ", length(unparsable), "件, 未来日: ", length(future_dates), "件")
+      str_c("パース不可: ", length(unparsable), "件(", paste(head(unparsable, 5), collapse = ", "), "), 未来日: ", length(future_dates), "件")
     )
   }
 

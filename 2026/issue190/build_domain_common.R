@@ -211,7 +211,9 @@ apply_presence_conditions <- function(data, presence_conditions) {
     ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
     own_label <- copy_conditions[["label"]][i]
     target_rows <- if (has_data_alias && !is.na(own_label)) data[["label"]] == own_label else rep(TRUE, nrow(data))
-    data[[var_name]][target_rows] <- data[[ref_var]][target_rows]
+    # コピー元(ref_var)がDate型の場合、文字列型のvar_nameへインデックス代入すると内部の数値表現が
+    # そのまま文字列化されてしまうため、as.character()で明示的に変換してから代入する
+    data[[var_name]][target_rows] <- as.character(data[[ref_var]][target_rows])
   }
 
   equals_conditions <- applicable %>%
@@ -317,8 +319,10 @@ apply_age_date_bounds <- function(data, age_bounds, registration_start_date) {
     current <- data[[var_name]]
     target <- !is.na(current) & !is.na(ref_dates)
     if (any(target)) {
-      new_dates <- as.Date(runif(sum(target), as.numeric(lower[target]), as.numeric(upper[target])), origin = "1970-01-01")
-      data[[var_name]][target] <- new_dates
+      new_dates <- as.Date(floor(runif(sum(target), as.numeric(lower[target]), as.numeric(upper[target]))), origin = "1970-01-01")
+      # data[[var_name]]は文字列型のため、Date型のままインデックス代入すると
+      # (YYYY-MM-DD形式ではなく)内部の数値表現が文字列化されてしまう。as.character()で明示的に変換する
+      data[[var_name]][target] <- as.character(new_dates)
     }
   }
   data
