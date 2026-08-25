@@ -4,7 +4,6 @@ external_dict_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Tools/test
 meddra_dir <- file.path(external_dict_dir, "MedDRA")
 
 who_drug_idf_parent_dir <- file.path(external_dict_dir, "WHO-DD_IDF")
-who_drug_idf_version_folder <- "2025 Mar 1"
 
 # AEドメインに必ず1件以上含めたい病名のLLTコード(複数指定可、空でもよい)
 required_ae_llt_codes <- c("10052464", "10062314", "10057913", "10055032", "10024855", "10039906", "10042772", "10047281", "10047294", "10065341", "10047302")

@@ -4,6 +4,7 @@ library(tidyverse)
 library(here)
 
 source(here("constant.R"))
+source(here("user_input.R"))
 source(here("generate_random_date.R"))
 source(here("generate_brthdtc.R"))
 source(here("build_dm_domain.R"))
@@ -18,8 +19,6 @@ source(here("lb_reference_ranges.R"))
 source(here("tr_orres_values.R"))
 source(here("vs_orres_values.R"))
 source(here("read_who_drug_idf.R"))
-registration_n <- 100
-registration_start_date <- "2024-04-01"
 json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_ALL-B19/ALL-B19_250929_1452.json'
 #json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/検証/JSON/20260408大塚引継用/入力ファイル(JSON)/forTest_input_AML224-FLT3-ITD/AML224-FLT3-ITD_250929_1501.json'
 #json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Stat/Trials/HMCSG/HMCSG-Tucidinostat-rrPTCL/specs/EDC/Tucidinostat-rrPTCL_260616_1112.json"
@@ -27,17 +26,6 @@ json_path <- '/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/ISR/Ptosh/�
 edc_spec <- jsonlite::read_json(json_path)
 sheets <- edc_spec[["sheets"]]
 sheet_groups <- edc_spec[["sheet_groups"]]
-
-# sheet_groups(グループ情報 + ネストしたsheets)をシート単位で展開したtibbleにする
-sheet_group_table <- sheet_groups %>%
-  map_dfr(~ tibble(
-    group_uuid = .$uuid,
-    group_name = .$name,
-    group_alias_name = .$alias_name,
-    allocation_group = .$allocation_group,
-    is_default = .$is_default,
-    sheet_alias_name = map_chr(.$sheets, ~ .x$alias_name)
-  ))
 
 cdisc <- build_cdisc_variable_values(edc_spec, sheets)
 df_cdisc <- cdisc[["df_cdisc"]]
@@ -60,7 +48,7 @@ field_ref_bounds <- constraints[["field_ref_bounds"]]
 age_bounds <- constraints[["age_bounds"]]
 
 # MedDRA
-meddra <- build_meddra_hierarchy()
+meddra <- build_meddra_hierarchy(meddra_version)
 
 # WhoDrug/IDF
 who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
@@ -87,13 +75,7 @@ ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 # ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、
 # 既にpopulate_ae_domain側で(AE報告と同じ行として)生成済みのため、
 # build_other_domains側では二重生成しないよう該当のprefix/alias_nameを除外する
-ae_linked_prefix_alias <- if (length(ae_linked_domains) > 0) {
-  ae_linked_domains %>% imap_dfr(~ tibble(prefix = .y, alias_name = unique(.x[["alias_name"]])))
-} else {
-  tibble(prefix = character(0), alias_name = character(0))
-}
-cdisc_variable_values_for_others <- cdisc_variable_values %>%
-  anti_join(ae_linked_prefix_alias, by = c("prefix", "alias_name"))
+cdisc_variable_values_for_others <- exclude_ae_linked_prefixes(cdisc_variable_values, ae_linked_domains)
 
 # その他のドメイン(DM/AE/DS以外)。同じalias_name内でcdisc_variableが複数labelを持つドメインは自動判定される。
 # 他ドメイン(DM/AE/DS含む)の変数を参照するpresence_conditions/field_ref_boundsがある場合は、
@@ -108,32 +90,15 @@ other_domains <- build_other_domains(
 ds <- ds %>% select(-any_of(c("alias_name", "label")))
 
 # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
-for (linked_prefix in names(ae_linked_domains)) {
-  fragment <- ae_linked_domains[[linked_prefix]] %>% select(-alias_name)
-  merged <- if (linked_prefix %in% names(other_domains)) {
-    bind_rows(other_domains[[linked_prefix]], fragment)
-  } else {
-    fragment
-  }
-  other_domains[[linked_prefix]] <- merged %>%
-    add_seq(str_c(linked_prefix, "SEQ")) %>%
-    reorder_domain_columns(front_cols = domain_front_cols(linked_prefix))
-}
+other_domains <- merge_linked_domains(other_domains, ae_linked_domains)
 
-# LBORRESを基準範囲に基づいたそれらしい数値に置き換える(LBTESTCD/LBORRESが無ければ何もしない)
-if ("LB" %in% names(other_domains)) {
-  other_domains[["LB"]] <- populate_lb_orres(other_domains[["LB"]])
-}
-
-# TRORRESはTRTESTCDがLDIAM/SAXISのときだけそれらしい数値(mm)に置き換える(それ以外は変更しない)
-if ("TR" %in% names(other_domains)) {
-  other_domains[["TR"]] <- populate_tr_orres(other_domains[["TR"]])
-}
-
-# VSORRESを基準範囲に基づいたそれらしい数値に置き換える(VSTESTCD/VSORRESが無ければ何もしない)
-if ("VS" %in% names(other_domains)) {
-  other_domains[["VS"]] <- populate_vs_orres(other_domains[["VS"]])
-}
+# LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
+# (対応するドメインが存在しない、またはTESTCD/ORRES列が無い場合は何もしない)
+other_domains <- apply_orres_populators(other_domains, list(
+  LB = populate_lb_orres,
+  TR = populate_tr_orres,
+  VS = populate_vs_orres
+))
 
 # DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、
 # presence_conditionsで条件付けされている列(例: DDORRES)が全てNAの行を除外)

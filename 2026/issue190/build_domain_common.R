@@ -1119,3 +1119,41 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
   # 返り値を作る最後の段階でのみ取り除く
   built_domains[prefixes] %>% map(~ select(.x, -any_of(c("alias_name", "label"))))
 }
+
+# ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、
+# 既にpopulate_ae_domain側で(AE報告と同じ行として)生成済みのため、
+# build_other_domains側では二重生成しないよう該当のprefix/alias_nameをcdisc_variable_valuesから除外する
+exclude_ae_linked_prefixes <- function(cdisc_variable_values, ae_linked_domains) {
+  ae_linked_prefix_alias <- if (length(ae_linked_domains) > 0) {
+    ae_linked_domains %>% imap_dfr(~ tibble(prefix = .y, alias_name = unique(.x[["alias_name"]])))
+  } else {
+    tibble(prefix = character(0), alias_name = character(0))
+  }
+  cdisc_variable_values %>% anti_join(ae_linked_prefix_alias, by = c("prefix", "alias_name"))
+}
+
+# AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
+merge_linked_domains <- function(other_domains, ae_linked_domains) {
+  for (linked_prefix in names(ae_linked_domains)) {
+    fragment <- ae_linked_domains[[linked_prefix]] %>% select(-alias_name)
+    merged <- if (linked_prefix %in% names(other_domains)) {
+      bind_rows(other_domains[[linked_prefix]], fragment)
+    } else {
+      fragment
+    }
+    other_domains[[linked_prefix]] <- merged %>%
+      add_seq(str_c(linked_prefix, "SEQ")) %>%
+      reorder_domain_columns(front_cols = domain_front_cols(linked_prefix))
+  }
+  other_domains
+}
+
+# other_domainsのうち存在するドメインにだけ、対応するORRES整形関数(populate_lb_orres等)を適用する
+apply_orres_populators <- function(other_domains, populators) {
+  for (domain_name in names(populators)) {
+    if (domain_name %in% names(other_domains)) {
+      other_domains[[domain_name]] <- populators[[domain_name]](other_domains[[domain_name]])
+    }
+  }
+  other_domains
+}
