@@ -106,11 +106,11 @@ compare_domain_by_index <- function(generated_datasets, datasets, index, sort_co
   compare_domain(generated_datasets, datasets, domain_name, sort_col, view = view)
 }
 
-# AE/DM/DSは専用のsort_colがあるため、名前で個別に指定して確認する(必須確認)。
-# 返り値はlist(DM=, AE=, DS=)、各要素はcompare_domain()の返り値(list(generated=, csv=))
+# AE/DSは専用のsort_colがあるため、名前で個別に指定して確認する(必須確認)。
+# DMはtools/validate_dm.Rの構造的なチェック(validate_dm())で代替するため、ここでは扱わない。
+# 返り値はlist(AE=, DS=)、各要素はcompare_domain()の返り値(list(generated=, csv=))
 compare_special_domains <- function(generated_datasets, datasets, view = interactive()) {
   list(
-    DM = compare_domain(generated_datasets, datasets, "DM", "USUBJID", view = view),
     AE = compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"), view = view),
     DS = compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"), view = view)
   )
@@ -149,8 +149,8 @@ run_domain_validation <- function(ae, dm, ds, other_domains, csv_dir, view = int
   compare_dataset_names(generated_datasets, datasets)
   compare_colnames(generated_datasets, datasets)
 
+  dm_aligned <- compare_domain(generated_datasets, datasets, "DM", "USUBJID", view = view)
   special <- compare_special_domains(generated_datasets, datasets, view = view)
-  dm_aligned <- special[["DM"]]
   ae_aligned <- special[["AE"]]
   ds_aligned <- special[["DS"]]
 
