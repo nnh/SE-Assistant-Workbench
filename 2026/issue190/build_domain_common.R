@@ -612,8 +612,12 @@ add_drug_decod <- function(data, spec, drug_vars, who_drug_idf, prefix) {
   if (length(drug_vars) == 0) {
     return(data)
   }
+  # 同じfull_name_enが複数行あり、一部だけgeneric_name_enが空のことがあるため、
+  # distinct()で先頭行を無条件に採用すると本来値があるはずのケースまで空になってしまう。
+  # generic_name_enが空でない行を優先して残すよう、先に並べ替えてからdistinct()する
   lookup <- who_drug_idf %>%
     filter(!is.na(full_name_en)) %>%
+    arrange(is.na(generic_name_en)) %>%
     distinct(full_name_en, .keep_all = TRUE)
 
   decod_var <- str_c(prefix, "DECOD")

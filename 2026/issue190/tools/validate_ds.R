@@ -35,6 +35,11 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
     add_check("death_not_duplicated", length(dup_death) == 0, str_c("重複: ", paste(dup_death, collapse = ", ")))
   }
 
+  # add_randomization_ds_rows()がEDC仕様のコードリストとは無関係に固定挿入する
+  # 無作為化マイルストーン行の値(EDCフォーム上には存在しない標準SDTM値)。valid_codesチェックの
+  # 誤検知を避けるため、該当するcdisc_variableの許容値にあらかじめ加えておく
+  randomization_allowed_codes <- list(DSCAT = "PROTOCOL MILESTONE", DSTERM = "RANDOMIZED", DSDECOD = "RANDOMIZED")
+
   # radio_button/check_box型の列は、コードリスト(空欄含む)の範囲内の値のみを持つ。
   # check_boxは複数選択がカンマ区切りで1つの文字列になるため、カンマで分割してから判定する
   ds_choice_spec <- cdisc_variable_values %>% filter(prefix == "DS", field_type %in% c("radio_button", "check_box"))
@@ -51,7 +56,8 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
       mutate(code = ifelse(is.na(code), default_value, code)) %>%
       pull(code) %>%
       unique() %>%
-      union("")
+      union("") %>%
+      union(randomization_allowed_codes[[var_name]])
 
     observed <- ds[[var_name]][!is.na(ds[[var_name]])]
     if (any(var_spec[["field_type"]] == "check_box")) {
