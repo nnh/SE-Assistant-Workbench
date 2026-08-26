@@ -1,4 +1,12 @@
 library(tidyverse)
+library(here)
+
+# DM/DS/AE/other_domainsの構造的な自動チェック(validate_dm()等)は、それぞれ専用ファイルに分けている。
+# testN.Rが個別にsourceしなくても済むよう、ここでまとめてsourceしておく
+source(here("tools/validate_dm.R"))
+source(here("tools/validate_ds.R"))
+source(here("tools/validate_ae.R"))
+source(here("tools/validate_other_domains.R"))
 
 # 専用のsort_colで個別に確認するため、index指定の対象から除くドメイン名
 special_domain_names <- c("AE", "DM", "DS")
@@ -129,19 +137,29 @@ check_death_consistency <- function(ae_death_dates, ds_death_dates) {
     arrange(USUBJID)
 }
 
-# load_edc_spec.Rで生成したae/dm/ds/other_domainsと、csv_dir直下のCSVを一括で比較する。
-# データセットの過不足確認、列名diff、DM/AE/DSの中身の目視比較(View)、AE/DSの死亡情報の
-# 整合性チェックまでをまとめて実行し、生成した各オブジェクトをlistで返す
-run_domain_validation <- function(ae, dm, ds, other_domains, csv_dir, view = interactive()) {
+# load_edc_spec.Rで生成したae/dm/ds/other_domainsと、csv_dir直下のCSVを一括で比較・検証する。
+# データセットの過不足確認、列名diff、DM/DS/AE/other_domainsの構造的な自動チェック、AE/DSの死亡情報の
+# 整合性チェックまでをまとめて実行する。testN.R側は csv_dir と other_domains_special_checks
+# (この試験固有の追加チェック)を用意してこの関数を呼ぶだけでよい。
+# other_domains_special_checksの各チェック関数がwho_drug_idf等の他の変数を参照したい場合は、
+# この関数の引数としてではなく、testN.R側のトップレベル変数をクロージャとして直接参照すればよい
+# (special_checksの関数はtestN.R側で定義されるため、testN.R側の変数がそのまま見える)。
+# 生成した各オブジェクトをlistで返す(1行ずつの目視確認(compare_domain_by_index)はtestN.R側で行う)
+run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks = list(), view = interactive()) {
   datasets <- load_csv_datasets(csv_dir)
   generated_datasets <- build_generated_datasets(ae, dm, ds, other_domains)
 
   compare_dataset_names(generated_datasets, datasets)
   compare_colnames(generated_datasets, datasets)
 
-  dm_aligned <- compare_domain(generated_datasets, datasets, "DM", "USUBJID", view = view)
-  ds_aligned <- compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"), view = view)
-  ae_aligned <- compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"), view = view)
+  dm_result <- validate_dm(dm, cdisc_variable_values, registration_n)
+  report_dm_validation(dm_result)
+  ds_result <- validate_ds(ds, dm, cdisc_variable_values)
+  report_ds_validation(ds_result)
+  ae_result <- validate_ae(ae, dm, cdisc_variable_values)
+  report_ae_validation(ae_result)
+  other_domains_result <- validate_other_domains(other_domains, dm, cdisc_variable_values, other_domains_special_checks)
+  report_other_domains_validation(other_domains_result)
 
   ae_death_dates <- build_ae_death_dates(ae)
   ds_death_dates <- build_ds_death_dates(ds)
@@ -153,9 +171,10 @@ run_domain_validation <- function(ae, dm, ds, other_domains, csv_dir, view = int
   list(
     datasets = datasets,
     generated_datasets = generated_datasets,
-    dm_aligned = dm_aligned,
-    ae_aligned = ae_aligned,
-    ds_aligned = ds_aligned,
+    dm_result = dm_result,
+    ds_result = ds_result,
+    ae_result = ae_result,
+    other_domains_result = other_domains_result,
     ae_death_dates = ae_death_dates,
     ds_death_dates = ds_death_dates,
     death_consistency = death_consistency

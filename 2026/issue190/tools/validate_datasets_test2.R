@@ -8,10 +8,6 @@ library(here)
 rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "who_drug_idf")))
 
 source(here("tools/validate_common.R"))
-source(here("tools/validate_dm.R"))
-source(here("tools/validate_ds.R"))
-source(here("tools/validate_ae.R"))
-source(here("tools/validate_other_domains.R"))
 
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
 # (1) CMOCCUR=="Y"ならCMENDTCに値がある
@@ -119,25 +115,12 @@ other_domains_special_checks <- list(CM = check_cm_baseline1, TR = check_tr_tu_d
 # 比較対象のCSVファイルを格納しているディレクトリ(直下のCSVを全て読み込む)
 csv_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test2/rawdata"
 
-datasets <- load_csv_datasets(csv_dir)
-generated_datasets <- build_generated_datasets(ae, dm, ds, other_domains)
-
-# データセットの過不足を確認
-compare_dataset_names(generated_datasets, datasets)
-
-# 両方に共通して存在するデータセットについて、列名の差分を確認
-compare_colnames(generated_datasets, datasets)
-
-# DM/DS/AEは目視ではなく、構造的な条件による自動チェックで確認する
-report_dm_validation(validate_dm(dm, cdisc_variable_values, registration_n))
-report_ds_validation(validate_ds(ds, dm, cdisc_variable_values))
-report_ae_validation(validate_ae(ae, dm, cdisc_variable_values))
-
-# other_domainsも同様に、構造的な条件による自動チェック(汎用チェック+試験固有の追加チェック)で確認する
-report_other_domains_validation(validate_other_domains(other_domains, dm, cdisc_variable_values, other_domains_special_checks))
+validation <- run_full_validation(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks)
 
 # AE/DM/DSを除いた、両方に共通して存在するドメイン名一覧。以下の1行ずつ実行するとき、
 # この並び順の「何番目」かを指定する
+generated_datasets <- validation[["generated_datasets"]]
+datasets <- validation[["datasets"]]
 common_names <- setdiff(intersect(names(generated_datasets), names(datasets)), special_domain_names)
 common_names
 common_names %>% length()
