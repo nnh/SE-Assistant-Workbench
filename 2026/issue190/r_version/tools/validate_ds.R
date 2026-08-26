@@ -35,6 +35,34 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
     add_check("death_not_duplicated", length(dup_death) == 0, str_c("重複: ", paste(dup_death, collapse = ", ")))
   }
 
+  # add_randomization_ds_rows(): 割り付け(ARM)がある被験者には"RANDOMIZED"のマイルストーン行が
+  # 過不足なく追加されているか(ARMありなら必ず追加され、ARM無しには追加されない)を確認する。
+  # dmにARM列自体が無い場合はスキップする
+  if ("DSTERM" %in% colnames(ds) && "ARM" %in% colnames(dm)) {
+    arm_usubjid <- dm %>% filter(ARM != "") %>% pull(USUBJID) %>% unique()
+    randomized_usubjid <- ds %>% filter(DSTERM == "RANDOMIZED") %>% pull(USUBJID) %>% unique()
+
+    missing_randomized <- setdiff(arm_usubjid, randomized_usubjid)
+    add_check(
+      "randomized_row_added_for_arm_subjects",
+      length(missing_randomized) == 0,
+      str_c(
+        "ARMありなのにRANDOMIZED行が無い被験者数: ", length(missing_randomized),
+        if (length(missing_randomized) > 0) str_c(" (例: ", paste(head(missing_randomized, 5), collapse = ", "), ")") else ""
+      )
+    )
+
+    unexpected_randomized <- setdiff(randomized_usubjid, arm_usubjid)
+    add_check(
+      "randomized_row_not_added_without_arm",
+      length(unexpected_randomized) == 0,
+      str_c(
+        "ARM無しなのにRANDOMIZED行がある被験者数: ", length(unexpected_randomized),
+        if (length(unexpected_randomized) > 0) str_c(" (例: ", paste(head(unexpected_randomized, 5), collapse = ", "), ")") else ""
+      )
+    )
+  }
+
   # add_randomization_ds_rows()がEDC仕様のコードリストとは無関係に固定挿入する
   # 無作為化マイルストーン行の値(EDCフォーム上には存在しない標準SDTM値)。valid_codesチェックの
   # 誤検知を避けるため、該当するcdisc_variableの許容値にあらかじめ加えておく
@@ -75,10 +103,15 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
   # date型の列は、日付(YYYY-MM-DD)としてパースでき、未来日でない。
   # as.Date()は完全に書式が崩れた文字列(数値がそのまま文字列化されてしまった等)だとエラーで
   # 停止してしまうため、パースできない値はNAを返すlubridate::ymd()を使う
+  # DSSTDTC等は、add_randomization_ds_rows()が追加するRANDOMIZED行のように正当に空欄になる行が
+  # あり得る。R版(in-memory)では未設定列はNAだが、Web版はCSV経由(na=character(0)で読み込むため
+  # 空文字列"")なので、NAと空文字列の両方を「値なし」として除外してからパースする。
+  # raw自体はR版だとDate型のことがあり、Date型のまま""と比較するとas.Date("")のパース失敗で
+  # 全行NAになってしまうため、先にas.character()で文字列化してから判定する
   ds_date_vars <- cdisc_variable_values %>% filter(prefix == "DS", field_type == "date") %>% pull(cdisc_variable) %>% unique()
   for (var_name in intersect(ds_date_vars, colnames(ds))) {
-    raw <- ds[[var_name]]
-    non_na <- raw[!is.na(raw)]
+    raw <- as.character(ds[[var_name]])
+    non_na <- raw[!is.na(raw) & raw != ""]
     parsed <- suppressWarnings(ymd(non_na))
     unparsable <- non_na[is.na(parsed)]
     future_dates <- parsed[!is.na(parsed) & parsed > Sys.Date()]

@@ -155,7 +155,8 @@ add_randomization_ds_rows <- function(ds, dm, registration_start_date) {
       base_date <- as.Date(registration_start_date)
       offset <- sample(0:7, n, replace = TRUE)
     }
-    randomization_rows[["DSDTC"]] <- as(base_date + offset, class(ds[["DSDTC"]]))
+    # RFICDTCが今日に近い被験者だと、オフセットを足した結果が未来日になり得るため、今日でクランプする
+    randomization_rows[["DSDTC"]] <- as(pmin(base_date + offset, Sys.Date()), class(ds[["DSDTC"]]))
   }
   randomization_rows <- randomization_rows %>% select(-any_of("RFICDTC"))
 

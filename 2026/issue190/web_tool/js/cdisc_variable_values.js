@@ -65,11 +65,21 @@ function buildOptionValues(edcSpec) {
   return rows;
 }
 
+// edc_spec.sheet_orders(alias_name -> シート表示順のseq)から、alias_name -> sheet_seqの索引を作る
+function buildSheetSeqLookup(edcSpec) {
+  const lookup = {};
+  (edcSpec.sheet_orders || []).forEach((row) => {
+    lookup[row.sheet] = row.seq;
+  });
+  return lookup;
+}
+
 // cdisc_variable_values本体を組み立てる。option_nameを持つ行(radio_button/check_box等)は、
 // 対応する選択肢の数だけ複製し、それぞれにcodeを持たせる(Rのleft_join(options, by=c("option_name","is_invisible"))に相当)。
 // R側のoptionsテーブルは常にis_invisible=falseとして扱われるため、フィールド自身がis_invisible=trueの場合は
 // (is_invisibleが一致せず結合できないため)選択肢展開されず、code=nullの1行のままになる。
-// この非表示フィールドの挙動もRと合わせて再現する
+// この非表示フィールドの挙動もRと合わせて再現する。
+// sheet_seq(そのalias_nameのシート表示順)も付与する(DSドメインのEPOCH展開順などで使う)
 function buildCdiscVariableValues(edcSpec) {
   const sheets = edcSpec.sheets || [];
   const optionValues = buildOptionValues(edcSpec);
@@ -78,17 +88,19 @@ function buildCdiscVariableValues(edcSpec) {
     if (!optionsByName[row.option_name]) optionsByName[row.option_name] = [];
     optionsByName[row.option_name].push(row);
   });
+  const sheetSeqLookup = buildSheetSeqLookup(edcSpec);
 
   const cdiscVariableValues = [];
   sheets.forEach((sheet) => {
     buildCdiscSheetConfigTable(sheet).forEach((row) => {
-      const opts = row.option_name && !row.is_invisible ? optionsByName[row.option_name] : null;
+      const withSeq = { ...row, sheet_seq: sheetSeqLookup[row.alias_name] };
+      const opts = withSeq.option_name && !withSeq.is_invisible ? optionsByName[withSeq.option_name] : null;
       if (opts && opts.length > 0) {
         opts.forEach((opt) => {
-          cdiscVariableValues.push({ ...row, code: opt.code });
+          cdiscVariableValues.push({ ...withSeq, code: opt.code });
         });
       } else {
-        cdiscVariableValues.push({ ...row, code: null });
+        cdiscVariableValues.push({ ...withSeq, code: null });
       }
     });
   });

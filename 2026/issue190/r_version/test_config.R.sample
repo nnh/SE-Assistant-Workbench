@@ -4,7 +4,8 @@
 # (test_config.R自体はgit管理外)
 json_path <- "/path/to/your/edc_spec.json"
 
-# tools/validate_web_dm.R・tools/validate_web_ae.Rが読み込む、Webツールでダウンロードした
-# DM_dummy.csv/AE_dummy.csvのパス
+# tools/validate_web_dm.R・tools/validate_web_ae.R・tools/validate_web_ds.Rが読み込む、
+# Webツールでダウンロードしたdummy_data.zip展開後のCSVのパス
 dm_web_csv_path <- "/path/to/your/DM_dummy.csv"
 ae_web_csv_path <- "/path/to/your/AE_dummy.csv"
+ds_web_csv_path <- "/path/to/your/DS_dummy.csv"

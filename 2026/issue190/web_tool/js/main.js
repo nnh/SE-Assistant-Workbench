@@ -9,6 +9,7 @@ let numericBounds = null;
 let fieldRefBounds = null;
 let generatedDm = null;
 let generatedAe = null;
+let generatedDs = null;
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -135,6 +136,20 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   ae = finalizeAeDomain(ae, aeSpec);
   generatedAe = ae;
   renderPreview(ae, "ae-preview");
+
+  let ds = buildDsDomain(dm, cdiscVariableValues);
+  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds);
+  const deathDate = buildDeathDateTable(ae);
+  ds = finalizeDsDisposition(ds, deathDate, cdiscVariableValues);
+  ds = addRandomizationDsRows(ds, dm, registrationStartDate);
+  // alias_name/labelは他ドメイン生成時の突き合わせキーとして使うためここまで保持していたが、
+  // 最終出力には不要なので取り除く(Rのload_edc_spec.Rでの同様の処理に対応)
+  ds = ds.map((row) => {
+    const { alias_name, label, ...rest } = row;
+    return rest;
+  });
+  generatedDs = ds;
+  renderPreview(ds, "ds-preview");
 });
 
 function renderPreview(data, containerId) {
@@ -154,15 +169,16 @@ function renderPreview(data, containerId) {
   container.innerHTML = html;
 }
 
-// DM_dummy.csv/AE_dummy.csvを1つのZIPファイルにまとめてダウンロードする。
+// DM_dummy.csv/AE_dummy.csv/DS_dummy.csvを1つのZIPファイルにまとめてダウンロードする。
 // 複数ファイルを連続ダウンロードする方式だと、ドメイン数が増えたとき(将来20件規模になる想定)に
 // ブラウザの複数ファイルダウンロード制限に引っかかるため、常に1ファイルのダウンロードにまとめる
 document.getElementById("download-all-btn").addEventListener("click", () => {
-  if (!generatedDm || generatedDm.length === 0 || !generatedAe || generatedAe.length === 0) return;
+  if (!generatedDm || generatedDm.length === 0 || !generatedAe || generatedAe.length === 0 || !generatedDs || generatedDs.length === 0) return;
   downloadZip(
     [
       { name: "DM_dummy.csv", content: toCsv(generatedDm, Object.keys(generatedDm[0])) },
       { name: "AE_dummy.csv", content: toCsv(generatedAe, Object.keys(generatedAe[0])) },
+      { name: "DS_dummy.csv", content: toCsv(generatedDs, Object.keys(generatedDs[0])) },
     ],
     "dummy_data.zip"
   );

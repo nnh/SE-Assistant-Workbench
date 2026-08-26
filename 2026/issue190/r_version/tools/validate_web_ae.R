@@ -6,10 +6,10 @@ library(here)
 # load_edc_spec(json_path)を実行してae/dm/cdisc_variable_valuesを作成しておくこと。
 # テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)。
-# sheets/sheet_groupsはこのファイルでは使わないが、tools/run_web_validation.Rで
-# validate_web_dm.Rと連続実行する際に消えてしまわないよう残す。
+# sheets/sheet_groups/dsはこのファイルでは使わないが、tools/run_web_validation.Rで
+# validate_web_dm.R・validate_web_ds.Rと連続実行する際に消えてしまわないよう残す。
 # presence_conditions/meddraは必須LLTコードチェック(validate_ae()内)で使う
-rm(list = setdiff(ls(), c("ae", "dm", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))

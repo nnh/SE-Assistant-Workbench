@@ -313,6 +313,19 @@ function filterAeDeathDateConsistency(ae) {
   });
 }
 
+// USUBJIDごとの死亡日テーブル(AETOXGR=="5"のレコードのうち、最も早いAEENDTC)を作る。
+// DSドメインのDEATH確定(finalizeDsDisposition)で使う(Rのbuild_death_date_table()に対応)
+function buildDeathDateTable(ae) {
+  const byUsubjid = {};
+  ae.forEach((row) => {
+    if (row.AETOXGR !== "5") return;
+    if (!byUsubjid[row.USUBJID] || row.AEENDTC < byUsubjid[row.USUBJID]) {
+      byUsubjid[row.USUBJID] = row.AEENDTC;
+    }
+  });
+  return Object.keys(byUsubjid).map((usubjid) => ({ USUBJID: usubjid, DTHDTC: byUsubjid[usubjid] }));
+}
+
 // AESPID(USUBJID内の連番、例: sae_report1, sae_report2)・AESEQ(全体通番)を付与し、
 // alias_name列を除去したうえで、列順を STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 ->
 // MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC に整理する
