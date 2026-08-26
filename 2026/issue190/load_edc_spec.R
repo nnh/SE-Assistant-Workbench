@@ -106,3 +106,10 @@ if ("DD" %in% names(other_domains)) {
   dd_gated_vars <- presence_conditions %>% filter(cdisc_variable %in% colnames(other_domains[["DD"]])) %>% pull(cdisc_variable) %>% unique()
   other_domains[["DD"]] <- drop_empty_domain_rows(other_domains[["DD"]], dd_gated_vars)
 }
+
+# 生成データ(ae/dm/ds/other_domains)をCSVとして出力する(ドメイン名の大文字+"_dummy.csv"、例: DM_dummy.csv)。
+# RのNAは空欄として書き出す(コードリストの選択肢として文字列"NA"が使われているケースがあるため、
+# 空欄と文字列としての"NA"を区別できるようにするため)
+if (!dir.exists(output_csv_dir)) dir.create(output_csv_dir, recursive = TRUE)
+export_datasets <- c(list(AE = ae, DM = dm, DS = ds), other_domains)
+iwalk(export_datasets, ~ write_csv(.x, file.path(output_csv_dir, str_c(.y, "_dummy.csv")), na = ""))

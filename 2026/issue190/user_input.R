@@ -11,3 +11,6 @@ meddra_version <- NULL
 
 # WHO Drug/IDFのバージョン(who_drug_idf_parent_dir直下のフォルダ名。例: "2025 Mar 1")
 who_drug_idf_version_folder <- "2025 Mar 1"
+
+# 生成データ(ae/dm/ds/other_domains)をCSVとして出力するディレクトリ
+output_csv_dir <- "/Users/mariko/Downloads/test20260826"
