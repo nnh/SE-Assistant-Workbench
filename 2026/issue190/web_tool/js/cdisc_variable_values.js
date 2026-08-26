@@ -25,6 +25,7 @@ function buildCdiscSheetConfigTable(sheet) {
         prefix,
         cdisc_variable: cdiscVariable,
         alias_name: sheet.alias_name,
+        field: fieldName,
         label: config.label,
         field_type: item.field_type,
         default_value: item.default_value,
@@ -32,6 +33,18 @@ function buildCdiscSheetConfigTable(sheet) {
         option_name: item.option_name || null,
       });
     });
+  });
+  return rows;
+}
+
+// edc_specの全シートを対象に、buildCdiscSheetConfigTable()を連結したもの(選択肢展開前のfield単位の生データ)。
+// Rのdf_cdisc(build_cdisc_variable_values.R)に対応し、presence_conditions等の制約テーブル構築時に
+// (alias_name, field)からcdisc_variable/label/prefix/field_typeを引くのに使う
+function buildDfCdisc(edcSpec) {
+  const sheets = edcSpec.sheets || [];
+  const rows = [];
+  sheets.forEach((sheet) => {
+    buildCdiscSheetConfigTable(sheet).forEach((row) => rows.push(row));
   });
   return rows;
 }

@@ -38,6 +38,7 @@
 
   <section id="config-section" style="display:none;">
     <label>被験者数: <input type="number" id="registration-n" value="10" min="1"></label>
+    <label>AEレコード数: <input type="number" id="ae-n" value="100" min="0"></label>
     <label>登録開始日: <input type="date" id="registration-start-date" value="2024-04-01"></label>
     <label>MedDRAバージョン: <select id="meddra-version"></select></label>
     <label>WHO Drugバージョン: <select id="who-drug-version"></select></label>
@@ -50,11 +51,18 @@
     <div id="dm-preview"></div>
     <br>
     <button id="download-btn">DM_dummy.csvをダウンロード</button>
+
+    <h2>AEドメイン プレビュー(先頭10件)</h2>
+    <div id="ae-preview"></div>
+    <br>
+    <button id="download-ae-btn">AE_dummy.csvをダウンロード</button>
   </section>
 
   <script src="js/util.js"></script>
   <script src="js/cdisc_variable_values.js"></script>
+  <script src="js/generation_constraints.js"></script>
   <script src="js/dm_domain.js"></script>
+  <script src="js/ae_domain.js"></script>
   <script src="data/versions.js"></script>
   <script src="js/dictionaries.js"></script>
   <script src="js/main.js"></script>

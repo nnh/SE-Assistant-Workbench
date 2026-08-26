@@ -2,7 +2,9 @@
 
 let edcSpec = null;
 let cdiscVariableValues = null;
+let presenceConditions = null;
 let generatedDm = null;
+let generatedAe = null;
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -39,6 +41,10 @@ function handleFile(file) {
     try {
       edcSpec = JSON.parse(event.target.result);
       cdiscVariableValues = buildCdiscVariableValues(edcSpec);
+      const dfCdisc = buildDfCdisc(edcSpec);
+      const validatorTable = buildValidatorTable(edcSpec.sheets);
+      const fieldReferenceTable = buildFieldReferenceTable(edcSpec.sheets);
+      presenceConditions = buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable).presenceConditions;
       fileNameLabel.textContent = `読み込み済み: ${file.name}`;
       configSection.style.display = "block";
     } catch (e) {
@@ -86,24 +92,40 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups);
   let dm = populateDmDomain(dmResult.dm, cdiscVariableValues, registrationStartDate);
   generatedDm = dm;
-  renderPreview(dm);
+  renderPreview(dm, "dm-preview");
   resultSection.style.display = "block";
+
+  const aeN = parseInt(document.getElementById("ae-n").value, 10);
+  const aeSpec = cdiscVariableValues.filter((r) => r.prefix === "AE");
+  let ae = buildAeDomain(dm, aeN);
+  ae = assignAeAliasNames(ae, aeSpec, dmResult.activeSheets);
+  ae = populateAeChoiceFields(ae, aeSpec);
+  ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
+  const meddraData = getDictionaryData("meddra", meddraVersion);
+  const meddraSample = sampleMeddraRows(meddraData, ae.length);
+  ae = populateAeMeddraFields(ae, aeSpec, meddraData, meddraSample);
+  ae = addAeMeddraCodingBlock(ae, meddraSample, "AE");
+  ae = populateAeDummyFields(ae, aeSpec);
+  ae = applyPresenceConditions(ae, presenceConditions);
+  ae = finalizeAeDomain(ae, aeSpec);
+  generatedAe = ae;
+  renderPreview(ae, "ae-preview");
 });
 
-function renderPreview(dm) {
-  const container = document.getElementById("dm-preview");
-  if (dm.length === 0) {
+function renderPreview(data, containerId) {
+  const container = document.getElementById(containerId);
+  if (data.length === 0) {
     container.innerHTML = "<p>データがありません</p>";
     return;
   }
-  const columns = Object.keys(dm[0]);
-  const rowsToShow = dm.slice(0, 10);
+  const columns = Object.keys(data[0]);
+  const rowsToShow = data.slice(0, 10);
   let html = "<table><thead><tr>" + columns.map((c) => `<th>${c}</th>`).join("") + "</tr></thead><tbody>";
   rowsToShow.forEach((row) => {
     html += "<tr>" + columns.map((c) => `<td>${row[c] ?? ""}</td>`).join("") + "</tr>";
   });
   html += "</tbody></table>";
-  if (dm.length > 10) html += `<p>...ほか${dm.length - 10}件</p>`;
+  if (data.length > 10) html += `<p>...ほか${data.length - 10}件</p>`;
   container.innerHTML = html;
 }
 
@@ -112,4 +134,11 @@ document.getElementById("download-btn").addEventListener("click", () => {
   const columns = Object.keys(generatedDm[0]);
   const csv = toCsv(generatedDm, columns);
   downloadCsv(csv, "DM_dummy.csv");
+});
+
+document.getElementById("download-ae-btn").addEventListener("click", () => {
+  if (!generatedAe || generatedAe.length === 0) return;
+  const columns = Object.keys(generatedAe[0]);
+  const csv = toCsv(generatedAe, columns);
+  downloadCsv(csv, "AE_dummy.csv");
 });
