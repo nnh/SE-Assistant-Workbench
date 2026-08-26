@@ -21,8 +21,8 @@ source(here("vs_orres_values.R"))
 source(here("read_who_drug_idf.R"))
 #json_path <- "/Users/mariko/Downloads/test20260826/fortest1_260826_1112.json"
 #json_path <- "/Users/mariko/Downloads/test20260826/fortest2_260826_1501.json"
-#json_path <- "/Users/mariko/Downloads/test20260826/fortest3_260826_1452.json"
-json_path <- "/Users/mariko/Downloads/test20260826/fortest4_260826_1501.json"
+json_path <- "/Users/mariko/Downloads/test20260826/fortest3_260826_1452.json"
+#json_path <- "/Users/mariko/Downloads/test20260826/fortest4_260826_1501.json"
 edc_spec <- jsonlite::read_json(json_path)
 sheets <- edc_spec[["sheets"]]
 sheet_groups <- edc_spec[["sheet_groups"]]
@@ -54,7 +54,7 @@ meddra <- build_meddra_hierarchy(meddra_version)
 who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
 
 # DM
-dm_result <- build_dm_domain(sheets, sheet_groups, n = registration_n)
+dm_result <- build_dm_domain(sheets, sheet_groups, n = registration_n, age_bounds = age_bounds)
 dm <- dm_result[["dm"]]
 active_sheet_table <- active_sheet_membership_table(dm_result[["active_sheets"]])
 visit_lookup <- build_visit_lookup(sheets, edc_spec[["visits"]])

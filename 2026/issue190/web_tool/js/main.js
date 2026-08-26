@@ -3,6 +3,7 @@
 let edcSpec = null;
 let cdiscVariableValues = null;
 let presenceConditions = null;
+let ageBounds = null;
 let generatedDm = null;
 let generatedAe = null;
 
@@ -44,7 +45,9 @@ function handleFile(file) {
       const dfCdisc = buildDfCdisc(edcSpec);
       const validatorTable = buildValidatorTable(edcSpec.sheets);
       const fieldReferenceTable = buildFieldReferenceTable(edcSpec.sheets);
-      presenceConditions = buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable).presenceConditions;
+      const constraints = buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable);
+      presenceConditions = constraints.presenceConditions;
+      ageBounds = constraints.ageBounds;
       fileNameLabel.textContent = `読み込み済み: ${file.name}`;
       configSection.style.display = "block";
     } catch (e) {
@@ -89,8 +92,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     return;
   }
 
-  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups);
-  let dm = populateDmDomain(dmResult.dm, cdiscVariableValues, registrationStartDate);
+  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds);
+  let dm = populateDmDomain(dmResult.dm, cdiscVariableValues, registrationStartDate, presenceConditions, ageBounds);
   generatedDm = dm;
   renderPreview(dm, "dm-preview");
   resultSection.style.display = "block";

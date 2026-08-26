@@ -1,7 +1,7 @@
 // EDC仕様のvalidate_presence_if等(field_itemsのvalidators)から、presence_conditions等の
 // 生成制約テーブル一式を組み立て、ドメインデータに適用する。
 // R版のbuild_validator_table.R/build_generation_constraints.R/build_domain_common.Rの
-// apply_presence_conditions()に対応する
+// apply_presence_conditions()・apply_age_date_bounds()に対応する
 
 // --- build_validator_table.R相当 ---
 
@@ -673,5 +673,61 @@ function applyPresenceConditions(data, presenceConditions) {
       });
     });
 
+  return data;
+}
+
+// --- apply_age_date_bounds相当 ---
+
+function daysFromEpoch(dateStr) {
+  return Math.floor(new Date(dateStr).getTime() / 86400000);
+}
+function dateFromDays(days) {
+  return new Date(days * 86400000).toISOString().slice(0, 10);
+}
+
+// ageBounds(cdisc_variable, ref_cdisc_variable, min_age, max_age)に基づき、cdisc_variable(日付)を
+// ref_cdisc_variable(日付、例: BRTHDTC)からの経過年数がmin_age〜max_ageに収まるよう生成し直す
+// (片方だけ、あるいは両方無い場合もある)。生成範囲はregistrationStartDate〜今日にも収める。
+// ref_cdisc_variableが無効な日付、またはcdisc_variableが既にnull(presence_conditions等で
+// ゲーティングされ空欄になった場合を含む)の行は変更しない(Rのapply_age_date_bounds()に対応)
+function applyAgeDateBounds(data, ageBounds, registrationStartDate) {
+  if (!ageBounds || ageBounds.length === 0 || !data || data.length === 0) return data;
+  const columns = new Set(Object.keys(data[0]));
+  const applicable = ageBounds.filter((ab) => columns.has(ab.cdisc_variable) && columns.has(ab.ref_cdisc_variable));
+  if (applicable.length === 0) return data;
+
+  const regStart = daysFromEpoch(registrationStartDate);
+  const today = daysFromEpoch(new Date().toISOString().slice(0, 10));
+
+  applicable.forEach((ab) => {
+    const varName = ab.cdisc_variable;
+    const refVar = ab.ref_cdisc_variable;
+    const minAge = ab.min_age;
+    const maxAge = ab.max_age;
+
+    data.forEach((row) => {
+      const current = row[varName];
+      const refValRaw = row[refVar];
+      if (current == null || refValRaw == null) return;
+      const refDays = daysFromEpoch(refValRaw);
+      if (Number.isNaN(refDays)) return;
+
+      const rawLower = minAge != null ? refDays + Math.round(minAge * 365.25) : regStart;
+      const rawUpper = maxAge != null ? refDays + Math.round(maxAge * 365.25) : today;
+
+      let lower = Math.max(rawLower, regStart);
+      let upper = Math.min(rawUpper, today);
+      // registrationStartDate〜今日でクランプすると逆転してしまう場合(高齢のため年齢条件と
+      // 登録期間が両立しない等)は、年齢条件を優先してクランプせずそのまま使う
+      if (lower > upper) {
+        lower = rawLower;
+        upper = rawUpper;
+      }
+      upper = Math.max(upper, lower);
+
+      const randomDay = Math.floor(lower + Math.random() * (upper - lower + 1));
+      row[varName] = dateFromDays(randomDay);
+    });
+  });
   return data;
 }

@@ -102,6 +102,17 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
     unique() %>%
     intersect(target_vars)
   has_alias_name <- "alias_name" %in% colnames(data)
+
+  # BRTHDTC(生年月日)列がある場合(DM等)、生成する日付がBRTHDTCより前にならないよう、
+  # 下限を「登録開始日とBRTHDTCの遅い方」にする(小児等でBRTHDTCが登録開始日より後になる場合、
+  # 「生まれる前に同意している」といった矛盾が生じるのを防ぐ)。generate_random_date()の
+  # start_date引数は列名の文字列も受け付けるため、計算結果を一時列として持たせて渡す
+  has_brthdtc <- "BRTHDTC" %in% colnames(data)
+  if (has_brthdtc) {
+    data[["__date_lower_bound"]] <- as.character(pmax(as.Date(registration_start_date), as.Date(data[["BRTHDTC"]])))
+  }
+  start_bound <- if (has_brthdtc) "__date_lower_bound" else registration_start_date
+
   for (var_name in date_vars) {
     if (has_alias_name) {
       date_alias_names <- spec %>%
@@ -111,12 +122,16 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
       target_rows <- data[["alias_name"]] %in% date_alias_names
       data[[var_name]] <- as.Date(NA)
       if (any(target_rows)) {
-        generated <- generate_random_date(data[target_rows, , drop = FALSE], registration_start_date, Sys.Date(), var_name)
+        generated <- generate_random_date(data[target_rows, , drop = FALSE], start_bound, Sys.Date(), var_name)
         data[[var_name]][target_rows] <- generated[[var_name]]
       }
     } else {
-      data <- generate_random_date(data, registration_start_date, Sys.Date(), var_name)
+      data <- generate_random_date(data, start_bound, Sys.Date(), var_name)
     }
+  }
+
+  if (has_brthdtc) {
+    data[["__date_lower_bound"]] <- NULL
   }
   data
 }

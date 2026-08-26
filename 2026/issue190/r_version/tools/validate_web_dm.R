@@ -5,7 +5,7 @@ library(here)
 # 比較元(R版)として、先にload_edc_spec.Rを実行してdm/cdisc_variable_values/sheets/sheet_groupsを
 # 作成しておくこと。その際、json_pathを確認したいテストファイルに変更してから実行すること。
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("dm", "cdisc_variable_values", "sheets", "sheet_groups")))
+rm(list = setdiff(ls(), c("dm", "cdisc_variable_values", "sheets", "sheet_groups", "json_path")))
 
 source(here("tools/validate_common.R"))
 source(here("tools/validate_dm.R"))
@@ -16,6 +16,18 @@ source(here("tools/validate_dm.R"))
 web_csv_path <- "/Users/mariko/Downloads/DM_dummy.csv"
 
 dm_web <- read_csv(web_csv_path, col_types = cols(.default = "c"), na = character(0))
+
+# 年齢整合性チェック(RFICDTC: 同意日がBRTHDTC: 生年月日からmin_age〜max_age歳の範囲内か)用に、
+# 使用したテストJSONファイル名を指定する(age_bounds_by_fileでファイルごとの許容範囲を切り替える)。
+json_file_name <- json_path %>% basename()
+json_file_name
+
+age_bounds_by_file <- list(
+  "fortest1_260826_1112.json" = list(min_age = 20, max_age = NA),
+  "fortest2_260826_1501.json" = list(min_age = 20, max_age = 80),
+  "fortest3_260826_1452.json" = list(min_age = NA, max_age = NA),
+  "fortest4_260826_1501.json" = list(min_age = NA, max_age = NA)
+)
 
 # defaultグループの割り付けシートが持つcode一覧(+空欄)を返す。ARMの妥当な値の範囲として使う
 valid_arm_codes <- function(sheets, sheet_groups) {
@@ -57,12 +69,66 @@ invalid_arm_web <- setdiff(unique(dm_web[["ARM"]]), arm_codes)
 cat("R版 範囲外:", if (length(invalid_arm_r) > 0) paste(invalid_arm_r, collapse = ", ") else "なし", "\n")
 cat("Web版 範囲外:", if (length(invalid_arm_web) > 0) paste(invalid_arm_web, collapse = ", ") else "なし", "\n")
 
-# R版・Web版それぞれについて、コードリスト範囲内・日付妥当性を確認する(tools/validate_dm.Rを再利用)
+# RFICDTC(同意日)がBRTHDTC(生年月日)からmin_age〜max_age歳の範囲内かを確認する
+# (Rのage_bounds/apply_age_date_bounds()に対応する制約が、生成データ上で守られているかのチェック)
+validate_age_consistency <- function(dm_data, min_age, max_age) {
+  results <- list()
+  add_check <- function(name, passed, detail = "") {
+    results[[length(results) + 1]] <<- tibble(check = name, passed = passed, detail = detail)
+  }
+
+  if (!all(c("BRTHDTC", "RFICDTC") %in% colnames(dm_data))) {
+    add_check("age_at_consent_in_range", TRUE, "BRTHDTC/RFICDTC列が無いためスキップ")
+    return(bind_rows(results))
+  }
+
+  brthdtc <- as.Date(dm_data[["BRTHDTC"]])
+  rficdtc <- as.Date(dm_data[["RFICDTC"]])
+  valid_pair <- !is.na(brthdtc) & !is.na(rficdtc)
+  age_years <- as.numeric(rficdtc - brthdtc) / 365.25
+
+  if (any(valid_pair)) {
+    cat(
+      "  データ内の年齢(同意時点): 最小=", round(min(age_years[valid_pair]), 1), "歳, 最大=",
+      round(max(age_years[valid_pair]), 1), "歳\n",
+      sep = ""
+    )
+  }
+
+  below_min <- valid_pair & !is.na(min_age) & (age_years < min_age)
+  above_max <- valid_pair & !is.na(max_age) & (age_years > max_age)
+
+  range_label <- str_c(
+    if (is.na(min_age)) "下限なし" else str_c(min_age, "歳以上"), "〜",
+    if (is.na(max_age)) "上限なし" else str_c(max_age, "歳以下")
+  )
+  add_check(
+    "age_at_consent_in_range",
+    !any(below_min) && !any(above_max),
+    str_c("許容範囲: ", range_label, " / 下限未満: ", sum(below_min), "件, 上限超過: ", sum(above_max), "件")
+  )
+
+  bind_rows(results)
+}
+
+age_bounds <- age_bounds_by_file[[json_file_name]]
+if (is.null(age_bounds)) {
+  stop(str_c("json_file_name「", json_file_name, "」はage_bounds_by_fileに未登録です"))
+}
+
+# R版・Web版それぞれについて、コードリスト範囲内・日付妥当性・年齢整合性を確認する
+# (tools/validate_dm.Rを再利用し、年齢整合性チェックを追加する)
 cat("--- R版DMのバリデーション(validate_dm) ---\n")
-report_dm_validation(validate_dm(dm, cdisc_variable_values, nrow(dm)))
+report_dm_validation(bind_rows(
+  validate_dm(dm, cdisc_variable_values, nrow(dm)),
+  validate_age_consistency(dm, age_bounds[["min_age"]], age_bounds[["max_age"]])
+))
 
 cat("--- Web版DMのバリデーション(validate_dm) ---\n")
-report_dm_validation(validate_dm(dm_web, cdisc_variable_values, nrow(dm_web)))
+report_dm_validation(bind_rows(
+  validate_dm(dm_web, cdisc_variable_values, nrow(dm_web)),
+  validate_age_consistency(dm_web, age_bounds[["min_age"]], age_bounds[["max_age"]])
+))
 
 # R版とWeb版を列ごとに直接比較する。R版はpresence_conditions等のゲーティングで空欄になる行が
 # あり得るのに対し、Web版はまだそれらを未移植のため一度も空欄にならない、といった差が
