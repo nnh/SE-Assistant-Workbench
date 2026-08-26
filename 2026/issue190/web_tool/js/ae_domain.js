@@ -1,8 +1,10 @@
 // AEドメインを生成する。R版のbuild_ae_domain.R/populate_ae_domain()に対応するが、
 // 現時点ではUSUBJIDの採番(DMからの重複ありサンプリング)、alias_name割り当て、
-// radio_button/check_box型項目、date型項目、meddra型項目+コーディングブロックの埋め込み、
-// DUMMYフォールバック、presence_conditionsによるゲーティング、AESPID/AESEQ・列順整理まで対応する。
-// FA等のリンクブロック生成はまだ未移植
+// radio_button/check_box型項目(required_vars/numeric_bounds含む)、date型項目、
+// meddra型項目+コーディングブロックの埋め込み、DUMMYフォールバック、presence_conditionsによる
+// ゲーティング、field_ref_bounds、AETOXGR=5(死亡)関連の並べ替え・矛盾レコード除外、
+// AESPID/AESEQ・列順整理まで対応する。
+// FA等のリンクブロック生成・inject_required_llt_codesはまだ未移植
 
 // dmのUSUBJIDから重複ありでn件サンプリングし、STUDYID/DOMAINを付与する(Rのbuild_ae_domain()に対応)
 function buildAeDomain(dm, n) {
@@ -40,14 +42,17 @@ function assignAeAliasNames(ae, aeSpec, activeSheets) {
 }
 
 // radio_button/check_box型のAE項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる
-// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。
+// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。requiredVarsに含まれず、かつそのalias_name内で
+// 可視(いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。numericBoundsに該当エントリが
+// あれば、数値として範囲外のcodeを選択肢から除く。
 // AEはalias_name(どのAE報告シートの行か)によって同じcdisc_variableでも選択肢が異なりうるため、
 // 行のalias_nameと一致するaliasSpecの選択肢だけから選ぶ(Rのpopulate_radio_button_fields()の
 // has_alias_name==TRUEの分岐に対応)
-function populateAeChoiceFields(ae, aeSpec) {
+function populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds) {
   const existingColumns = new Set(Object.keys(ae[0] || {}));
   const choiceSpec = aeSpec.filter((r) => r.field_type === "radio_button" || r.field_type === "check_box");
   const targetVars = [...new Set(choiceSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
+  const requiredSet = new Set(requiredVars || []);
 
   targetVars.forEach((varName) => {
     // Rの`data[[var_name]] <- NA_character_`に対応: このcdisc_variableを定義していないalias_nameの行にも
@@ -60,7 +65,21 @@ function populateAeChoiceFields(ae, aeSpec) {
     const aliasNamesForVar = [...new Set(varRows.map((r) => r.alias_name))];
     aliasNamesForVar.forEach((an) => {
       const anRows = varRows.filter((r) => r.alias_name === an);
-      const choices = [...new Set(anRows.map((r) => (r.code != null ? r.code : r.default_value)))];
+      let choices = [...new Set(anRows.map((r) => (r.code != null ? r.code : r.default_value)))];
+      const isVisible = !anRows.some((r) => r.is_invisible);
+      if (!requiredSet.has(varName) && isVisible) {
+        choices = [...new Set([...choices, ""])];
+      }
+      const bounds = numericBounds && numericBounds[varName];
+      if (bounds) {
+        choices = choices.filter((c) => {
+          const n = Number(c);
+          if (Number.isNaN(n)) return true;
+          if (bounds.min_value != null && n < bounds.min_value) return false;
+          if (bounds.max_value != null && n > bounds.max_value) return false;
+          return true;
+        });
+      }
       const isCheckBox = anRows.some((r) => r.field_type === "check_box");
       const targetRows = ae.filter((row) => row.alias_name === an);
       if (choices.length === 0 || targetRows.length === 0) return;
@@ -209,6 +228,48 @@ function populateAeDummyFields(ae, aeSpec) {
     });
   });
   return ae;
+}
+
+// USUBJIDごとに、AETOXGR=="5"(死亡)のレコードが最後に来るよう並べ替える(Rのpopulate_ae_domain()の
+// 該当部分に対応。表示順の整理のみで、他のレコードの妥当性には影響しない)
+function sortAeDeathLast(ae) {
+  if (!ae[0] || !("AETOXGR" in ae[0])) return ae;
+  const byUsubjid = {};
+  const order = [];
+  ae.forEach((row) => {
+    if (!byUsubjid[row.USUBJID]) {
+      byUsubjid[row.USUBJID] = [];
+      order.push(row.USUBJID);
+    }
+    byUsubjid[row.USUBJID].push(row);
+  });
+  const result = [];
+  order.forEach((usubjid) => {
+    const rows = byUsubjid[usubjid];
+    const alive = rows.filter((r) => r.AETOXGR !== "5");
+    const dead = rows.filter((r) => r.AETOXGR === "5");
+    result.push(...alive, ...dead);
+  });
+  return result;
+}
+
+// AETOXGR=="5"(死亡)のAEENDTC(被験者ごとの最も早い日)より後にAESTDTCが始まる他のAEレコードは、
+// 死亡後に新たな有害事象が発生したことになり矛盾するため除外する(Rのpopulate_ae_domain()の
+// 該当部分に対応)
+function filterAeDeathDateConsistency(ae) {
+  if (!ae[0] || !("AETOXGR" in ae[0]) || !("AESTDTC" in ae[0]) || !("AEENDTC" in ae[0])) return ae;
+  const deathDateByUsubjid = {};
+  ae.forEach((row) => {
+    if (row.AETOXGR !== "5") return;
+    const current = deathDateByUsubjid[row.USUBJID];
+    if (current == null || row.AEENDTC < current) {
+      deathDateByUsubjid[row.USUBJID] = row.AEENDTC;
+    }
+  });
+  return ae.filter((row) => {
+    const deathDate = deathDateByUsubjid[row.USUBJID];
+    return deathDate == null || row.AESTDTC <= deathDate;
+  });
 }
 
 // AESPID(USUBJID内の連番、例: sae_report1, sae_report2)・AESEQ(全体通番)を付与し、

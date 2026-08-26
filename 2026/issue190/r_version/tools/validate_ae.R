@@ -33,6 +33,33 @@ validate_ae <- function(ae, dm, cdisc_variable_values) {
     add_check("start_before_end", !any(reversed), str_c("逆転している行数: ", sum(reversed)))
   }
 
+  # AETOXGR=5(死亡)のAEENDTC(被験者ごとの最も早い日)より後にAESTDTCが開始する他のAEレコードが
+  # 残っていないか確認する(死亡後に新たな有害事象が発生している、という矛盾を検出する)
+  if (all(c("AETOXGR", "AESTDTC", "AEENDTC") %in% colnames(ae))) {
+    ae_dates <- ae %>%
+      mutate(
+        AESTDTC_date = as.Date(as.character(AESTDTC)),
+        AEENDTC_date = as.Date(as.character(AEENDTC))
+      )
+    death_dates <- ae_dates %>%
+      filter(AETOXGR == "5", !is.na(AEENDTC_date)) %>%
+      group_by(USUBJID) %>%
+      summarise(DTHDTC = min(AEENDTC_date), .groups = "drop")
+
+    violations <- ae_dates %>%
+      inner_join(death_dates, by = "USUBJID") %>%
+      filter(!is.na(AESTDTC_date), AESTDTC_date > DTHDTC)
+
+    add_check(
+      "no_records_after_death",
+      nrow(violations) == 0,
+      str_c(
+        "死亡日より後に開始している行数: ", nrow(violations),
+        if (nrow(violations) > 0) str_c(" (USUBJID例: ", paste(head(unique(violations[["USUBJID"]]), 3), collapse = ", "), ")") else ""
+      )
+    )
+  }
+
   # radio_button/check_box型の列は、コードリスト(空欄含む)の範囲内の値のみを持つ。
   # check_boxは複数選択がカンマ区切りで1つの文字列になるため、カンマで分割してから判定する
   ae_choice_spec <- cdisc_variable_values %>% filter(prefix == "AE", field_type %in% c("radio_button", "check_box"))

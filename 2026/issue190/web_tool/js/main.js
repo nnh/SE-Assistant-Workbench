@@ -120,13 +120,16 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const aeSpec = cdiscVariableValues.filter((r) => r.prefix === "AE");
   let ae = buildAeDomain(dm, aeN);
   ae = assignAeAliasNames(ae, aeSpec, dmResult.activeSheets);
-  ae = populateAeChoiceFields(ae, aeSpec);
+  ae = populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds);
   ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
   const meddraSample = sampleMeddraRows(meddraData, ae.length);
   ae = populateAeMeddraFields(ae, aeSpec, meddraData, meddraSample);
   ae = addAeMeddraCodingBlock(ae, meddraSample, "AE");
   ae = populateAeDummyFields(ae, aeSpec);
   ae = applyPresenceConditions(ae, presenceConditions);
+  ae = applyFieldRefBounds(ae, aeSpec, fieldRefBounds);
+  ae = sortAeDeathLast(ae);
+  ae = filterAeDeathDateConsistency(ae);
   ae = finalizeAeDomain(ae, aeSpec);
   generatedAe = ae;
   renderPreview(ae, "ae-preview");
