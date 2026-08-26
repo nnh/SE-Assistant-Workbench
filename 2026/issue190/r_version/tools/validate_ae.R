@@ -6,8 +6,10 @@ library(lubridate)
 # (USUBJIDがdmの範囲内・AESTDTC<=AEENDTC・コードリスト範囲内・日付の妥当性など)。
 # 目視確認と異なり、今後の修正で出方がおかしくなっていないかをそのまま再実行して確認できる
 
-# AEドメインが満たすべき条件をチェックし、結果をtibble(check, passed, detail)で返す
-validate_ae <- function(ae, dm, cdisc_variable_values) {
+# AEドメインが満たすべき条件をチェックし、結果をtibble(check, passed, detail)で返す。
+# presence_conditions/meddraを指定すると、必須LLTコード(inject_required_llt_codes対象)の
+# 出現チェックも行う(省略した場合はこのチェックをスキップする)
+validate_ae <- function(ae, dm, cdisc_variable_values, presence_conditions = NULL, meddra = NULL) {
   results <- list()
   add_check <- function(name, passed, detail = "") {
     results[[length(results) + 1]] <<- tibble(check = name, passed = passed, detail = detail)
@@ -58,6 +60,44 @@ validate_ae <- function(ae, dm, cdisc_variable_values) {
         if (nrow(violations) > 0) str_c(" (USUBJID例: ", paste(head(unique(violations[["USUBJID"]]), 3), collapse = ", "), ")") else ""
       )
     )
+  }
+
+  # presence_conditionsのうち、ref_cdisc_variableが"*LLTCD"(meddra参照)かつcondition_type=="equals"な
+  # 行のexpected_valueは、必ずどこかのレコードに混ぜ込まれるべきLLTコード(inject_required_llt_codes対象)。
+  # 少なくとも1件は実際のAELLTCDに出現しているか確認する(死亡日フィルタ等で一部が偶然除外されることは
+  # あり得るため、全件出現までは求めない)。該当する行が無ければチェック自体をスキップする
+  if (!is.null(presence_conditions) && "AELLTCD" %in% colnames(ae)) {
+    required_llt_codes <- presence_conditions %>%
+      filter(condition_type == "equals", str_detect(ref_cdisc_variable, "LLTCD$")) %>%
+      pull(expected_value) %>%
+      discard(~ is.na(.x) || .x == "") %>%
+      unique()
+
+    if (length(required_llt_codes) > 0) {
+      observed_codes <- unique(ae[["AELLTCD"]])
+      hit_codes <- intersect(required_llt_codes, observed_codes)
+      missing_codes <- setdiff(required_llt_codes, observed_codes)
+
+      # 対象コードをLLT日本語病名に変換してコンソールに表示する
+      if (!is.null(meddra) && "llt_name_j" %in% colnames(meddra)) {
+        code_to_name_j <- meddra %>% distinct(llt_code, llt_name_j)
+        describe_codes <- function(codes) {
+          if (length(codes) == 0) return("(なし)")
+          names_j <- code_to_name_j[["llt_name_j"]][match(codes, code_to_name_j[["llt_code"]])]
+          str_c(codes, "(", coalesce(names_j, "不明"), ")", collapse = ", ")
+        }
+        cat("  必須LLTコード 出現(", length(hit_codes), "/", length(required_llt_codes), "件): ", describe_codes(hit_codes), "\n", sep = "")
+        if (length(missing_codes) > 0) {
+          cat("  必須LLTコード 未出現: ", describe_codes(missing_codes), "\n", sep = "")
+        }
+      }
+
+      add_check(
+        "required_llt_codes_present",
+        length(hit_codes) > 0,
+        str_c("必須", length(required_llt_codes), "件中、出現: ", length(hit_codes), "件")
+      )
+    }
   }
 
   # radio_button/check_box型の列は、コードリスト(空欄含む)の範囲内の値のみを持つ。

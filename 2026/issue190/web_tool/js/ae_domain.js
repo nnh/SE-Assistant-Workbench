@@ -154,6 +154,47 @@ function sampleMeddraRows(meddraData, n, poolSize = 20) {
   return result;
 }
 
+// presence_conditionsのうち、ref_cdisc_variableが"<prefix>LLTCD"(meddra参照)かつcondition_type=="equals"な
+// 行のexpected_valueを集め、必ずサンプルに混ぜ込むべきLLTコード一覧を求める。
+// R版はconstant.Rに手動定数(required_ae_llt_codes)として持っていたが、Web版はpresence_conditionsを
+// 既に構築しているため、そこから自動導出する(試験ごとの手動設定は不要にする)。
+// 該当する行が無ければ空配列を返す(=注入しない。指定なしでも正常動作する)
+function deriveRequiredLltCodes(presenceConditions) {
+  const codes = new Set();
+  (presenceConditions || []).forEach((pc) => {
+    if (pc.condition_type !== "equals") return;
+    if (!pc.ref_cdisc_variable || !pc.ref_cdisc_variable.endsWith("LLTCD")) return;
+    if (pc.expected_value != null && pc.expected_value !== "") codes.add(pc.expected_value);
+  });
+  return [...codes];
+}
+
+// meddraSampleの一部の行を、requiredLltCodes(必ずデータに含めたいLLTコード)の値で上書きする。
+// コードごとに1行を選び、そのLLTコードに対応する階層一式に丸ごと差し替える。
+// requiredLltCodesが空、meddraSampleが0件、または該当コードがmeddraDataに存在しない場合は
+// そのコードを無視する(=何もしない。指定なしでも正常動作する。Rのinject_required_llt_codes()に対応)
+function injectRequiredLltCodes(meddraSample, meddraData, requiredLltCodes) {
+  const codes = (requiredLltCodes || []).filter((c) => c != null && c !== "");
+  if (codes.length === 0 || meddraSample.length === 0) return meddraSample;
+
+  const n = meddraSample.length;
+  const withReplacement = codes.length > n;
+  const targetRows = [];
+  if (withReplacement) {
+    for (let i = 0; i < codes.length; i += 1) targetRows.push(Math.floor(Math.random() * n));
+  } else {
+    const shuffled = [...Array(n).keys()].sort(() => Math.random() - 0.5);
+    targetRows.push(...shuffled.slice(0, codes.length));
+  }
+
+  codes.forEach((code, i) => {
+    const hierarchyRow = meddraData.find((r) => r.llt_code === code);
+    if (!hierarchyRow) return;
+    meddraSample[targetRows[i]] = hierarchyRow;
+  });
+  return meddraSample;
+}
+
 // meddra型のAE項目にLLT名を格納する。default_valueが8桁数字の場合はllt_codeとみなし、
 // 対応するllt_nameを固定値として使う。それ以外はmeddraSample(行ごとに対応する階層)のllt_nameを使う
 // (Rのpopulate_meddra_fields()に対応。alias_nameによる絞り込みは行わない点もRと同じ)

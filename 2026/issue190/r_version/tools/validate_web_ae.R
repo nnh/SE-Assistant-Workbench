@@ -7,8 +7,9 @@ library(here)
 # テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)。
 # sheets/sheet_groupsはこのファイルでは使わないが、tools/run_web_validation.Rで
-# validate_web_dm.Rと連続実行する際に消えてしまわないよう残す
-rm(list = setdiff(ls(), c("ae", "dm", "cdisc_variable_values", "sheets", "sheet_groups")))
+# validate_web_dm.Rと連続実行する際に消えてしまわないよう残す。
+# presence_conditions/meddraは必須LLTコードチェック(validate_ae()内)で使う
+rm(list = setdiff(ls(), c("ae", "dm", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))
@@ -33,10 +34,10 @@ if (length(only_r) == 0 && length(only_web) == 0) {
 # R版・Web版それぞれについて、コードリスト範囲内・日付妥当性・AESTDTC<=AEENDTC等を確認する
 # (tools/validate_ae.Rを再利用)
 cat("--- R版AEのバリデーション(validate_ae) ---\n")
-report_ae_validation(validate_ae(ae, dm, cdisc_variable_values))
+report_ae_validation(validate_ae(ae, dm, cdisc_variable_values, presence_conditions, meddra))
 
 cat("--- Web版AEのバリデーション(validate_ae) ---\n")
-report_ae_validation(validate_ae(ae_web, dm, cdisc_variable_values))
+report_ae_validation(validate_ae(ae_web, dm, cdisc_variable_values, presence_conditions, meddra))
 
 # R版とWeb版を列ごとに直接比較する。R版はpresence_conditions等のゲーティングで空欄になる行が
 # あり得るのに対し、Web版で対応するゲーティングが未実装/不完全だと一度も空欄にならない、といった差が

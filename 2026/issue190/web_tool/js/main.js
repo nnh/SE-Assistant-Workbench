@@ -123,6 +123,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   ae = populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds);
   ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
   const meddraSample = sampleMeddraRows(meddraData, ae.length);
+  const requiredLltCodes = deriveRequiredLltCodes(presenceConditions);
+  injectRequiredLltCodes(meddraSample, meddraData, requiredLltCodes);
   ae = populateAeMeddraFields(ae, aeSpec, meddraData, meddraSample);
   ae = addAeMeddraCodingBlock(ae, meddraSample, "AE");
   ae = populateAeDummyFields(ae, aeSpec);
