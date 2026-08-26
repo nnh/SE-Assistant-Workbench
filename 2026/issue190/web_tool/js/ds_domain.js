@@ -349,3 +349,26 @@ function addRandomizationDsRows(ds, dm, registrationStartDate) {
     return newRow;
   });
 }
+
+// USUBJIDごとの中止日テーブル(DSTERM!="COMPLETED"のレコードのうち、最も早いDSDTC)を作る。
+// DS自体の出力ではなく、他ドメイン(EX/LB等)で中止日以降のレコードが発生していないかを
+// チェックする際に使う想定(Rのbuild_discontinuation_date_table()に対応)。
+// Rのmin()はna.rm=FALSEなので、対象レコードのいずれか1件でもDSDTCが無い被験者は、
+// その被験者のDISCONDTC自体をnullにする(一部だけ無視して他の値からminを取ったりはしない)
+function buildDiscontinuationDateTable(ds) {
+  if (!ds[0] || !("DSTERM" in ds[0]) || !("DSDTC" in ds[0])) return [];
+
+  const datesByUsubjid = {};
+  ds.forEach((row) => {
+    if (row.DSTERM === "COMPLETED") return;
+    if (!datesByUsubjid[row.USUBJID]) datesByUsubjid[row.USUBJID] = [];
+    datesByUsubjid[row.USUBJID].push(row.DSDTC);
+  });
+
+  return Object.keys(datesByUsubjid).map((usubjid) => {
+    const dates = datesByUsubjid[usubjid];
+    const hasMissing = dates.some((d) => d == null);
+    const discondtc = hasMissing ? null : dates.reduce((min, d) => (d < min ? d : min), dates[0]);
+    return { USUBJID: usubjid, DISCONDTC: discondtc };
+  });
+}
