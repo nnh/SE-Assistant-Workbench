@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ダミーデータ生成ツール(骨組み)</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1e293b; }
+  h1 { font-size: 1.4rem; }
+  section { margin-bottom: 2rem; }
+  #drop-zone {
+    border: 2px dashed #94a3b8;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    color: #64748b;
+    cursor: pointer;
+  }
+  #drop-zone.drag-over { background-color: #e0f2fe; border-color: #0284c7; }
+  #file-name { font-size: 0.85rem; color: #0284c7; margin-top: 0.5rem; }
+  label { display: block; margin-bottom: 0.75rem; }
+  table { border-collapse: collapse; font-size: 0.85rem; }
+  th, td { border: 1px solid #cbd5e1; padding: 0.3rem 0.6rem; text-align: left; }
+  th { background: #f1f5f9; }
+  button { padding: 0.5rem 1.2rem; border: none; border-radius: 6px; background: #0284c7; color: white; cursor: pointer; }
+  button:hover { background: #0369a1; }
+</style>
+</head>
+<body>
+  <h1>ダミーデータ生成ツール(骨組み)</h1>
+
+  <section id="upload-section">
+    <div id="drop-zone">
+      <p>ここにEDC仕様JSONファイルをドロップ、またはクリックして選択</p>
+    </div>
+    <input type="file" id="file-input" accept=".json" style="display:none;">
+    <div id="file-name"></div>
+  </section>
+
+  <section id="config-section" style="display:none;">
+    <label>被験者数: <input type="number" id="registration-n" value="10" min="1"></label>
+    <label>登録開始日: <input type="date" id="registration-start-date" value="2024-04-01"></label>
+    <label>MedDRAバージョン: <select id="meddra-version"></select></label>
+    <label>WHO Drugバージョン: <select id="who-drug-version"></select></label>
+    <button id="generate-btn">生成する</button>
+    <div id="dictionary-status" style="font-size:0.85rem;color:#64748b;margin-top:0.5rem;"></div>
+  </section>
+
+  <section id="result-section" style="display:none;">
+    <h2>DMドメイン プレビュー(先頭10件)</h2>
+    <div id="dm-preview"></div>
+    <br>
+    <button id="download-btn">DM_dummy.csvをダウンロード</button>
+  </section>
+
+  <script src="js/util.js"></script>
+  <script src="js/cdisc_variable_values.js"></script>
+  <script src="js/dm_domain.js"></script>
+  <script src="data/versions.js"></script>
+  <script src="js/dictionaries.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

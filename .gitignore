@@ -4,3 +4,7 @@
 .Ruserdata
 *.Rproj
 member.txt
+
+# MedDRA/WHO Drug由来の変換済み辞書データ(サイズが大きく、ライセンス上リポジトリに含めない)
+2026/issue190/web_tool/data/meddra/
+2026/issue190/web_tool/data/who_drug/
