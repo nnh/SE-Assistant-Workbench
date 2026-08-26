@@ -4,6 +4,9 @@ let edcSpec = null;
 let cdiscVariableValues = null;
 let presenceConditions = null;
 let ageBounds = null;
+let requiredVars = null;
+let numericBounds = null;
+let fieldRefBounds = null;
 let generatedDm = null;
 let generatedAe = null;
 
@@ -48,6 +51,9 @@ function handleFile(file) {
       const constraints = buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable);
       presenceConditions = constraints.presenceConditions;
       ageBounds = constraints.ageBounds;
+      requiredVars = constraints.requiredVars;
+      numericBounds = constraints.numericBounds;
+      fieldRefBounds = constraints.fieldRefBounds;
       fileNameLabel.textContent = `読み込み済み: ${file.name}`;
       configSection.style.display = "block";
     } catch (e) {
@@ -92,8 +98,20 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     return;
   }
 
+  const meddraData = getDictionaryData("meddra", meddraVersion);
+
   const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds);
-  let dm = populateDmDomain(dmResult.dm, cdiscVariableValues, registrationStartDate, presenceConditions, ageBounds);
+  let dm = populateDmDomain(
+    dmResult.dm,
+    cdiscVariableValues,
+    registrationStartDate,
+    meddraData,
+    presenceConditions,
+    requiredVars,
+    numericBounds,
+    fieldRefBounds,
+    ageBounds
+  );
   generatedDm = dm;
   renderPreview(dm, "dm-preview");
   resultSection.style.display = "block";
@@ -104,7 +122,6 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   ae = assignAeAliasNames(ae, aeSpec, dmResult.activeSheets);
   ae = populateAeChoiceFields(ae, aeSpec);
   ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
-  const meddraData = getDictionaryData("meddra", meddraVersion);
   const meddraSample = sampleMeddraRows(meddraData, ae.length);
   ae = populateAeMeddraFields(ae, aeSpec, meddraData, meddraSample);
   ae = addAeMeddraCodingBlock(ae, meddraSample, "AE");
@@ -122,26 +139,26 @@ function renderPreview(data, containerId) {
     return;
   }
   const columns = Object.keys(data[0]);
-  const rowsToShow = data.slice(0, 10);
+  const rowsToShow = data.slice(0, 1);
   let html = "<table><thead><tr>" + columns.map((c) => `<th>${c}</th>`).join("") + "</tr></thead><tbody>";
   rowsToShow.forEach((row) => {
     html += "<tr>" + columns.map((c) => `<td>${row[c] ?? ""}</td>`).join("") + "</tr>";
   });
   html += "</tbody></table>";
-  if (data.length > 10) html += `<p>...ほか${data.length - 10}件</p>`;
+  if (data.length > 1) html += `<p>...ほか${data.length - 1}件</p>`;
   container.innerHTML = html;
 }
 
-document.getElementById("download-btn").addEventListener("click", () => {
-  if (!generatedDm || generatedDm.length === 0) return;
-  const columns = Object.keys(generatedDm[0]);
-  const csv = toCsv(generatedDm, columns);
-  downloadCsv(csv, "DM_dummy.csv");
-});
-
-document.getElementById("download-ae-btn").addEventListener("click", () => {
-  if (!generatedAe || generatedAe.length === 0) return;
-  const columns = Object.keys(generatedAe[0]);
-  const csv = toCsv(generatedAe, columns);
-  downloadCsv(csv, "AE_dummy.csv");
+// DM_dummy.csv/AE_dummy.csvを1つのZIPファイルにまとめてダウンロードする。
+// 複数ファイルを連続ダウンロードする方式だと、ドメイン数が増えたとき(将来20件規模になる想定)に
+// ブラウザの複数ファイルダウンロード制限に引っかかるため、常に1ファイルのダウンロードにまとめる
+document.getElementById("download-all-btn").addEventListener("click", () => {
+  if (!generatedDm || generatedDm.length === 0 || !generatedAe || generatedAe.length === 0) return;
+  downloadZip(
+    [
+      { name: "DM_dummy.csv", content: toCsv(generatedDm, Object.keys(generatedDm[0])) },
+      { name: "AE_dummy.csv", content: toCsv(generatedAe, Object.keys(generatedAe[0])) },
+    ],
+    "dummy_data.zip"
+  );
 });

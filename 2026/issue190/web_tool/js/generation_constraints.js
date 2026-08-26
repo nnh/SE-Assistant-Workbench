@@ -731,3 +731,54 @@ function applyAgeDateBounds(data, ageBounds, registrationStartDate) {
   });
   return data;
 }
+
+// --- apply_field_ref_bounds相当 ---
+
+// fieldRefBounds(cdisc_variable, ref_cdisc_variable, bound_type)に基づき、cdisc_variableの値が
+// ref_cdisc_variableの値との大小関係(max_value/min_value/exact_value)を満たさない場合、
+// 条件を満たすradio_button選択肢から選び直す。空白("")や、ref_cdisc_variableが数値でない場合は
+// 対象外(そのまま)とする(Rのapply_field_ref_bounds()に対応)
+function applyFieldRefBounds(data, spec, fieldRefBounds) {
+  if (!fieldRefBounds || fieldRefBounds.length === 0 || !data || data.length === 0) return data;
+  const columns = new Set(Object.keys(data[0]));
+  const applicable = fieldRefBounds.filter((fb) => columns.has(fb.cdisc_variable) && columns.has(fb.ref_cdisc_variable));
+
+  applicable.forEach((fb) => {
+    const varName = fb.cdisc_variable;
+    const refVar = fb.ref_cdisc_variable;
+    const boundType = fb.bound_type;
+
+    const choiceRows = spec.filter((r) => r.cdisc_variable === varName && r.field_type === "radio_button");
+    const choices = [...new Set(choiceRows.map((r) => (r.code != null ? r.code : r.default_value)))];
+
+    data.forEach((row) => {
+      const current = row[varName];
+      if (current == null || current === "") return;
+      const refValue = Number(row[refVar]);
+      if (Number.isNaN(refValue)) return;
+
+      let valid;
+      if (boundType === "max_value") {
+        valid = choices.filter((c) => {
+          const n = Number(c);
+          return !Number.isNaN(n) && n <= refValue;
+        });
+      } else if (boundType === "min_value") {
+        valid = choices.filter((c) => {
+          const n = Number(c);
+          return !Number.isNaN(n) && n >= refValue;
+        });
+      } else if (boundType === "exact_value") {
+        valid = choices.filter((c) => {
+          const n = Number(c);
+          return !Number.isNaN(n) && n === refValue;
+        });
+      } else {
+        valid = choices;
+      }
+      if (valid.length === 0 || valid.includes(current)) return;
+      row[varName] = sampleOne(valid);
+    });
+  });
+  return data;
+}

@@ -166,29 +166,89 @@ function buildDmDomain(n, sheets, sheetGroups, ageBounds) {
   return { dm: rows, activeSheets: activeResult.activeSheets };
 }
 
+// meddra型のDM項目にLLT名を格納する。default_valueが8桁数字の場合はllt_codeとみなし、
+// 対応するllt_nameを固定値として使う。それ以外はmeddraSample(行ごとに対応する階層)のllt_nameを使う
+// (Rのpopulate_meddra_fields()に対応。DUMMYフォールバックの後に呼び、既に入っているDUMMY値を上書きする
+// 点もRと同じ)
+function populateDmMeddraFields(dm, dmSpec, meddraData, meddraSample) {
+  const meddraVars = [...new Set(dmSpec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))];
+  meddraVars.forEach((varName) => {
+    const fixedCodes = [
+      ...new Set(
+        dmSpec
+          .filter((r) => r.field_type === "meddra" && r.cdisc_variable === varName && /^[0-9]{8}$/.test(r.default_value || ""))
+          .map((r) => r.default_value)
+      ),
+    ];
+    if (fixedCodes.length === 1) {
+      const fixedRow = meddraData.find((r) => r.llt_code === fixedCodes[0]);
+      const lltName = fixedRow ? fixedRow.llt_name : undefined;
+      dm.forEach((row) => {
+        row[varName] = lltName;
+      });
+    } else {
+      dm.forEach((row, i) => {
+        row[varName] = meddraSample[i].llt_name;
+      });
+    }
+  });
+  return dm;
+}
+
 // radio_button/check_box型のDM項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる
-// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。
+// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。requiredVarsに含まれず、かつ可視
+// (いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。numericBoundsに該当エントリが
+// あれば、数値として範囲外のcodeを選択肢から除く(Rのpopulate_radio_button_fields()の
+// has_alias_name==FALSEの分岐に対応)。
 // date型の項目(BRTHDTCは既にbuildDmDomain()で埋まっているため対象外)には、
 // registrationStartDate〜今日の間のランダムな日付を入れる(Rのpopulate_date_fields()に対応)。
-// その後、presence_conditionsによるゲーティング、age_boundsによる日付の年齢制約を適用する
-// (Rのpopulate_dm_domain()に対応。field_ref_bounds/meddra型項目はまだ未移植)
-function populateDmDomain(dm, cdiscVariableValues, registrationStartDate, presenceConditions, ageBounds) {
+// その後、DUMMYフォールバック・meddra型項目・presence_conditionsゲーティング・field_ref_bounds・
+// age_boundsを順に適用する(Rのpopulate_dm_domain()に対応)
+function populateDmDomain(
+  dm,
+  cdiscVariableValues,
+  registrationStartDate,
+  meddraData,
+  presenceConditions,
+  requiredVars,
+  numericBounds,
+  fieldRefBounds,
+  ageBounds
+) {
   const dmSpec = cdiscVariableValues.filter((r) => r.prefix === "DM");
   const existingColumns = new Set(Object.keys(dm[0] || {}));
+  const requiredSet = new Set(requiredVars || []);
 
   const choiceSpec = dmSpec.filter(
     (r) => (r.field_type === "radio_button" || r.field_type === "check_box") && !existingColumns.has(r.cdisc_variable)
   );
   const choicesByVariable = {};
   const fieldTypeByVariable = {};
+  const invisibleByVariable = {};
   choiceSpec.forEach((row) => {
     const code = row.code != null ? row.code : row.default_value;
     if (!choicesByVariable[row.cdisc_variable]) choicesByVariable[row.cdisc_variable] = [];
     choicesByVariable[row.cdisc_variable].push(code);
     if (row.field_type === "check_box") fieldTypeByVariable[row.cdisc_variable] = "check_box";
+    if (row.is_invisible) invisibleByVariable[row.cdisc_variable] = true;
   });
   Object.keys(choicesByVariable).forEach((varName) => {
-    const choices = [...new Set(choicesByVariable[varName])];
+    let choices = [...new Set(choicesByVariable[varName])];
+    const isVisible = !invisibleByVariable[varName];
+    if (!requiredSet.has(varName) && isVisible) {
+      choices = [...new Set([...choices, ""])];
+    }
+    const bounds = numericBounds && numericBounds[varName];
+    if (bounds) {
+      choices = choices.filter((c) => {
+        const n = Number(c);
+        if (Number.isNaN(n)) return true;
+        if (bounds.min_value != null && n < bounds.min_value) return false;
+        if (bounds.max_value != null && n > bounds.max_value) return false;
+        return true;
+      });
+    }
+    if (choices.length === 0) return;
     if (fieldTypeByVariable[varName] === "check_box") {
       const values = sampleCheckBoxValues(choices, dm.length);
       dm.forEach((row, i) => {
@@ -215,8 +275,8 @@ function populateDmDomain(dm, cdiscVariableValues, registrationStartDate, presen
     });
   });
 
-  // 上記(radio_button/check_box/date)のいずれでも埋まらなかった対象変数(meddra/drug型等、
-  // まだ未移植のfield_type)は、とりあえずDUMMY値を入れる(Rのpopulate_dummy_fields()に対応)
+  // 上記(radio_button/check_box/date)のいずれでも埋まらなかった対象変数(meddra/drug型等)は、
+  // とりあえずDUMMY値を入れる(Rのpopulate_dummy_fields()に対応)
   const targetVars = [...new Set(dmSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
   const filledVars = new Set(Object.keys(dm[0] || {}));
   const remainingVars = targetVars.filter((v) => !filledVars.has(v));
@@ -226,7 +286,15 @@ function populateDmDomain(dm, cdiscVariableValues, registrationStartDate, presen
     });
   });
 
+  // meddra型項目があれば、DUMMYで仮埋めした値をLLT名で上書きする(Rの並び順に対応)
+  const meddraVars = dmSpec.filter((r) => r.field_type === "meddra");
+  if (meddraVars.length > 0 && meddraData) {
+    const meddraSample = sampleMeddraRows(meddraData, dm.length);
+    populateDmMeddraFields(dm, dmSpec, meddraData, meddraSample);
+  }
+
   applyPresenceConditions(dm, presenceConditions || []);
+  applyFieldRefBounds(dm, dmSpec, fieldRefBounds || []);
   applyAgeDateBounds(dm, ageBounds || [], registrationStartDate);
 
   return dm;

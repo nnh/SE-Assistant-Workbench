@@ -8,3 +8,6 @@ member.txt
 # MedDRA/WHO Drug由来の変換済み辞書データ(サイズが大きく、ライセンス上リポジトリに含めない)
 2026/issue190/web_tool/data/meddra/
 2026/issue190/web_tool/data/who_drug/
+
+# ローカル環境固有のテスト用パス設定(test_config.R.sampleを参照)
+2026/issue190/r_version/test_config.R

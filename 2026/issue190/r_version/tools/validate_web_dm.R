@@ -2,23 +2,26 @@ library(here)
 
 # Web版(JS)のDMドメイン生成が、R版(いつも通りの完全なパイプライン)と一致しているかを確認する。
 #
-# 比較元(R版)として、先にload_edc_spec.Rを実行してdm/cdisc_variable_values/sheets/sheet_groupsを
-# 作成しておくこと。その際、json_pathを確認したいテストファイルに変更してから実行すること。
-# (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("dm", "cdisc_variable_values", "sheets", "sheet_groups", "json_path")))
+# 比較元(R版)として、先にtest_config.R(json_path)とload_edc_spec.Rをsourceし、
+# load_edc_spec(json_path)を実行してdm/cdisc_variable_values/sheets/sheet_groupsを
+# 作成しておくこと。テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
+# (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)。
+# ae/ds/discontinuation_dateはこのファイルでは使わないが、tools/run_web_validation.Rで
+# validate_web_ae.Rと連続実行する際に消えてしまわないよう残す
+rm(list = setdiff(ls(), c("dm", "ae", "ds", "cdisc_variable_values", "sheets", "sheet_groups")))
 
+source(here("test_config.R"))
 source(here("tools/validate_common.R"))
 source(here("tools/validate_dm.R"))
 
 # Webツールで同じJSONを読み込み、被験者数・登録開始日をload_edc_spec.R側(registration_n/
-# registration_start_date)と合わせて生成し、「DM_dummy.csvをダウンロード」したものをここに指定する。
-# テストファイルを切り替えるたびに、load_edc_spec.Rの再実行とあわせてここも書き換えること
-web_csv_path <- "/Users/mariko/Downloads/DM_dummy.csv"
-
-dm_web <- read_csv(web_csv_path, col_types = cols(.default = "c"), na = character(0))
+# registration_start_date)と合わせて生成し、「DM_dummy.csvをダウンロード」したものを
+# dm_web_csv_path(test_config.R)に指定しておくこと
+dm_web <- read_csv(dm_web_csv_path, col_types = cols(.default = "c"), na = character(0))
 
 # 年齢整合性チェック(RFICDTC: 同意日がBRTHDTC: 生年月日からmin_age〜max_age歳の範囲内か)用に、
-# 使用したテストJSONファイル名を指定する(age_bounds_by_fileでファイルごとの許容範囲を切り替える)。
+# 使用したテストJSONファイル名を求める(age_bounds_by_fileでファイルごとの許容範囲を切り替える)。
+# json_pathはtest_config.Rで管理する
 json_file_name <- json_path %>% basename()
 json_file_name
 

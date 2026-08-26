@@ -2,21 +2,22 @@ library(here)
 
 # Web版(JS)のAEドメイン生成が、R版(いつも通りの完全なパイプライン)と一致しているかを確認する。
 #
-# 比較元(R版)として、先にload_edc_spec.Rを実行してae/dm/cdisc_variable_valuesを
-# 作成しておくこと。その際、json_pathを確認したいテストファイルに変更してから実行すること。
-# (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "cdisc_variable_values")))
+# 比較元(R版)として、先にtest_config.R(json_path)とload_edc_spec.Rをsourceし、
+# load_edc_spec(json_path)を実行してae/dm/cdisc_variable_valuesを作成しておくこと。
+# テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
+# (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)。
+# sheets/sheet_groupsはこのファイルでは使わないが、tools/run_web_validation.Rで
+# validate_web_dm.Rと連続実行する際に消えてしまわないよう残す
+rm(list = setdiff(ls(), c("ae", "dm", "cdisc_variable_values", "sheets", "sheet_groups")))
 
+source(here("test_config.R"))
 source(here("tools/validate_common.R"))
 source(here("tools/validate_ae.R"))
 
 # Webツールで同じJSONを読み込み、被験者数・AEレコード数・登録開始日をload_edc_spec.R側
 # (registration_n/registration_start_date、AEはbuild_ae_domain()のデフォルトn=100)と合わせて生成し、
-# 「AE_dummy.csvをダウンロード」したものをここに指定する。
-# テストファイルを切り替えるたびに、load_edc_spec.Rの再実行とあわせてここも書き換えること
-web_csv_path <- "/Users/mariko/Downloads/AE_dummy.csv"
-
-ae_web <- read_csv(web_csv_path, col_types = cols(.default = "c"), na = character(0))
+# 「AE_dummy.csvをダウンロード」したものを ae_web_csv_path(test_config.R)に指定しておくこと
+ae_web <- read_csv(ae_web_csv_path, col_types = cols(.default = "c"), na = character(0))
 
 # 列名の一致を確認する
 cat("--- 列名の一致 ---\n")
