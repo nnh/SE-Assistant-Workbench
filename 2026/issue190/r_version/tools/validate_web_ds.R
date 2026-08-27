@@ -6,7 +6,7 @@ library(here)
 # load_edc_spec(json_path)を実行してds/dm/cdisc_variable_valuesを作成しておくこと。
 # テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ds", "dm", "cdisc_variable_values")))
+rm(list = setdiff(ls(), c("ds", "dm", "ae", "other_domains", "cdisc_variable_values")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))

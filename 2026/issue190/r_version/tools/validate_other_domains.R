@@ -35,9 +35,14 @@ validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NU
     }
 
     var_spec <- choice_spec %>% filter(cdisc_variable == var_name)
+    # str_trim(): CSV経由(read_csvのtrim_ws=TRUEが既定)でdataを読み込んだ場合、コードリスト側の
+    # 値にEDC仕様JSON由来の前後空白(例: "TP53 mutations "のような入力ミス)が残っていると、
+    # 生成データ側だけ空白が落ちてしまい実際は正しい値なのに不一致と誤判定するため、
+    # 両側とも前後空白を落としてから比較する
     valid_codes <- var_spec %>%
       mutate(code = ifelse(is.na(code), default_value, code)) %>%
       pull(code) %>%
+      str_trim() %>%
       unique() %>%
       union("")
 
@@ -45,7 +50,7 @@ validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NU
     if (any(var_spec[["field_type"]] == "check_box")) {
       observed <- unique(unlist(str_split(observed, ",")))
     }
-    invalid <- setdiff(unique(observed), valid_codes)
+    invalid <- setdiff(unique(str_trim(observed)), valid_codes)
 
     add_check(
       str_c("valid_codes: ", var_name),
@@ -56,11 +61,14 @@ validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NU
 
   # date型の列は、日付(YYYY-MM-DD)としてパースでき、未来日でない。
   # as.Date()は完全に書式が崩れた文字列(数値がそのまま文字列化されてしまった等)だとエラーで
-  # 停止してしまうため、パースできない値はNAを返すlubridate::ymd()を使う
+  # 停止してしまうため、パースできない値はNAを返すlubridate::ymd()を使う。
+  # dataがCSV経由(na=character(0)で読み込み)の場合は空欄が""になるため、NAと""の両方を
+  # 「値なし」として除外する。rawがDate型のことがあり、Date型のまま""と比較すると
+  # as.Date("")のパース失敗で全行NAになってしまうため、先にas.character()で文字列化してから判定する
   date_vars <- cdisc_variable_values %>% filter(prefix == !!prefix, field_type == "date") %>% pull(cdisc_variable) %>% unique()
   for (var_name in intersect(date_vars, colnames(data))) {
-    raw <- data[[var_name]]
-    non_na <- raw[!is.na(raw)]
+    raw <- as.character(data[[var_name]])
+    non_na <- raw[!is.na(raw) & raw != ""]
     parsed <- suppressWarnings(ymd(non_na))
     unparsable <- non_na[is.na(parsed)]
     future_dates <- parsed[!is.na(parsed) & parsed > Sys.Date()]

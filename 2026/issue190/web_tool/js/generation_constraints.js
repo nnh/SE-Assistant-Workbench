@@ -39,7 +39,9 @@ function classifyBoundType(validatorType, validatorKey) {
 }
 
 function extractNumericValue(validatorType, value) {
-  if (validatorType !== "numericality" || value == null) return null;
+  // Number("")は0を返してしまう(RのNAとは異なりJSは空文字列を数値として扱えるため)。
+  // 値未設定のバリデータ行を上限/下限0として誤って扱わないよう、空文字列もnullとして除外する
+  if (validatorType !== "numericality" || value == null || value === "") return null;
   const n = Number(value);
   return Number.isNaN(n) ? null : n;
 }
