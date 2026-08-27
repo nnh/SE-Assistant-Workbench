@@ -56,7 +56,10 @@ load_edc_spec <- function(json_path) {
   who_drug_idf <- build_who_drug_idf(who_drug_idf_parent_dir, who_drug_idf_version_folder)
 
   # DM
-  dm_result <- build_dm_domain(sheets, sheet_groups, n = registration_n, age_bounds = age_bounds)
+  # STUDYIDはEDC仕様JSONのname(試験名)に"_dummy"を付けたものにする。固定のダミー値だと
+  # どのJSONから生成したデータか分からなくなるため、生成データを見ただけで試験を判別できるようにする
+  studyid <- str_c(edc_spec[["name"]], "_dummy")
+  dm_result <- build_dm_domain(sheets, sheet_groups, n = registration_n, age_bounds = age_bounds, studyid = studyid)
   dm <- dm_result[["dm"]]
   active_sheet_table <- active_sheet_membership_table(dm_result[["active_sheets"]])
   visit_lookup <- build_visit_lookup(sheets, edc_spec[["visits"]])

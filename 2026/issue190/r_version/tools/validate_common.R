@@ -8,6 +8,16 @@ source(here("tools/validate_ds.R"))
 source(here("tools/validate_ae.R"))
 source(here("tools/validate_other_domains.R"))
 
+# json_path(のファイル名)ごとに、対応する実データ(rawdata)フォルダのパスをべた書きで設定する。
+# test1・test2は実データが用意できているのでパスを指定し、test3・test4はまだ実データが無いので
+# NULLにしておく(run_full_validation()はcsv_dir=NULLだと実データとの比較をスキップする)
+csv_dir_by_file <- list(
+  "fortest1_260826_1112.json" = "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/rawdata",
+  "fortest2_260826_1501.json" = "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test2/rawdata",
+  "fortest3_260826_1452.json" = NULL,
+  "fortest4_260826_1501.json" = NULL
+)
+
 # 専用のsort_colで個別に確認するため、index指定の対象から除くドメイン名
 special_domain_names <- c("AE", "DM", "DS")
 
@@ -141,16 +151,26 @@ check_death_consistency <- function(ae_death_dates, ds_death_dates) {
 # データセットの過不足確認、列名diff、DM/DS/AE/other_domainsの構造的な自動チェック、AE/DSの死亡情報の
 # 整合性チェックまでをまとめて実行する。testN.R側は csv_dir と other_domains_special_checks
 # (この試験固有の追加チェック)を用意してこの関数を呼ぶだけでよい。
+# csv_dirはNULL可(既定値もNULL)。対応する実データ(rawdata)がまだ用意できていない試験
+# (例: test3・test4)では、csv_dirを指定しない(またはNULLを渡す)ことで、実データとの比較
+# (データセットの過不足・列名diff)をスキップし、生成データ自体の構造チェック(DM/DS/AE/
+# other_domainsの自動チェック・AE/DSの死亡情報整合性)だけを実行できる。無関係な実データ
+# (別試験のrawdata等)と比較して構造差分を誤検知するより、比較自体を行わない方が安全なため
 # other_domains_special_checksの各チェック関数がwho_drug_idf等の他の変数を参照したい場合は、
 # この関数の引数としてではなく、testN.R側のトップレベル変数をクロージャとして直接参照すればよい
 # (special_checksの関数はtestN.R側で定義されるため、testN.R側の変数がそのまま見える)。
 # 生成した各オブジェクトをlistで返す(1行ずつの目視確認(compare_domain_by_index)はtestN.R側で行う)
-run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks = list(), view = interactive()) {
-  datasets <- load_csv_datasets(csv_dir)
+run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir = NULL, other_domains_special_checks = list(), view = interactive()) {
   generated_datasets <- build_generated_datasets(ae, dm, ds, other_domains)
 
-  compare_dataset_names(generated_datasets, datasets)
-  compare_colnames(generated_datasets, datasets)
+  if (is.null(csv_dir)) {
+    cat("csv_dir未指定のため、実データとの比較(データセットの過不足・列名diff)はスキップします\n")
+    datasets <- list()
+  } else {
+    datasets <- load_csv_datasets(csv_dir)
+    compare_dataset_names(generated_datasets, datasets)
+    compare_colnames(generated_datasets, datasets)
+  }
 
   dm_result <- validate_dm(dm, cdisc_variable_values, registration_n)
   report_dm_validation(dm_result)

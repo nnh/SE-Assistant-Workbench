@@ -86,8 +86,6 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const meddraVersion = document.getElementById("meddra-version").value;
   const whoDrugVersion = document.getElementById("who-drug-version").value;
 
-  // MedDRA/WHO Drugはまだ実際のDM生成には使っていないが、選択されたバージョンが
-  // 正しく読み込めることをここで確認しておく(辞書を使う項目の移植時にそのまま使う)
   dictionaryStatus.textContent = "辞書を読み込み中...";
   try {
     await loadDictionaryVersion("meddra", meddraVersion);
@@ -101,8 +99,12 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   }
 
   const meddraData = getDictionaryData("meddra", meddraVersion);
+  const whoDrugIdf = getDictionaryData("who_drug", whoDrugVersion);
 
-  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds);
+  // STUDYIDはEDC仕様JSONのname(試験名)に"_dummy"を付けたものにする。固定のダミー値だと
+  // どのJSONから生成したデータか分からなくなるため、生成データを見ただけで試験を判別できるようにする
+  const studyid = `${edcSpec.name}_dummy`;
+  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds, studyid);
   let dm = populateDmDomain(
     dmResult.dm,
     cdiscVariableValues,
@@ -150,11 +152,14 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const multiRecordAliasNames = (edcSpec.sheets || [])
     .filter((s) => s.category === "ae_report" || s.category === "multiple")
     .map((s) => s.alias_name);
+  const visitLookup = buildVisitLookup(edcSpec.sheets, edcSpec.visits);
   const otherDomains = buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, {
     builtDomains: { DM: dm, AE: ae, DS: ds },
     ageBounds,
     multiRecordAliasNames,
     activeSheetTable,
+    whoDrugIdf,
+    visitLookup,
   });
   // DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、
   // presence_conditionsで条件付けされている列(例: DDORRES)が全てnullの行を除外)

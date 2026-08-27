@@ -100,12 +100,12 @@ active_sheet_membership_table <- function(active_sheets) {
   active_sheets %>% imap_dfr(~ tibble(USUBJID = .y, alias_name = .x))
 }
 
-build_dm_domain <- function(sheets, sheet_groups, n = 100, age_bounds = NULL) {
+build_dm_domain <- function(sheets, sheet_groups, n = 100, age_bounds = NULL, studyid = "dummy-studyid") {
   dm <- tibble(
     SITEID = sample(dummy_site$SITEID, n, replace = TRUE),
     SUBJID = str_pad(1:n, width = 4, pad = "0")
   )
-  dm[["STUDYID"]] <- "dummy-studyid"
+  dm[["STUDYID"]] <- studyid
   dm[["DOMAIN"]] <- "DM"
   dm[["USUBJID"]] <- str_c(dm[["STUDYID"]], dm[["SUBJID"]], sep = "-")
   birth_age_range <- compute_birth_age_range(age_bounds)

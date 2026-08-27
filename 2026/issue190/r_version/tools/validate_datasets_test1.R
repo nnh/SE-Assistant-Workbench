@@ -5,7 +5,7 @@ library(here)
 # json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/json/fortest1_260826_1112.json"
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path")))
 
 source(here("tools/validate_common.R"))
 
@@ -96,8 +96,9 @@ check_tr_tu_dtc <- function(data, dm, cdisc_variable_values) {
 # other_domainsのうち、この試験で特に確認したいprefixがあれば、ここにprefix -> チェック関数を追加する
 other_domains_special_checks <- list(CM = check_cm_cmtrt, TR = check_tr_tu_dtc)
 
-# 比較対象のCSVファイルを格納しているディレクトリ(直下のCSVを全て読み込む)
-csv_dir <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/rawdata"
+# 比較対象のCSVファイルを格納しているディレクトリ(直下のCSVを全て読み込む)。
+# json_pathのファイル名ごとにcsv_dir_by_file(tools/validate_common.R)で管理する
+csv_dir <- csv_dir_by_file[[basename(json_path)]]
 
 validation <- run_full_validation(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks)
 

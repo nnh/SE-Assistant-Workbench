@@ -126,14 +126,16 @@ function generateBrthdtc(n, refDate, minAge = 0, maxAge = 89) {
 
 // n人分のDMの土台(USUBJID等)を作り、BRTHDTC・ARMも生成する(Rのbuild_dm_domain()に対応)。
 // ARMは、defaultグループに属する割り付けシート(通常1つ)に割り当てられたcodeとする。
+// studyidは既定で"dummy-studyid"だが、呼び出し側からEDC仕様JSONのname(試験名)+"_dummy"を渡すことで、
+// 生成データを見ただけでどのJSONから生成したか分かるようにする
 // 戻り値: { dm: 行の配列, activeSheets: buildSubjectActiveSheets()の結果(他ドメイン生成時に使う) }
-function buildDmDomain(n, sheets, sheetGroups, ageBounds) {
+function buildDmDomain(n, sheets, sheetGroups, ageBounds, studyid = "dummy-studyid") {
   const birthAgeRange = computeBirthAgeRange(ageBounds);
   const brthdtc = generateBrthdtc(n, new Date(), birthAgeRange.minAge, birthAgeRange.maxAge);
   const dummySites = generateDummySites();
   const usubjids = [];
   for (let i = 1; i <= n; i += 1) {
-    usubjids.push(`dummy-studyid-${String(i).padStart(4, "0")}`);
+    usubjids.push(`${studyid}-${String(i).padStart(4, "0")}`);
   }
 
   const activeResult = buildSubjectActiveSheets(sheets, sheetGroups, usubjids);
@@ -153,7 +155,7 @@ function buildDmDomain(n, sheets, sheetGroups, ageBounds) {
       }
     }
     return {
-      STUDYID: "dummy-studyid",
+      STUDYID: studyid,
       DOMAIN: "DM",
       USUBJID: usubjid,
       SUBJID: String(i + 1).padStart(4, "0"),

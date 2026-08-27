@@ -3,8 +3,8 @@
 // 依存関係解決の基盤(トポロジカルソート)、build_generic_domain(個別ロジックを持たないドメイン向け)、
 // build_repeated_domain(TR/LB等、同一alias_name内で複数labelを持つ繰り返しドメイン向け)、
 // inject_cross_domain_refs(ドメインをまたぐpresence_conditions/age_bounds解決)、
-// build_other_domains本体のオーケストレーション(トポロジカルソート順の呼び分け・built_domainsへの積み上げ)まで対応する。
-// drug型項目(who_drug_idf)、visit_lookup(VISIT/VISITNUM列)、
+// build_other_domains本体のオーケストレーション(トポロジカルソート順の呼び分け・built_domainsへの積み上げ)、
+// drug型項目(who_drug_idf、WHO Drug参照)、visit_lookup(VISIT/VISITNUM列)まで対応する。
 // AEリンクブロック(FA等、AE報告と同じフォーム上の別prefixブロック)、
 // apply_orres_populators(LB/TR/VSのORRESを基準範囲に基づいた値に置き換える処理)は、まだ未移植
 
@@ -79,6 +79,51 @@ function buildActiveSheetTable(activeSheets) {
     });
   });
   return rows;
+}
+
+// edcSpec.sheetsのうちcategory=="visit"のシートは、name(シート表示名)の末尾に"(VisitName)"という形で
+// edcSpec.visitsのnameが含まれている(例: "効果判定報告(End of Induction Cycle1)")。これを抽出して
+// visitsと突き合わせ、(alias_name, VISIT, VISITNUM)の配列を作る。一致しない行(末尾が"(...)"形式で
+// ない等)は含めない(Rのbuild_visit_lookup()に対応)
+function buildVisitLookup(sheets, visits) {
+  if (!visits || visits.length === 0) return [];
+  const visitNumByName = {};
+  visits.forEach((v) => {
+    visitNumByName[v.name] = v.num;
+  });
+  const result = [];
+  (sheets || []).forEach((sheet) => {
+    if (sheet.category !== "visit") return;
+    const m = /\(([^()]+)\)$/.exec(sheet.name || "");
+    if (!m) return;
+    const visitName = m[1];
+    if (!(visitName in visitNumByName)) return;
+    result.push({ alias_name: sheet.alias_name, VISIT: visitName, VISITNUM: visitNumByName[visitName] });
+  });
+  return result;
+}
+
+// visitLookup(alias_name, VISIT, VISITNUM)をalias_nameで結合し、VISIT/VISITNUM列を追加する。
+// category=="visit"のシート由来でない行(一致しない行)はnullのまま。このドメインにvisitカテゴリの
+// シート由来の行が1件も無ければ(全行null)、意味の無い空列を出さないよう列自体を追加しない。
+// また、既にVISITNUM列がある(そのドメイン自身がVISITNUMをradio_button等で直接定義している)場合は
+// 上書きしない(Rのadd_visit_columns()に対応)
+function addVisitColumns(data, visitLookup) {
+  if (!visitLookup || visitLookup.length === 0 || !data[0] || !("alias_name" in data[0]) || "VISITNUM" in data[0]) {
+    return data;
+  }
+  const lookupByAlias = {};
+  visitLookup.forEach((r) => {
+    if (!(r.alias_name in lookupByAlias)) lookupByAlias[r.alias_name] = r;
+  });
+  const anyMatch = data.some((row) => row.alias_name in lookupByAlias);
+  if (!anyMatch) return data;
+  data.forEach((row) => {
+    const hit = lookupByAlias[row.alias_name];
+    row.VISIT = hit ? hit.VISIT : null;
+    row.VISITNUM = hit ? hit.VISITNUM : null;
+  });
+  return data;
 }
 
 // candidates([{USUBJID, alias_name}, ...]、USUBJIDごとに複数のalias_name候補がある)の各USUBJIDについて、
@@ -393,6 +438,81 @@ function populateGenericMeddraFields(data, spec, meddraData, meddraSample) {
   return data;
 }
 
+// field_type=="drug"に該当する変数名を抽出(Rのcompute_drug_vars()に対応)
+function computeDrugVars(spec) {
+  return [...new Set(spec.filter((r) => r.field_type === "drug").map((r) => r.cdisc_variable))];
+}
+
+// drugVars(field_type=="drug"な変数)のspec行が、1つでもdefault_value(固定コード)無し
+// (=ランダムサンプリングされ、実際にwhoDrugIdfとの一致を確認する意味がある)場合はtrue。
+// 全て固定コードで値が確定している場合はfalse(この場合、prefixDECOD列は生成しない)
+// (Rのdrug_vars_need_decod()に対応)
+function drugVarsNeedDecod(spec, drugVars) {
+  const drugVarSet = new Set(drugVars);
+  return spec.some((r) => r.field_type === "drug" && drugVarSet.has(r.cdisc_variable) && (r.default_value == null || r.default_value === ""));
+}
+
+// drug型の項目に、whoDrugIdf(drug_code/full_name_en/generic_name_enの配列)から薬剤名(full_name_en)を
+// 格納する。default_valueが数値の場合はwhoDrugIdf$drug_codeとみなし対応するfull_name_enを固定値として
+// 使う。それ以外はwhoDrugIdf$full_name_enからランダムにサンプリングする。alias_nameでスコープを絞る
+// (同じcdisc_variableが別alias_nameで固定値/別のfield_typeとして定義されている場合、その行は変更しない)
+// (Rのpopulate_drug_fields()に対応)
+function populateDrugFields(data, spec, drugVars, whoDrugIdf) {
+  const drugNames = [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))];
+  if (drugNames.length === 0) return data;
+  drugVars.forEach((varName) => {
+    const drugSpecRows = spec.filter((r) => r.field_type === "drug" && r.cdisc_variable === varName);
+    const aliasNames = [...new Set(drugSpecRows.map((r) => r.alias_name))];
+    aliasNames.forEach((an) => {
+      const targetRows = data.filter((row) => row.alias_name === an);
+      if (targetRows.length === 0) return;
+      const defaultValues = [
+        ...new Set(drugSpecRows.filter((r) => r.alias_name === an).map((r) => r.default_value).filter((v) => v != null && v !== "")),
+      ];
+      let fixedName = null;
+      if (defaultValues.length === 1 && /^[0-9]+$/.test(defaultValues[0])) {
+        const hit = whoDrugIdf.find((r) => r.drug_code === defaultValues[0] && r.full_name_en != null);
+        if (hit) fixedName = hit.full_name_en;
+      }
+      targetRows.forEach((row) => {
+        row[varName] = fixedName != null ? fixedName : sampleOne(drugNames);
+      });
+    });
+  });
+  return data;
+}
+
+// drug変数の値がwhoDrugIdfの薬剤名(full_name_en)に完全一致する場合、prefixDECOD(例: CMDECOD)に
+// generic_name_enを格納する(一致しない場合はnull)。field_type=="drug"と定義されているalias_nameの
+// 行だけを対象にする。drugVarsが複数ある場合は、最初に一致した変数の値を採用する
+// (Rのadd_drug_decod()に対応)
+function addDrugDecod(data, spec, drugVars, whoDrugIdf, prefix) {
+  if (drugVars.length === 0 || !data[0]) return data;
+  // 同じfull_name_enが複数行あり、一部だけgeneric_name_enが空のことがあるため、
+  // generic_name_enが空でない行を優先して残してからルックアップを作る
+  const lookup = {};
+  [...whoDrugIdf]
+    .filter((r) => r.full_name_en != null)
+    .sort((a, b) => (a.generic_name_en == null ? 1 : 0) - (b.generic_name_en == null ? 1 : 0))
+    .forEach((r) => {
+      if (!(r.full_name_en in lookup)) lookup[r.full_name_en] = r.generic_name_en;
+    });
+
+  const decodVar = `${prefix}DECOD`;
+  data.forEach((row) => {
+    row[decodVar] = null;
+  });
+  drugVars.forEach((varName) => {
+    const drugAliasNames = new Set(spec.filter((r) => r.field_type === "drug" && r.cdisc_variable === varName).map((r) => r.alias_name));
+    data.forEach((row) => {
+      if (row[decodVar] != null || !drugAliasNames.has(row.alias_name)) return;
+      const matched = lookup[row[varName]];
+      if (matched != null) row[decodVar] = matched;
+    });
+  });
+  return data;
+}
+
 // データセット全体の通番を付与する(Rのadd_seq()に対応)
 function addSeq(data, seqVar) {
   data.forEach((row, i) => {
@@ -404,9 +524,8 @@ function addSeq(data, seqVar) {
 // DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 // alias_nameがmultiRecordAliasNamesに該当しない場合はUSUBJIDごとに1レコード、該当する場合
 // (AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、被験者に対して
-// ランダムな件数(0件を含む)のレコードを作る(Rのbuild_generic_domain()に対応するが、
-// inject_cross_domain_refs・drug型項目(who_drug_idf)・visit_lookupはまだ未対応)。
-// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable }
+// ランダムな件数(0件を含む)のレコードを作る(Rのbuild_generic_domain()に対応)。
+// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
 function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
@@ -415,6 +534,8 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const ageBounds = opts.ageBounds || [];
   const multiRecordAliasNames = opts.multiRecordAliasNames || [];
   const activeSheetTable = opts.activeSheetTable || null;
+  const whoDrugIdf = opts.whoDrugIdf || null;
+  const visitLookup = opts.visitLookup || null;
 
   // presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、
   // このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -490,6 +611,13 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
     }
   }
 
+  // drug変数(field_type=="drug")には、whoDrugIdfから薬剤名をサンプリングして格納する。
+  // alias_nameでスコープを絞る(同じcdisc_variableが別alias_nameで固定値等の場合はそちらを変更しない)
+  const drugVars = computeDrugVars(spec);
+  if (drugVars.length > 0 && whoDrugIdf) {
+    data = populateDrugFields(data, spec, drugVars, whoDrugIdf);
+  }
+
   // presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   // builtDomains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
@@ -500,6 +628,15 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   data.forEach((row) => {
     injected.injectedCols.forEach((c) => delete row[c]);
   });
+
+  // drug変数の値がwhoDrugIdfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
+  // generic_name_enを格納する(presence_conditions等で値が変わった後の最終状態を見る)。
+  // 全て固定コード(default_value)で値が確定している場合は、一致確認する意味が無いのでDECOD列自体を作らない
+  if (drugVars.length > 0 && whoDrugIdf && drugVarsNeedDecod(spec, drugVars)) {
+    data = addDrugDecod(data, spec, drugVars, whoDrugIdf, prefix);
+  }
+
+  data = addVisitColumns(data, visitLookup);
 
   data.forEach((row) => {
     delete row.alias_name;
@@ -536,10 +673,9 @@ function hasRepeatedLabels(spec) {
 
 // TR/LBのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 // USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
-// 値を生成する(対応するlabelが無ければnullのまま)。radio_button/check_box/date/meddra/dose/dummyに対応
-// (drug型はwho_drug_idf未対応のためnullのまま。Rのbuild_repeated_domain()に対応するが、
-// visit_lookup・drug_decodはまだ未対応)。
-// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable }
+// 値を生成する(対応するlabelが無ければnullのまま)。radio_button/check_box/date/meddra/drug/dose/dummyに
+// 対応する(Rのbuild_repeated_domain()に対応)。
+// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
 function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
@@ -548,6 +684,9 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const ageBounds = opts.ageBounds || [];
   const multiRecordAliasNames = opts.multiRecordAliasNames || [];
   const activeSheetTable = opts.activeSheetTable || null;
+  const whoDrugIdf = opts.whoDrugIdf || null;
+  const visitLookup = opts.visitLookup || null;
+  const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
   const requiredSet = new Set(requiredVars || []);
 
   const ownVars = new Set(spec.map((r) => r.cdisc_variable));
@@ -675,14 +814,33 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
             row[varName] = sample[i].llt_name;
           });
         }
+      } else if (g.fieldType === "drug") {
+        const dv = g.defaultValue;
+        let fixedName = null;
+        if (dv != null && /^[0-9]+$/.test(dv) && whoDrugIdf) {
+          const hit = whoDrugIdf.find((r) => r.drug_code === dv && r.full_name_en != null);
+          if (hit) fixedName = hit.full_name_en;
+        }
+        if (fixedName != null) {
+          rows.forEach((row) => {
+            row[varName] = fixedName;
+          });
+        } else if (drugNames.length > 0) {
+          rows.forEach((row) => {
+            row[varName] = sampleOne(drugNames);
+          });
+        } else {
+          rows.forEach((row) => {
+            row[varName] = null;
+          });
+        }
       } else if (/DOSE$/.test(varName)) {
         rows.forEach((row) => {
           row[varName] = sampleOne(doseChoices);
         });
       } else {
-        const value = g.fieldType === "drug" ? null : "DUMMY";
         rows.forEach((row) => {
-          row[varName] = value;
+          row[varName] = "DUMMY";
         });
       }
     });
@@ -727,6 +885,16 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     injected.injectedCols.forEach((c) => delete row[c]);
   });
 
+  // drug変数の値がwhoDrugIdfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
+  // generic_name_enを格納する。全て固定コード(default_value)で値が確定している場合は
+  // DECOD列自体を作らない
+  const drugVarsInData = computeDrugVars(spec).filter((v) => data[0] && v in data[0]);
+  if (drugVarsInData.length > 0 && whoDrugIdf && drugVarsNeedDecod(spec, drugVarsInData)) {
+    data = addDrugDecod(data, spec, drugVarsInData, whoDrugIdf, prefix);
+  }
+
+  data = addVisitColumns(data, visitLookup);
+
   const seqVar = `${prefix}SEQ`;
   addSeq(data, seqVar);
 
@@ -751,10 +919,9 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 // ドメイン間の依存関係(presence_conditions/field_ref_bounds/age_boundsが他ドメインを参照する箇所)を
 // トポロジカルソートで解決した順に、has_repeated_labels(またはrepeatedPrefixesで明示指定)に応じて
 // buildGenericDomain/buildRepeatedDomainを呼び分けて生成する。prefixをキーにしたオブジェクトで返す
-// (Rのbuild_other_domains()に対応するが、drug型項目・visit_lookup・AEリンクブロック・
-// apply_orres_populatorsはまだ未対応)。
+// (Rのbuild_other_domains()に対応するが、AEリンクブロック・apply_orres_populatorsはまだ未対応)。
 // options: { excludePrefixes, codingBlockPrefixes, repeatedPrefixes, builtDomains, ageBounds,
-//            multiRecordAliasNames, activeSheetTable }
+//            multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
 function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const excludePrefixes = new Set(opts.excludePrefixes || ["DM", "AE", "DS"]);
@@ -764,6 +931,8 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const ageBounds = opts.ageBounds || [];
   const multiRecordAliasNames = opts.multiRecordAliasNames || [];
   const activeSheetTable = opts.activeSheetTable || null;
+  const whoDrugIdf = opts.whoDrugIdf || null;
+  const visitLookup = opts.visitLookup || null;
 
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
@@ -780,6 +949,8 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       ageBounds,
       multiRecordAliasNames,
       activeSheetTable,
+      whoDrugIdf,
+      visitLookup,
     };
     builtDomains[prefix] =
       forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)
