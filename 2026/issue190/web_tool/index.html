@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ダミーデータ生成ツール(骨組み)</title>
+<title>ダミーデータ生成ツール</title>
 <style>
   body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1e293b; }
   h1 { font-size: 1.4rem; }
@@ -26,7 +26,7 @@
 </style>
 </head>
 <body>
-  <h1>ダミーデータ生成ツール(骨組み)</h1>
+  <h1>ダミーデータ生成ツール</h1>
 
   <section id="upload-section">
     <div id="drop-zone">
@@ -34,6 +34,21 @@
     </div>
     <input type="file" id="file-input" accept=".json" style="display:none;">
     <div id="file-name"></div>
+  </section>
+
+  <section id="dictionary-dir-section">
+    <details>
+      <summary style="cursor:pointer;color:#0284c7;">辞書バージョンの登録・管理(通常は不要)</summary>
+      <div style="margin-top:0.75rem;">
+        <button id="grant-data-dir-btn" type="button"></button>
+        <div id="data-dir-status" style="font-size:0.85rem;color:#64748b;margin-top:0.5rem;"></div>
+
+        <div id="dictionary-drop-zone" style="border: 2px dashed #94a3b8; border-radius: 8px; padding: 1.2rem; text-align: center; color: #64748b; margin-top: 1rem;">
+          <p>ここにMedDRAまたはWHO Drug/IDFのバージョンフォルダをドラッグ&ドロップ(要データフォルダアクセス許可)</p>
+        </div>
+        <div id="dictionary-import-status" style="font-size:0.85rem;color:#64748b;margin-top:0.5rem;"></div>
+      </div>
+    </details>
   </section>
 
   <section id="config-section" style="display:none;">
@@ -73,6 +88,9 @@
   <script src="js/orres_realism.js"></script>
   <script src="data/versions.js"></script>
   <script src="js/dictionaries.js"></script>
+  <script src="js/dictionary_data_dir.js"></script>
+  <script src="js/meddra_import.js"></script>
+  <script src="js/who_drug_import.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

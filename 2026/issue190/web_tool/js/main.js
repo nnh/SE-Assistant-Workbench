@@ -19,11 +19,11 @@ const configSection = document.getElementById("config-section");
 const resultSection = document.getElementById("result-section");
 const dictionaryStatus = document.getElementById("dictionary-status");
 
-// MedDRA/WHO Drugのバージョン選択プルダウンを、data/versions.jsの一覧で埋める。
-// versions.jsは古い→新しい順に並んでいる前提で、末尾(最新)をデフォルト選択にする
-function populateVersionSelect(selectId, kind) {
+// MedDRA/WHO Drugのバージョン選択プルダウンをlabelsの一覧で埋める。
+// 末尾(最新)をデフォルト選択にする
+function populateVersionSelectFromLabels(selectId, labels) {
   const select = document.getElementById(selectId);
-  const labels = listDictionaryVersions(kind);
+  select.innerHTML = "";
   labels.forEach((label) => {
     const option = document.createElement("option");
     option.value = label;
@@ -34,8 +34,117 @@ function populateVersionSelect(selectId, kind) {
     select.value = labels[labels.length - 1];
   }
 }
-populateVersionSelect("meddra-version", "meddra");
-populateVersionSelect("who-drug-version", "who_drug");
+
+// データフォルダへのアクセスが許可されていればdata/meddra・data/who_drug配下の実ファイルから、
+// 未許可ならdata/versions.jsの一覧から、プルダウンを埋め直す
+async function refreshVersionSelects() {
+  if (hasDataDirAccess()) {
+    const meddraLabels = await listVersionsFromDataDir("meddra");
+    const whoDrugLabels = await listVersionsFromDataDir("who_drug");
+    populateVersionSelectFromLabels("meddra-version", meddraLabels);
+    populateVersionSelectFromLabels("who-drug-version", whoDrugLabels);
+  } else {
+    populateVersionSelectFromLabels("meddra-version", listDictionaryVersions("meddra"));
+    populateVersionSelectFromLabels("who-drug-version", listDictionaryVersions("who_drug"));
+  }
+}
+
+const grantDataDirBtn = document.getElementById("grant-data-dir-btn");
+const dataDirStatus = document.getElementById("data-dir-status");
+let dataDirState = "not-set";
+
+function updateDataDirUi() {
+  if (dataDirState === "granted") {
+    grantDataDirBtn.textContent = "データフォルダへのアクセス: 許可済み(別のフォルダを選び直す)";
+    dataDirStatus.textContent = "web_tool/dataフォルダへのアクセスが有効です。バージョン一覧はこのフォルダから取得しています。";
+  } else if (dataDirState === "needs-reauth") {
+    grantDataDirBtn.textContent = "データフォルダへのアクセスを再許可";
+    dataDirStatus.textContent = "以前許可したフォルダへのアクセスが失効しています(ブラウザ再起動後など)。ボタンを押して再許可してください。";
+  } else {
+    grantDataDirBtn.textContent = "データフォルダ(web_tool/data)へのアクセスを許可";
+    dataDirStatus.textContent = "未許可です(未許可でも従来通り動作します。許可すると、バージョン一覧をdataフォルダから自動取得できます)。";
+  }
+}
+
+grantDataDirBtn.addEventListener("click", async () => {
+  try {
+    if (dataDirState === "needs-reauth") {
+      dataDirState = (await reauthorizeDataDirAccess()) ? "granted" : "needs-reauth";
+    } else {
+      await requestDataDirAccess();
+      dataDirState = "granted";
+    }
+    updateDataDirUi();
+    await refreshVersionSelects();
+  } catch (e) {
+    dataDirStatus.textContent = "アクセス許可に失敗しました: " + e.message;
+  }
+});
+
+(async () => {
+  dataDirState = await restoreDataDirAccess();
+  updateDataDirUi();
+  await refreshVersionSelects();
+})();
+
+// 辞書バージョンフォルダ(MedDRA/WHO Drug)のドラッグ&ドロップ登録
+const dictionaryDropZone = document.getElementById("dictionary-drop-zone");
+const dictionaryImportStatus = document.getElementById("dictionary-import-status");
+
+dictionaryDropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dictionaryDropZone.classList.add("drag-over");
+});
+dictionaryDropZone.addEventListener("dragleave", () => dictionaryDropZone.classList.remove("drag-over"));
+dictionaryDropZone.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  dictionaryDropZone.classList.remove("drag-over");
+
+  if (!hasDataDirAccess()) {
+    dictionaryImportStatus.textContent = "先に上の「データフォルダへのアクセスを許可」を行ってください。";
+    return;
+  }
+
+  const item = e.dataTransfer.items && e.dataTransfer.items[0];
+  if (!item || typeof item.getAsFileSystemHandle !== "function") {
+    dictionaryImportStatus.textContent = "この操作はお使いのブラウザでは対応していません(Chrome/Edgeでお試しください)。";
+    return;
+  }
+
+  const droppedHandle = await item.getAsFileSystemHandle();
+  if (droppedHandle.kind !== "directory") {
+    dictionaryImportStatus.textContent = "フォルダをドロップしてください。";
+    return;
+  }
+
+  const kind = await detectDictionaryFolderKind(droppedHandle);
+  if (kind === null) {
+    dictionaryImportStatus.textContent =
+      "MedDRA(soc.asc等)にもWHO Drug/IDF(WHODD・IDFサブフォルダ)にも該当しないフォルダのようです。";
+    return;
+  }
+  const dictionaryLabel = kind === "meddra" ? "MedDRA" : "WHO Drug/IDF";
+  const buildVersionJsContent = kind === "meddra" ? buildMeddraVersionJsContent : buildWhoDrugVersionJsContent;
+
+  try {
+    dictionaryImportStatus.textContent = `${dictionaryLabel}「${droppedHandle.name}」を変換中...`;
+    const { version, content, rowCount } = await buildVersionJsContent(droppedHandle);
+
+    if (await dictionaryVersionFileExists(kind, version)) {
+      const overwrite = confirm(`${dictionaryLabel}バージョン「${version}」は既に登録済みです。上書きしますか?`);
+      if (!overwrite) {
+        dictionaryImportStatus.textContent = `キャンセルしました(${dictionaryLabel}「${version}」は上書きしていません)。`;
+        return;
+      }
+    }
+
+    const filename = await writeDictionaryVersionFile(kind, version, content);
+    dictionaryImportStatus.textContent = `${dictionaryLabel}「${version}」を登録しました(${rowCount}行, data/${kind}/${filename})。`;
+    await refreshVersionSelects();
+  } catch (e) {
+    dictionaryImportStatus.textContent = `${dictionaryLabel}の取り込みに失敗しました: ` + e.message;
+  }
+});
 
 function handleFile(file) {
   if (!file.name.toLowerCase().endsWith(".json")) {

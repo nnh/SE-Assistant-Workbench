@@ -20,23 +20,28 @@ function findDictionaryFile(kind, label) {
 
 // kindのlabelバージョンのデータファイルを<script>タグで動的に読み込む。
 // 既に読み込み済み(window.__meddraVersions[label]等が存在)なら何もしない。
+// versions.jsに載っていない(=D&Dでdataフォルダに直接登録した)バージョンの場合は、
+// データフォルダへのアクセスが許可されていれば、ディレクトリハンドル経由で直接読み込む。
 // 戻り値はPromise(読み込み完了時にresolve、失敗時にreject)
-function loadDictionaryVersion(kind, label) {
+async function loadDictionaryVersion(kind, label) {
   const store = kind === "meddra" ? "__meddraVersions" : "__whoDrugVersions";
   if (window[store] && window[store][label]) {
-    return Promise.resolve();
+    return;
   }
   const file = findDictionaryFile(kind, label);
-  if (!file) {
-    return Promise.reject(new Error(`${kind}のバージョン「${label}」が見つかりません`));
+  if (file) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = `data/${kind}/${file}.js`;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`${kind}データの読み込みに失敗しました: ${script.src}`));
+      document.head.appendChild(script);
+    });
   }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `data/${kind}/${file}.js`;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`${kind}データの読み込みに失敗しました: ${script.src}`));
-    document.head.appendChild(script);
-  });
+  if (hasDataDirAccess()) {
+    return loadDictionaryVersionFromDataDir(kind, label);
+  }
+  throw new Error(`${kind}のバージョン「${label}」が見つかりません`);
 }
 
 // 読み込み済みの辞書データ(array-of-arrays形式)を、扱いやすいオブジェクトの配列に変換して返す。
