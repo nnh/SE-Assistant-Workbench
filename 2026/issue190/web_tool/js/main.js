@@ -167,6 +167,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     const ddGatedVars = [...new Set(presenceConditions.filter((pc) => pc.cdisc_variable in (otherDomains.DD[0] || {})).map((pc) => pc.cdisc_variable))];
     otherDomains.DD = dropEmptyDomainRows(otherDomains.DD, ddGatedVars);
   }
+  // LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
+  applyOrresPopulators(otherDomains, { LB: populateLbOrres, TR: populateTrOrres, VS: populateVsOrres });
   generatedOtherDomains = otherDomains;
   renderOtherDomainPreviews(otherDomains);
 

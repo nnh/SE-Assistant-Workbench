@@ -5,8 +5,9 @@
 // inject_cross_domain_refs(ドメインをまたぐpresence_conditions/age_bounds解決)、
 // build_other_domains本体のオーケストレーション(トポロジカルソート順の呼び分け・built_domainsへの積み上げ)、
 // drug型項目(who_drug_idf、WHO Drug参照)、visit_lookup(VISIT/VISITNUM列)まで対応する。
-// AEリンクブロック(FA等、AE報告と同じフォーム上の別prefixブロック)、
-// apply_orres_populators(LB/TR/VSのORRESを基準範囲に基づいた値に置き換える処理)は、まだ未移植
+// apply_orres_populators(LB/TR/VSのORRESを基準範囲に基づいた値に置き換える処理)は
+// js/orres_realism.jsに分離して対応済み。
+// AEリンクブロック(FA等、AE報告と同じフォーム上の別prefixブロック)は、まだ未移植
 
 // MedDRAコーディングブロック(LLT〜SOC)の列名(ae_domain.jsのMEDDRA_CODING_COLSと同じ対応表を使う)
 
