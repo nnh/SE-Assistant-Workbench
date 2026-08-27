@@ -8,7 +8,7 @@ library(here)
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)。
 # ae/ds/discontinuation_date/presence_conditions/meddraはこのファイルでは使わないが、
 # tools/run_web_validation.Rでvalidate_web_ae.Rと連続実行する際に消えてしまわないよう残す
-rm(list = setdiff(ls(), c("dm", "ae", "ds", "other_domains", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra")))
+rm(list = setdiff(ls(), c("dm", "ae", "ds", "other_domains", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra", "discontinuation_date")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))

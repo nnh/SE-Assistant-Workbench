@@ -178,7 +178,8 @@ run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values
   report_ds_validation(ds_result)
   ae_result <- validate_ae(ae, dm, cdisc_variable_values)
   report_ae_validation(ae_result)
-  other_domains_result <- validate_other_domains(other_domains, dm, cdisc_variable_values, other_domains_special_checks)
+  discontinuation_date <- build_discontinuation_date_table(ds)
+  other_domains_result <- validate_other_domains(other_domains, dm, cdisc_variable_values, other_domains_special_checks, discontinuation_date)
   report_other_domains_validation(other_domains_result)
 
   ae_death_dates <- build_ae_death_dates(ae)

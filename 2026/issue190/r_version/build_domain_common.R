@@ -792,13 +792,45 @@ resolve_preferred_alias_name <- function(candidates, presence_conditions, built_
     select(-.satisfied)
 }
 
+# other_domainsのdate型項目は登録開始日〜今日の範囲でランダムに生成されるが、被験者の中止日
+# (DISCONDTC)は考慮しないため、中止後に検査等が発生しているように見えてしまうことがある
+# (validate_other_domains.Rのno_records_after_discontinuationチェックで検出される)。
+# 中止日情報がある被験者については、登録開始日〜中止日の範囲に収まるよう日付を再生成することで
+# この矛盾を解消する。中止日情報が無い(NAまたはdiscontinuation_dateに無い)被験者は対象外
+# (今まで通り登録開始日〜今日の範囲のまま)。registration_start_date > 中止日の場合(通常は
+# 起こらないはずだが念のため)は中止日そのものにする
+clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_date, discontinuation_date) {
+  if (is.null(discontinuation_date) || nrow(discontinuation_date) == 0 || !("USUBJID" %in% colnames(data))) {
+    return(data)
+  }
+  date_vars <- intersect(date_vars, colnames(data))
+  if (length(date_vars) == 0) {
+    return(data)
+  }
+
+  discon_map <- discontinuation_date %>% filter(!is.na(DISCONDTC)) %>% distinct(USUBJID, .keep_all = TRUE)
+  discon_lookup <- set_names(as.Date(discon_map[["DISCONDTC"]]), discon_map[["USUBJID"]])
+  reg_start <- as.Date(registration_start_date)
+
+  for (var_name in date_vars) {
+    current <- as.Date(as.character(data[[var_name]]))
+    discon <- discon_lookup[data[["USUBJID"]]]
+    over <- !is.na(current) & !is.na(discon) & current > discon
+    if (!any(over)) next
+    upper <- pmax(discon[over], reg_start)
+    new_dates <- reg_start + floor(runif(sum(over), 0, as.numeric(upper - reg_start) + 1))
+    data[[var_name]][over] <- as.character(new_dates)
+  }
+  data
+}
+
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 # alias_nameがmulti_record_alias_namesに該当しない場合はUSUBJIDごとに1レコード、
 # 該当する場合(AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、
 # 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL) {
   # presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -855,9 +887,12 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   target_vars <- compute_target_vars(data %>% select(-alias_name), spec)
   seq_var <- str_c(prefix, "SEQ")
 
+  date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
+
   data <- data %>%
     populate_radio_button_fields(spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date) %>%
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date) %>%
     populate_dose_fields(target_vars) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq(seq_var)
@@ -905,7 +940,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL) {
   drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
   # presence_conditions/age_boundsは全ドメイン分を含む共通テーブルのため、同じref_cdisc_variableを
   # 別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
@@ -1007,6 +1042,9 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
       ungroup() %>%
       select(-field_type, -default_value, -codes, -is_invisible_any)
   }
+
+  date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、
@@ -1182,7 +1220,7 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
@@ -1197,7 +1235,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
-        visit_lookup = visit_lookup
+        visit_lookup = visit_lookup, discontinuation_date = discontinuation_date
       )
     } else {
       build_generic_domain(
@@ -1205,7 +1243,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
-        visit_lookup = visit_lookup
+        visit_lookup = visit_lookup, discontinuation_date = discontinuation_date
       )
     }
   }

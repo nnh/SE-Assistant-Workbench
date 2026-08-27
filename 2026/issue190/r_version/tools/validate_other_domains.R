@@ -6,8 +6,10 @@ library(lubridate)
 # prefixを問わず適用できるようにしたもの。other_domainsの全ドメインに一括で適用する
 
 # prefix(例: "FA")について、乱数に依存しない構造的な条件を汎用的にチェックする。
-# dmを渡すと、USUBJIDがdmの範囲内に収まっているかも確認する(渡さなければスキップ)
-validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NULL) {
+# dmを渡すと、USUBJIDがdmの範囲内に収まっているかも確認する(渡さなければスキップ)。
+# discontinuation_date(build_discontinuation_date_table(ds)の結果、USUBJID/DISCONDTC)を渡すと、
+# date型の列に中止日より後の値が無いかも確認する(渡さなければスキップ)
+validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NULL, discontinuation_date = NULL) {
   results <- list()
   add_check <- function(name, passed, detail = "") {
     results[[length(results) + 1]] <<- tibble(check = name, passed = passed, detail = detail)
@@ -80,17 +82,42 @@ validate_domain_generic <- function(data, prefix, cdisc_variable_values, dm = NU
     )
   }
 
+  # discontinuation_dateが渡された場合、date型の列の値がその被験者の中止日(DISCONDTC)より
+  # 後になっていないか確認する(中止後に検査等のレコードが発生している、という矛盾を検出する)。
+  # DISCONDTCがNAの被験者(対象レコードのいずれかにDSDTCが無かった等)は比較できないため対象外にする
+  if (!is.null(discontinuation_date) && nrow(discontinuation_date) > 0 && "USUBJID" %in% colnames(data) && length(date_vars) > 0) {
+    discon_by_usubjid <- discontinuation_date %>% filter(!is.na(DISCONDTC)) %>% distinct(USUBJID, DISCONDTC)
+    for (var_name in intersect(date_vars, colnames(data))) {
+      raw <- as.character(data[[var_name]])
+      parsed <- suppressWarnings(ymd(raw))
+      violations <- tibble(USUBJID = data[["USUBJID"]], value = parsed) %>%
+        inner_join(discon_by_usubjid, by = "USUBJID") %>%
+        filter(!is.na(value), value > DISCONDTC)
+
+      add_check(
+        str_c("no_records_after_discontinuation: ", var_name),
+        nrow(violations) == 0,
+        str_c(
+          "中止日より後の行数: ", nrow(violations),
+          if (nrow(violations) > 0) str_c(" (USUBJID例: ", paste(head(unique(violations[["USUBJID"]]), 3), collapse = ", "), ")") else ""
+        )
+      )
+    }
+  }
+
   bind_rows(results)
 }
 
 # other_domains(prefixをキーにしたnamed list)の全ドメインにvalidate_domain_generic()を適用し、
 # domain列を付けて1つのtibbleにまとめる。
 # special_checks(名前付きlist、prefix -> function(data, dm, cdisc_variable_values) -> tibble(check,passed,detail))を
-# 渡すと、そのprefixだけ試験固有の追加チェックを実行して結果に加える(未指定のprefixは汎用チェックのみ)
-validate_other_domains <- function(other_domains, dm, cdisc_variable_values, special_checks = list()) {
+# 渡すと、そのprefixだけ試験固有の追加チェックを実行して結果に加える(未指定のprefixは汎用チェックのみ)。
+# discontinuation_date(build_discontinuation_date_table(ds)の結果)を渡すと、各ドメインの
+# date型列に中止日より後の値が無いかも確認する(渡さなければスキップ)
+validate_other_domains <- function(other_domains, dm, cdisc_variable_values, special_checks = list(), discontinuation_date = NULL) {
   other_domains %>%
     imap_dfr(function(data, prefix) {
-      generic <- validate_domain_generic(data, prefix, cdisc_variable_values, dm)
+      generic <- validate_domain_generic(data, prefix, cdisc_variable_values, dm, discontinuation_date)
       extra <- if (prefix %in% names(special_checks)) {
         special_checks[[prefix]](data, dm, cdisc_variable_values)
       } else {

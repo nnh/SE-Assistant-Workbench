@@ -145,6 +145,9 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const deathDate = buildDeathDateTable(ae);
   ds = finalizeDsDisposition(ds, deathDate, cdiscVariableValues);
   ds = addRandomizationDsRows(ds, dm, registrationStartDate);
+  // 中止日判定は、直前に追加したRANDOMIZED行(中止ではない)が混ざらないよう、
+  // add_randomization_ds_rows()より後に呼び出す
+  const discontinuationDate = buildDiscontinuationDateTable(ds);
 
   // DM/AE/DS以外のドメイン(CM/MH/EG等)。dsのalias_name/labelは、DDがDSの特定ブロック(例: discon)を
   // 参照する際の突き合わせキーとして使うため、ここではまだ取り除かない
@@ -160,6 +163,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     activeSheetTable,
     whoDrugIdf,
     visitLookup,
+    discontinuationDate,
   });
   // DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、
   // presence_conditionsで条件付けされている列(例: DDORRES)が全てnullの行を除外)

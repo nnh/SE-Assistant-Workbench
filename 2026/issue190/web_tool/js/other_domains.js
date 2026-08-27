@@ -6,7 +6,8 @@
 // build_other_domains本体のオーケストレーション(トポロジカルソート順の呼び分け・built_domainsへの積み上げ)、
 // drug型項目(who_drug_idf、WHO Drug参照)、visit_lookup(VISIT/VISITNUM列)まで対応する。
 // apply_orres_populators(LB/TR/VSのORRESを基準範囲に基づいた値に置き換える処理)は
-// js/orres_realism.jsに分離して対応済み。
+// js/orres_realism.jsに分離して対応済み。clamp_dates_to_discontinuation(中止日より後の日付を
+// 再生成する処理)も対応済み。
 // AEリンクブロック(FA等、AE報告と同じフォーム上の別prefixブロック)は、まだ未移植
 
 // MedDRAコーディングブロック(LLT〜SOC)の列名(ae_domain.jsのMEDDRA_CODING_COLSと同じ対応表を使う)
@@ -522,11 +523,41 @@ function addSeq(data, seqVar) {
   return data;
 }
 
+// other_domainsのdate型項目が、被験者の中止日(DISCONDTC)より後の値にならないようにする。
+// 中止日情報がある被験者については、registrationStartDate〜中止日の範囲に収まるよう日付を
+// 再生成する。中止日情報が無い(nullまたはdiscontinuationDateに無い)被験者は対象外
+// (今まで通りregistrationStartDate〜今日の範囲のまま)。registrationStartDate > 中止日の場合
+// (通常は起こらないはずだが念のため)は中止日そのものにする(Rのclamp_dates_to_discontinuation()に対応)
+function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate) {
+  if (!discontinuationDate || discontinuationDate.length === 0 || !data[0] || !("USUBJID" in data[0])) {
+    return data;
+  }
+  const targetVars = dateVars.filter((v) => v in data[0]);
+  if (targetVars.length === 0) return data;
+
+  const disconByUsubjid = {};
+  discontinuationDate.forEach((r) => {
+    if (r.DISCONDTC != null && !(r.USUBJID in disconByUsubjid)) {
+      disconByUsubjid[r.USUBJID] = r.DISCONDTC;
+    }
+  });
+
+  targetVars.forEach((varName) => {
+    data.forEach((row) => {
+      const discon = disconByUsubjid[row.USUBJID];
+      if (discon == null || row[varName] == null || row[varName] <= discon) return;
+      const upper = discon > registrationStartDate ? discon : registrationStartDate;
+      row[varName] = randomDateBetween(registrationStartDate, upper);
+    });
+  });
+  return data;
+}
+
 // DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 // alias_nameがmultiRecordAliasNamesに該当しない場合はUSUBJIDごとに1レコード、該当する場合
 // (AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、被験者に対して
 // ランダムな件数(0件を含む)のレコードを作る(Rのbuild_generic_domain()に対応)。
-// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
+// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
 function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
@@ -537,6 +568,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const activeSheetTable = opts.activeSheetTable || null;
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
+  const discontinuationDate = opts.discontinuationDate || null;
 
   // presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、
   // このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -596,6 +628,8 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
 
   data = populateGenericChoiceFields(data, spec, requiredVars, numericBounds);
   data = populateGenericDateFields(data, spec, registrationStartDate);
+  const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
@@ -676,7 +710,7 @@ function hasRepeatedLabels(spec) {
 // USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 // 値を生成する(対応するlabelが無ければnullのまま)。radio_button/check_box/date/meddra/drug/dose/dummyに
 // 対応する(Rのbuild_repeated_domain()に対応)。
-// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
+// options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
 function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
@@ -687,6 +721,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const activeSheetTable = opts.activeSheetTable || null;
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
+  const discontinuationDate = opts.discontinuationDate || null;
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
   const requiredSet = new Set(requiredVars || []);
 
@@ -847,6 +882,9 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     });
   });
 
+  const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate);
+
   let codingCols = [];
   if (addCodingBlock) {
     const meddraTypeVars = [...new Set(spec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))].filter((v) =>
@@ -922,7 +960,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 // buildGenericDomain/buildRepeatedDomainを呼び分けて生成する。prefixをキーにしたオブジェクトで返す
 // (Rのbuild_other_domains()に対応するが、AEリンクブロック・apply_orres_populatorsはまだ未対応)。
 // options: { excludePrefixes, codingBlockPrefixes, repeatedPrefixes, builtDomains, ageBounds,
-//            multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup }
+//            multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
 function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const excludePrefixes = new Set(opts.excludePrefixes || ["DM", "AE", "DS"]);
@@ -934,6 +972,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const activeSheetTable = opts.activeSheetTable || null;
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
+  const discontinuationDate = opts.discontinuationDate || null;
 
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
@@ -952,6 +991,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       activeSheetTable,
       whoDrugIdf,
       visitLookup,
+      discontinuationDate,
     };
     builtDomains[prefix] =
       forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)

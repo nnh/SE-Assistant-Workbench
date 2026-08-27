@@ -88,7 +88,7 @@ load_edc_spec <- function(json_path) {
   other_domains <- build_other_domains(
     dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
     built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf,
-    active_sheet_table = active_sheet_table, visit_lookup = visit_lookup
+    active_sheet_table = active_sheet_table, visit_lookup = visit_lookup, discontinuation_date = discontinuation_date
   )
 
   # alias_name/labelは他ドメイン生成時の突き合わせキーとして使い終わったため、最終出力からは取り除く

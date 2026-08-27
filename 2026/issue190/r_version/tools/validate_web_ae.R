@@ -9,7 +9,7 @@ library(here)
 # sheets/sheet_groups/dsはこのファイルでは使わないが、tools/run_web_validation.Rで
 # validate_web_dm.R・validate_web_ds.Rと連続実行する際に消えてしまわないよう残す。
 # presence_conditions/meddraは必須LLTコードチェック(validate_ae()内)で使う
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "sheets", "sheet_groups", "presence_conditions", "meddra", "discontinuation_date")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))

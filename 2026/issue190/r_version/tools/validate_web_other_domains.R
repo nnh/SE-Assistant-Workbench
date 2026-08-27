@@ -7,10 +7,13 @@ library(here)
 # load_edc_spec(json_path)を実行してother_domains/dm/cdisc_variable_valuesを作成しておくこと。
 # テストファイルを切り替えたいときはtest_config.Rのjson_pathを書き換える。
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("dm", "ae", "ds", "other_domains", "cdisc_variable_values")))
+rm(list = setdiff(ls(), c("dm", "ae", "ds", "other_domains", "cdisc_variable_values", "discontinuation_date")))
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))
+# build_discontinuation_date_table()を使うため。他のvalidate_web_*.Rのrm()で消えている可能性があるため
+# ここで明示的にsourceし直す
+source(here("build_ds_domain.R"))
 
 # Webツールで同じJSONを読み込み、被験者数・登録開始日をload_edc_spec.R側(registration_n/
 # registration_start_date)と合わせて生成し、「ZIPで一括ダウンロード」したdummy_data.zipを
@@ -33,12 +36,18 @@ compare_dataset_names(other_domains, other_domains_web)
 cat("--- 列名の一致 ---\n")
 compare_colnames(other_domains, other_domains_web)
 
-# R版・Web版それぞれについて、コードリスト範囲内・日付妥当性等を確認する(validate_other_domainsを再利用)
+# R版・Web版それぞれについて、コードリスト範囲内・日付妥当性・中止日以降レコードの有無等を確認する
+# (validate_other_domainsを再利用)。discontinuation_dateは被験者ごとの中止日という「その乱数シードでの
+# 生成結果」に依存する値のため、R版・Web版それぞれ自分自身のdsから作ったものを使う(dmのUSUBJID一覧とは
+# 違い、これをR/Web間で使い回すと、対応するUSUBJIDの中止日が互いに無関係な値になり誤検知する)
+ds_web <- read_csv(ds_web_csv_path, col_types = cols(.default = "c"), na = character(0))
+discontinuation_date_web <- build_discontinuation_date_table(ds_web)
+
 cat("--- R版other_domainsのバリデーション ---\n")
-report_other_domains_validation(validate_other_domains(other_domains, dm, cdisc_variable_values))
+report_other_domains_validation(validate_other_domains(other_domains, dm, cdisc_variable_values, discontinuation_date = discontinuation_date))
 
 cat("--- Web版other_domainsのバリデーション ---\n")
-report_other_domains_validation(validate_other_domains(other_domains_web, dm, cdisc_variable_values))
+report_other_domains_validation(validate_other_domains(other_domains_web, dm, cdisc_variable_values, discontinuation_date = discontinuation_date_web))
 
 # R版とWeb版を、ドメイン×列ごとに直接比較する。R版はpresence_conditions等のゲーティングで空欄になる
 # 行があり得るのに対し、Web版で対応するゲーティングが未実装/不完全だと一度も空欄にならない、といった
