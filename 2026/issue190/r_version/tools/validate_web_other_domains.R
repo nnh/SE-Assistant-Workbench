@@ -11,9 +11,6 @@ rm(list = setdiff(ls(), c("dm", "ae", "ds", "other_domains", "cdisc_variable_val
 
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))
-# build_discontinuation_date_table()を使うため。他のvalidate_web_*.Rのrm()で消えている可能性があるため
-# ここで明示的にsourceし直す
-source(here("build_ds_domain.R"))
 
 # Webツールで同じJSONを読み込み、被験者数・登録開始日をload_edc_spec.R側(registration_n/
 # registration_start_date)と合わせて生成し、「ZIPで一括ダウンロード」したdummy_data.zipを

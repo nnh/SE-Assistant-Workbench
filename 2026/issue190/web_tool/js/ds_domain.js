@@ -353,6 +353,9 @@ function addRandomizationDsRows(ds, dm, registrationStartDate) {
 // USUBJIDごとの中止日テーブル(DSTERM!="COMPLETED"のレコードのうち、最も早いDSDTC)を作る。
 // DS自体の出力ではなく、他ドメイン(EX/LB等)で中止日以降のレコードが発生していないかを
 // チェックする際に使う想定(Rのbuild_discontinuation_date_table()に対応)。
+// RANDOMIZED(addRandomizationDsRows()が追加する無作為化マイルストーン行)も、中止理由ではなく
+// 通常は治療開始前の早い日付のため除外する(呼び出し側がaddRandomizationDsRows()より後のds
+// (RANDOMIZED行を含む)を渡してしまっても、無作為化日が誤って中止日として扱われないようにするため)。
 // Rのmin()はna.rm=FALSEなので、対象レコードのいずれか1件でもDSDTCが無い被験者は、
 // その被験者のDISCONDTC自体をnullにする(一部だけ無視して他の値からminを取ったりはしない)
 function buildDiscontinuationDateTable(ds) {
@@ -360,7 +363,7 @@ function buildDiscontinuationDateTable(ds) {
 
   const datesByUsubjid = {};
   ds.forEach((row) => {
-    if (row.DSTERM === "COMPLETED") return;
+    if (row.DSTERM === "COMPLETED" || row.DSTERM === "RANDOMIZED") return;
     if (!datesByUsubjid[row.USUBJID]) datesByUsubjid[row.USUBJID] = [];
     datesByUsubjid[row.USUBJID].push(row.DSDTC);
   });

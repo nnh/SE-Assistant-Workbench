@@ -1,10 +1,10 @@
 // AEドメインを生成する。R版のbuild_ae_domain.R/populate_ae_domain()に対応するが、
 // 現時点ではUSUBJIDの採番(DMからの重複ありサンプリング)、alias_name割り当て、
 // radio_button/check_box型項目(required_vars/numeric_bounds含む)、date型項目、
-// meddra型項目+コーディングブロックの埋め込み、DUMMYフォールバック、presence_conditionsによる
-// ゲーティング、field_ref_bounds、AETOXGR=5(死亡)関連の並べ替え・矛盾レコード除外、
-// AESPID/AESEQ・列順整理まで対応する。
-// FA等のリンクブロック生成・inject_required_llt_codesはまだ未移植
+// meddra型項目+コーディングブロックの埋め込み、inject_required_llt_codes、
+// FA等のリンクブロック生成(populate_linked_blocks/split_linked_domains/exclude_ae_linked_prefixes/
+// merge_linked_domains)、DUMMYフォールバック、presence_conditionsによるゲーティング、field_ref_bounds、
+// AETOXGR=5(死亡)関連の並べ替え・矛盾レコード除外、AESPID/AESEQ・列順整理まで対応する
 
 // dmのUSUBJIDから重複ありでn件サンプリングし、STUDYID/DOMAINを付与する(Rのbuild_ae_domain()に対応)
 function buildAeDomain(dm, n) {
@@ -256,6 +256,140 @@ function addAeMeddraCodingBlock(ae, meddraSample, prefix) {
   return ae;
 }
 
+// dataの各行が持つalias_name(例: AEドメインの"ae"/"sae_report")について、excludePrefix以外に
+// 同じalias_nameでフィールドを定義しているprefix(例: FA)がある場合、そのフィールドを同じ行に
+// 直接追加する(FieldItem的な意味で「同じフォーム上の別ブロック」を表す)。
+// これにより、"ae"シートのようにAE報告と同一フォーム上にあるFA項目が同じ行(=同じ報告インスタンス)として
+// 扱われ、ブロックをまたぐpresence_conditions(例: FAOBJがAELLTCDを参照)がドメインをまたぐ結合なしに
+// 正しく判定できるようになる。戻り値のlinkedSpecは、実際に追加したprefix/alias_nameの一覧
+// (呼び出し側で、二重生成を避けるための除外や、後でsplitLinkedDomains()に分離する際に使う)
+// (Rのpopulate_linked_blocks()に対応)
+function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registrationStartDate, meddraData, requiredVars, whoDrugIdf) {
+  const ownAliasNames = new Set(data.map((r) => r.alias_name));
+  const linkedSpec = cdiscVariableValues.filter((r) => r.prefix !== excludePrefix && ownAliasNames.has(r.alias_name));
+
+  if (linkedSpec.length === 0) {
+    return { data, linkedSpec };
+  }
+
+  const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
+  const requiredSet = new Set(requiredVars || []);
+  const linkedVars = [...new Set(linkedSpec.map((r) => r.cdisc_variable))];
+  const doseChoices = ["50", "100", "150", "200", "250", "300", "400", "500"];
+  const today = new Date().toISOString().slice(0, 10);
+
+  linkedVars.forEach((varName) => {
+    const varSpec = linkedSpec.filter((r) => r.cdisc_variable === varName);
+    const specByAlias = new Map();
+    varSpec.forEach((r) => {
+      if (!specByAlias.has(r.alias_name)) {
+        specByAlias.set(r.alias_name, { fieldType: r.field_type, defaultValue: r.default_value, codes: new Set(), isInvisibleAny: false });
+      }
+      const g = specByAlias.get(r.alias_name);
+      g.codes.add(r.code != null ? r.code : r.default_value);
+      if (r.is_invisible) g.isInvisibleAny = true;
+    });
+
+    data.forEach((row) => {
+      row[varName] = null;
+    });
+
+    specByAlias.forEach((g, aliasName) => {
+      const rows = data.filter((row) => row.alias_name === aliasName);
+      if (rows.length === 0) return;
+
+      let codes = [...g.codes];
+      if (!requiredSet.has(varName) && !g.isInvisibleAny) {
+        codes = [...new Set([...codes, ""])];
+      }
+
+      if (g.fieldType === "radio_button" || g.fieldType === "check_box") {
+        if (codes.length === 0) return;
+        if (g.fieldType === "check_box") {
+          const values = sampleCheckBoxValues(codes, rows.length);
+          rows.forEach((row, i) => {
+            row[varName] = values[i];
+          });
+        } else {
+          rows.forEach((row) => {
+            row[varName] = sampleOne(codes);
+          });
+        }
+      } else if (g.fieldType === "date") {
+        rows.forEach((row) => {
+          row[varName] = randomDateBetween(registrationStartDate, today);
+        });
+      } else if (g.fieldType === "meddra") {
+        const dv = g.defaultValue;
+        if (dv != null && /^[0-9]{8}$/.test(dv)) {
+          const hit = meddraData.find((r) => r.llt_code === dv);
+          const lltName = hit ? hit.llt_name : null;
+          rows.forEach((row) => {
+            row[varName] = lltName;
+          });
+        } else {
+          const sample = sampleMeddraRows(meddraData, rows.length);
+          rows.forEach((row, i) => {
+            row[varName] = sample[i].llt_name;
+          });
+        }
+      } else if (g.fieldType === "drug") {
+        const dv = g.defaultValue;
+        let fixedName = null;
+        if (dv != null && /^[0-9]+$/.test(dv) && whoDrugIdf) {
+          const hit = whoDrugIdf.find((r) => r.drug_code === dv && r.full_name_en != null);
+          if (hit) fixedName = hit.full_name_en;
+        }
+        if (fixedName != null) {
+          rows.forEach((row) => {
+            row[varName] = fixedName;
+          });
+        } else if (drugNames.length > 0) {
+          rows.forEach((row) => {
+            row[varName] = sampleOne(drugNames);
+          });
+        }
+      } else if (/DOSE$/.test(varName)) {
+        rows.forEach((row) => {
+          row[varName] = sampleOne(doseChoices);
+        });
+      } else {
+        rows.forEach((row) => {
+          row[varName] = "DUMMY";
+        });
+      }
+    });
+  });
+
+  return { data, linkedSpec };
+}
+
+// populateLinkedBlocks()で同じ行に追加した列を、prefixごとの別テーブルに分離する。
+// sourceSpidCol(例: AESPID)の値をそのままprefixSPID(例: FASPID)として引き継ぐことで、
+// どのAE報告インスタンスに対応するリンク行かが分かるようにする(Rのsplit_linked_domains()に対応)
+function splitLinkedDomains(data, linkedSpec, sourceSpidCol) {
+  if (!linkedSpec || linkedSpec.length === 0) return {};
+
+  const prefixes = [...new Set(linkedSpec.map((r) => r.prefix))];
+  const result = {};
+  prefixes.forEach((px) => {
+    const pxAliasNames = new Set(linkedSpec.filter((r) => r.prefix === px).map((r) => r.alias_name));
+    const pxVars = [...new Set(linkedSpec.filter((r) => r.prefix === px).map((r) => r.cdisc_variable))];
+    const spidVar = `${px}SPID`;
+    result[px] = data
+      .filter((row) => pxAliasNames.has(row.alias_name))
+      .map((row) => {
+        const newRow = { STUDYID: row.STUDYID, DOMAIN: px, USUBJID: row.USUBJID, alias_name: row.alias_name };
+        newRow[spidVar] = row[sourceSpidCol];
+        pxVars.forEach((v) => {
+          if (v in row) newRow[v] = row[v];
+        });
+        return newRow;
+      });
+  });
+  return result;
+}
+
 // radio_button/check_box/date/meddra型のいずれでも埋まらなかった対象変数(specに定義はあるが
 // まだ値の無い列)に、とりあえずDUMMY値を格納する(Rのpopulate_dummy_fields()に対応)。
 // presence_conditionsが後段でこれらの列を参照する場合があるため、ゲーティング適用前に列自体は
@@ -327,10 +461,13 @@ function buildDeathDateTable(ae) {
 }
 
 // AESPID(USUBJID内の連番、例: sae_report1, sae_report2)・AESEQ(全体通番)を付与し、
-// alias_name列を除去したうえで、列順を STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 ->
-// MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC に整理する
-// (Rのpopulate_ae_domain()末尾のAESPID/AESEQ付与・reorder_domain_columns()に対応)
-function finalizeAeDomain(ae, aeSpec) {
+// populateLinkedBlocks()で同じ行に追加した他prefix(例: FA)の列をsplitLinkedDomains()で
+// 断片テーブルに分離してから、alias_name・リンク先prefixの列を除去したうえで、
+// 列順を STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 -> MedDRAコーディングブロック ->
+// その他 -> AETOXGR/AESTDTC/AEENDTC に整理する。
+// 戻り値は{ ae, linked }(linkedはsplitLinkedDomains()の結果。prefixをキーにしたオブジェクト)
+// (Rのpopulate_ae_domain()末尾のAESPID/AESEQ付与・split_linked_domains()・reorder_domain_columns()に対応)
+function finalizeAeDomain(ae, aeSpec, linkedSpec) {
   const usubjidCounters = {};
   ae.forEach((row) => {
     usubjidCounters[row.USUBJID] = (usubjidCounters[row.USUBJID] || 0) + 1;
@@ -339,8 +476,12 @@ function finalizeAeDomain(ae, aeSpec) {
   ae.forEach((row, i) => {
     row.AESEQ = i + 1;
   });
+
+  const linked = splitLinkedDomains(ae, linkedSpec || [], "AESPID");
+  const linkedVars = new Set((linkedSpec || []).map((r) => r.cdisc_variable));
   ae.forEach((row) => {
     delete row.alias_name;
+    linkedVars.forEach((v) => delete row[v]);
   });
 
   const meddraVars = [...new Set(aeSpec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))];
@@ -354,11 +495,13 @@ function finalizeAeDomain(ae, aeSpec) {
     ...endCols.filter((c) => allCols.includes(c)),
   ];
 
-  return ae.map((row) => {
+  const finalAe = ae.map((row) => {
     const newRow = {};
     orderedCols.forEach((c) => {
       newRow[c] = row[c];
     });
     return newRow;
   });
+
+  return { ae: finalAe, linked };
 }

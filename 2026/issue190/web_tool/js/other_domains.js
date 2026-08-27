@@ -7,8 +7,8 @@
 // drug型項目(who_drug_idf、WHO Drug参照)、visit_lookup(VISIT/VISITNUM列)まで対応する。
 // apply_orres_populators(LB/TR/VSのORRESを基準範囲に基づいた値に置き換える処理)は
 // js/orres_realism.jsに分離して対応済み。clamp_dates_to_discontinuation(中止日より後の日付を
-// 再生成する処理)も対応済み。
-// AEリンクブロック(FA等、AE報告と同じフォーム上の別prefixブロック)は、まだ未移植
+// 再生成する処理)、exclude_ae_linked_prefixes/merge_linked_domains(AEリンクブロックの二重生成除外・
+// マージ。populate_linked_blocks/split_linked_domains本体はjs/ae_domain.jsに実装)も対応済み
 
 // MedDRAコーディングブロック(LLT〜SOC)の列名(ae_domain.jsのMEDDRA_CODING_COLSと同じ対応表を使う)
 
@@ -1017,4 +1017,46 @@ function dropEmptyDomainRows(domain, gatedVars) {
   const relevantVars = (gatedVars || []).filter((v) => domain[0] && v in domain[0]);
   if (relevantVars.length === 0) return domain;
   return domain.filter((row) => relevantVars.some((v) => row[v] != null && row[v] !== ""));
+}
+
+// ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、既にpopulateLinkedBlocks側で
+// (AE報告と同じ行として)生成済みのため、buildOtherDomains側では二重生成しないよう該当のprefix/alias_name
+// をcdiscVariableValuesから除外する(Rのexclude_ae_linked_prefixes()に対応)
+function excludeAeLinkedPrefixes(cdiscVariableValues, aeLinkedDomains) {
+  const excludedPairs = new Set();
+  Object.keys(aeLinkedDomains || {}).forEach((prefix) => {
+    const aliasNames = new Set((aeLinkedDomains[prefix] || []).map((r) => r.alias_name));
+    aliasNames.forEach((a) => excludedPairs.add(`${prefix}|${a}`));
+  });
+  return cdiscVariableValues.filter((r) => !excludedPairs.has(`${r.prefix}|${r.alias_name}`));
+}
+
+// AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するother_domainsにマージする
+// (Rのmerge_linked_domains()に対応)
+function mergeLinkedDomains(otherDomains, aeLinkedDomains) {
+  Object.keys(aeLinkedDomains || {}).forEach((linkedPrefix) => {
+    const fragment = aeLinkedDomains[linkedPrefix].map((row) => {
+      const { alias_name, ...rest } = row;
+      return rest;
+    });
+    const merged = linkedPrefix in otherDomains ? [...otherDomains[linkedPrefix], ...fragment] : fragment;
+
+    const seqVar = `${linkedPrefix}SEQ`;
+    addSeq(merged, seqVar);
+
+    const frontCols = ["STUDYID", "DOMAIN", "USUBJID", seqVar, `${linkedPrefix}SPID`];
+    const allColsSet = new Set();
+    merged.forEach((row) => Object.keys(row).forEach((c) => allColsSet.add(c)));
+    const middleCols = [...allColsSet].filter((c) => !frontCols.includes(c));
+    const orderedCols = [...frontCols.filter((c) => allColsSet.has(c)), ...middleCols];
+
+    otherDomains[linkedPrefix] = merged.map((row) => {
+      const newRow = {};
+      orderedCols.forEach((c) => {
+        newRow[c] = c in row ? row[c] : null;
+      });
+      return newRow;
+    });
+  });
+  return otherDomains;
 }

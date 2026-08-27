@@ -5,7 +5,7 @@ library(here)
 # json_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/json/fortest1_260826_1112.json"
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path", "discontinuation_date")))
 
 source(here("tools/validate_common.R"))
 
@@ -100,7 +100,7 @@ other_domains_special_checks <- list(CM = check_cm_cmtrt, TR = check_tr_tu_dtc)
 # json_pathのファイル名ごとにcsv_dir_by_file(tools/validate_common.R)で管理する
 csv_dir <- csv_dir_by_file[[basename(json_path)]]
 
-validation <- run_full_validation(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks)
+validation <- run_full_validation(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir, other_domains_special_checks, discontinuation_date)
 
 # AE/DM/DSを除いた、両方に共通して存在するドメイン名一覧。以下の1行ずつ実行するとき、
 # この並び順の「何番目」かを指定する

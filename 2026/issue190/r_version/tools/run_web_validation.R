@@ -28,3 +28,11 @@ source(here("tools/validate_web_ds.R"))
 
 cat("\n========== other_domains ==========\n")
 source(here("tools/validate_web_other_domains.R"))
+
+# test4(fortest4)固有のチェック(AE報告のAELLTCDとFAリンクブロックの対応)は、test4のjsonの時だけ実行する。
+# validate_web_test4_fa_link.R自体がtest_config.R・load_edc_spec.Rを読み直す自己完結型のため、
+# ここではsourceするだけでよい
+if (identical(basename(json_path), "fortest4_260826_1501.json")) {
+  cat("\n========== test4: AE-FAリンクチェック ==========\n")
+  source(here("tools/validate_web_test4_fa_link.R"))
+}

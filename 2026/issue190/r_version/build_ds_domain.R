@@ -165,7 +165,10 @@ add_randomization_ds_rows <- function(ds, dm, registration_start_date) {
     reorder_domain_columns(front_cols = domain_front_cols("DS"))
 }
 
-# USUBJIDごとの中止日テーブルを作る(DSTERM!="COMPLETED"のレコード。DEATHも含む)
+# USUBJIDごとの中止日テーブルを作る(DSTERM!="COMPLETED"のレコード。DEATHも含む)。
+# RANDOMIZED(add_randomization_ds_rows()が追加する無作為化マイルストーン行)も、中止理由ではなく
+# 通常は治療開始前の早い日付のため除外する(呼び出し側がadd_randomization_ds_rows()より後のds
+# (RANDOMIZED行を含む)を渡してしまっても、無作為化日が誤って中止日として扱われないようにするため)。
 # 他ドメイン(EX/LBなど)で中止日以降のレコードが発生していないかのチェックに使う
 build_discontinuation_date_table <- function(ds) {
   if (!all(c("DSTERM", "DSDTC") %in% colnames(ds))) {
@@ -173,7 +176,7 @@ build_discontinuation_date_table <- function(ds) {
   }
 
   ds %>%
-    filter(DSTERM != "COMPLETED") %>%
+    filter(!(DSTERM %in% c("COMPLETED", "RANDOMIZED"))) %>%
     group_by(USUBJID) %>%
     summarise(DISCONDTC = min(DSDTC), .groups = "drop")
 }

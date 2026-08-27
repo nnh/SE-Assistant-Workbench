@@ -131,12 +131,20 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   injectRequiredLltCodes(meddraSample, meddraData, requiredLltCodes);
   ae = populateAeMeddraFields(ae, aeSpec, meddraData, meddraSample);
   ae = addAeMeddraCodingBlock(ae, meddraSample, "AE");
+  // "ae"シートのように、AE報告と同じフォーム上に他prefix(例: FA)のブロックがある場合、
+  // そのフィールドも同じ行に追加する。presence_conditionsが同じ行内で完結するようにするため、
+  // applyPresenceConditionsより前に行う
+  const linkedResult = populateLinkedBlocks(ae, cdiscVariableValues, "AE", registrationStartDate, meddraData, requiredVars, whoDrugIdf);
+  ae = linkedResult.data;
+  const linkedSpec = linkedResult.linkedSpec;
   ae = populateAeDummyFields(ae, aeSpec);
   ae = applyPresenceConditions(ae, presenceConditions);
   ae = applyFieldRefBounds(ae, aeSpec, fieldRefBounds);
   ae = sortAeDeathLast(ae);
   ae = filterAeDeathDateConsistency(ae);
-  ae = finalizeAeDomain(ae, aeSpec);
+  const aeResult = finalizeAeDomain(ae, aeSpec, linkedSpec);
+  ae = aeResult.ae;
+  const aeLinkedDomains = aeResult.linked;
   generatedAe = ae;
   renderPreview(ae, "ae-preview");
 
@@ -156,7 +164,11 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     .filter((s) => s.category === "ae_report" || s.category === "multiple")
     .map((s) => s.alias_name);
   const visitLookup = buildVisitLookup(edcSpec.sheets, edcSpec.visits);
-  const otherDomains = buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, {
+  // ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、
+  // 既にpopulateLinkedBlocks側で(AE報告と同じ行として)生成済みのため、
+  // buildOtherDomains側では二重生成しないよう該当のprefix/alias_nameを除外する
+  const cdiscVariableValuesForOthers = excludeAeLinkedPrefixes(cdiscVariableValues, aeLinkedDomains);
+  const otherDomains = buildOtherDomains(dm, cdiscVariableValuesForOthers, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, {
     builtDomains: { DM: dm, AE: ae, DS: ds },
     ageBounds,
     multiRecordAliasNames,
@@ -171,6 +183,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     const ddGatedVars = [...new Set(presenceConditions.filter((pc) => pc.cdisc_variable in (otherDomains.DD[0] || {})).map((pc) => pc.cdisc_variable))];
     otherDomains.DD = dropEmptyDomainRows(otherDomains.DD, ddGatedVars);
   }
+  // AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
+  mergeLinkedDomains(otherDomains, aeLinkedDomains);
   // LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
   applyOrresPopulators(otherDomains, { LB: populateLbOrres, TR: populateTrOrres, VS: populateVsOrres });
   generatedOtherDomains = otherDomains;

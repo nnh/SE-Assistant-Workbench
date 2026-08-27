@@ -7,6 +7,10 @@ source(here("tools/validate_dm.R"))
 source(here("tools/validate_ds.R"))
 source(here("tools/validate_ae.R"))
 source(here("tools/validate_other_domains.R"))
+# run_full_validation()がbuild_discontinuation_date_table()を使うため。testN.R側のrm()で
+# 消えている可能性がある(load_edc_spec.R実行時に一度定義されても、testN.R先頭のrm()で
+# データ以外の全オブジェクトと一緒に消えてしまうため)、ここで明示的にsourceし直しておく
+source(here("build_ds_domain.R"))
 
 # json_path(のファイル名)ごとに、対応する実データ(rawdata)フォルダのパスをべた書きで設定する。
 # test1・test2は実データが用意できているのでパスを指定し、test3・test4はまだ実データが無いので
@@ -156,11 +160,16 @@ check_death_consistency <- function(ae_death_dates, ds_death_dates) {
 # (データセットの過不足・列名diff)をスキップし、生成データ自体の構造チェック(DM/DS/AE/
 # other_domainsの自動チェック・AE/DSの死亡情報整合性)だけを実行できる。無関係な実データ
 # (別試験のrawdata等)と比較して構造差分を誤検知するより、比較自体を行わない方が安全なため
+# discontinuation_dateもNULL可。渡さなければこの関数の中でds(引数)から作り直すが、
+# load_edc_spec.Rはadd_randomization_ds_rows()でRANDOMIZED行を追加した後のdsをこの関数に渡すため、
+# ここで作り直すとRANDOMIZED行(DSTERM!="COMPLETED"だが中止ではない)が混ざり、中止日が実際より
+# 早い誤った日付になってしまう。testN.R側でload_edc_spec.R実行時にできる、RANDOMIZED行を混ぜる前の
+# 正しいdiscontinuation_date(グローバル環境にコピーされている)を明示的に渡すこと
 # other_domains_special_checksの各チェック関数がwho_drug_idf等の他の変数を参照したい場合は、
 # この関数の引数としてではなく、testN.R側のトップレベル変数をクロージャとして直接参照すればよい
 # (special_checksの関数はtestN.R側で定義されるため、testN.R側の変数がそのまま見える)。
 # 生成した各オブジェクトをlistで返す(1行ずつの目視確認(compare_domain_by_index)はtestN.R側で行う)
-run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir = NULL, other_domains_special_checks = list(), view = interactive()) {
+run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values, registration_n, csv_dir = NULL, other_domains_special_checks = list(), discontinuation_date = NULL, view = interactive()) {
   generated_datasets <- build_generated_datasets(ae, dm, ds, other_domains)
 
   if (is.null(csv_dir)) {
@@ -178,7 +187,12 @@ run_full_validation <- function(ae, dm, ds, other_domains, cdisc_variable_values
   report_ds_validation(ds_result)
   ae_result <- validate_ae(ae, dm, cdisc_variable_values)
   report_ae_validation(ae_result)
-  discontinuation_date <- build_discontinuation_date_table(ds)
+  if (is.null(discontinuation_date)) {
+    cat("discontinuation_date未指定のため、この時点のds(RANDOMIZED行を含む)から作り直します。\n")
+    cat("RANDOMIZED行が誤って中止日として扱われる可能性があるため、可能ならload_edc_spec.R実行時の\n")
+    cat("discontinuation_dateを明示的に渡すことを推奨します\n")
+    discontinuation_date <- build_discontinuation_date_table(ds)
+  }
   other_domains_result <- validate_other_domains(other_domains, dm, cdisc_variable_values, other_domains_special_checks, discontinuation_date)
   report_other_domains_validation(other_domains_result)
 
