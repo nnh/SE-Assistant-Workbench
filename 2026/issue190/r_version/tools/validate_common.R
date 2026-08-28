@@ -151,6 +151,157 @@ check_death_consistency <- function(ae_death_dates, ds_death_dates) {
     arrange(USUBJID)
 }
 
+# data(1ドメイン分。USUBJID列が必要)の各行について、required_vars(必須になるはずの
+# 列名ベクトル)の値がすべて入っている(NAでも空文字列""でもない)ことを確認する。
+# dataがCSV由来(Web版)の場合、空欄はNAではなく文字列""のまま読み込まれるため、
+# 両方を「値なし」として扱う。domain_nameを指定するとメッセージの先頭に付く。
+# 値が無い行がある場合はstop()でエラーにする(変数ごとに件数・USUBJIDを表示)。
+# 問題なければチェック内容とOKである旨をcatで表示する
+check_required_vars <- function(data, required_vars, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+
+  missing_cols <- setdiff(required_vars, colnames(data))
+  if (length(missing_cols) > 0) {
+    stop(str_c(label, "required_varsチェック: dataに列がありません(", paste(missing_cols, collapse = ", "), ")"))
+  }
+
+  problem_usubjid_by_var <- required_vars %>%
+    set_names() %>%
+    map(function(var) {
+      is_blank <- is.na(data[[var]]) | data[[var]] == ""
+      data[["USUBJID"]][is_blank]
+    }) %>%
+    keep(~ length(.x) > 0)
+
+  if (length(problem_usubjid_by_var) > 0) {
+    detail <- problem_usubjid_by_var %>%
+      imap_chr(~ str_c(.y, "(", length(.x), "件: ", paste(.x, collapse = ", "), ")")) %>%
+      paste(collapse = " / ")
+    stop(str_c(label, "required_varsチェック: NG - ", detail))
+  }
+
+  cat(
+    label, "required_varsチェック: OK(", paste(required_vars, collapse = ", "), "が全", nrow(data), "行で値あり)\n",
+    sep = ""
+  )
+}
+
+# check_required_varsの逆。data(1ドメイン分。USUBJID列が必要)の各行について、blank_vars
+# (常に空欄のはずの列名ベクトル)の値がすべて空(NAまたは空文字列"")であることを確認する。
+# dataがCSV由来(Web版)の場合、空欄はNAではなく文字列""のまま読み込まれるため、
+# 両方を「値なし」として扱う。domain_nameを指定するとメッセージの先頭に付く。
+# 値が入っている行がある場合はstop()でエラーにする(変数ごとに件数・USUBJIDを表示)。
+# 問題なければチェック内容とOKである旨をcatで表示する
+check_blank_vars <- function(data, blank_vars, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+
+  missing_cols <- setdiff(blank_vars, colnames(data))
+  if (length(missing_cols) > 0) {
+    stop(str_c(label, "blank_varsチェック: dataに列がありません(", paste(missing_cols, collapse = ", "), ")"))
+  }
+
+  problem_usubjid_by_var <- blank_vars %>%
+    set_names() %>%
+    map(function(var) {
+      is_present <- !is.na(data[[var]]) & data[[var]] != ""
+      data[["USUBJID"]][is_present]
+    }) %>%
+    keep(~ length(.x) > 0)
+
+  if (length(problem_usubjid_by_var) > 0) {
+    detail <- problem_usubjid_by_var %>%
+      imap_chr(~ str_c(.y, "(", length(.x), "件: ", paste(.x, collapse = ", "), ")")) %>%
+      paste(collapse = " / ")
+    stop(str_c(label, "blank_varsチェック: NG - ", detail))
+  }
+
+  cat(
+    label, "blank_varsチェック: OK(", paste(blank_vars, collapse = ", "), "が全", nrow(data), "行で空欄)\n",
+    sep = ""
+  )
+}
+
+# data(1ドメイン分。USUBJID列が必要)のvar列(数値の文字列)がmin_value以上max_value以下かを
+# 確認する。min_value/max_valueはNA(既定値)にすると片側無制限にできる。
+# varが無い(NAまたは空文字列"")行は判定対象から除く(値の有無自体はcheck_required_vars等の
+# 別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
+# 範囲外の値がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
+check_numeric_range <- function(data, var, min_value = NA, max_value = NA, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  values <- suppressWarnings(as.numeric(data[[var]]))
+  valid <- !is.na(values)
+
+  invalid <- valid & ((!is.na(min_value) & values < min_value) | (!is.na(max_value) & values > max_value))
+  invalid_usubjid <- data[["USUBJID"]][invalid]
+
+  range_label <- str_c(
+    if (is.na(min_value)) "下限なし" else str_c(min_value, "以上"), "〜",
+    if (is.na(max_value)) "上限なし" else str_c(max_value, "以下")
+  )
+
+  if (length(invalid_usubjid) > 0) {
+    stop(str_c(
+      label, var, "範囲チェック: ", length(invalid_usubjid), "件NG(", range_label,
+      "の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  cat(
+    label, var, "範囲チェック: OK(", var, "が", range_label, "であることを確認、", sum(valid), "件)\n",
+    sep = ""
+  )
+}
+
+# data(1ドメイン分。USUBJID列が必要)のdate_var列(日付の文字列)が今日以前かを確認する。
+# date_varが無い(NAまたは空文字列"")行は判定対象から除く(値の有無自体はcheck_required_vars等の
+# 別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
+# 今日より後の値がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
+check_date_before_today <- function(data, date_var, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  date_values <- as.Date(data[[date_var]])
+  today <- Sys.Date()
+  valid <- !is.na(date_values)
+
+  invalid <- valid & date_values > today
+  invalid_usubjid <- data[["USUBJID"]][invalid]
+
+  if (length(invalid_usubjid) > 0) {
+    stop(str_c(
+      label, date_var, "範囲チェック: ", length(invalid_usubjid), "件NG(今日(", as.character(today),
+      ")より後。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  cat(
+    label, date_var, "範囲チェック: OK(", date_var, "が今日(", as.character(today), ")以前であることを確認、",
+    sum(valid), "件)\n",
+    sep = ""
+  )
+}
+
+# DMのRFICDTC(同意取得日)が、BRTHDTC(生年月日)以降・今日以前の範囲内かを確認する。
+# BRTHDTC/RFICDTCのどちらかが無い行は判定対象から除く(値の有無自体は別の構造チェックで見る)。
+# 範囲外がある場合はstop()でエラーにする。範囲内ならチェック内容とOKである旨をcatで表示する
+check_rficdtc_range <- function(dm) {
+  brthdtc <- as.Date(dm[["BRTHDTC"]])
+  rficdtc <- as.Date(dm[["RFICDTC"]])
+  today <- Sys.Date()
+  valid_pair <- !is.na(brthdtc) & !is.na(rficdtc)
+
+  invalid <- valid_pair & (rficdtc < brthdtc | rficdtc > today)
+  invalid_usubjid <- dm[["USUBJID"]][invalid]
+
+  if (length(invalid_usubjid) > 0) {
+    stop(str_c(
+      "RFICDTC範囲チェック: ", length(invalid_usubjid), "件NG(BRTHDTC以降・今日(", as.character(today),
+      ")以前の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  cat(
+    "RFICDTC範囲チェック: OK(RFICDTCがBRTHDTC以降・今日(", as.character(today), ")以前であることを確認、",
+    sum(valid_pair), "件)\n",
+    sep = ""
+  )
+}
+
 # load_edc_spec.Rで生成したae/dm/ds/other_domainsと、csv_dir直下のCSVを一括で比較・検証する。
 # データセットの過不足確認、列名diff、DM/DS/AE/other_domainsの構造的な自動チェック、AE/DSの死亡情報の
 # 整合性チェックまでをまとめて実行する。testN.R側は csv_dir と other_domains_special_checks

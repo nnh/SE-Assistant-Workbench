@@ -2,9 +2,17 @@
 // 「辞書バージョンの登録・管理」からD&Dでバージョンを登録すると、この一覧にも自動で追記される。
 // r_version/tools/convert_meddra_to_js.R・convert_who_drug_to_js.Rで変換を追加した場合は、
 // ここに手動で追記すること。
-// { label: 表示名(バージョン名そのもの。window.__meddraVersions/__whoDrugVersionsのキーと一致させる),
-//   file: data/meddra または data/who_drug 配下のファイル名(拡張子なし) }
 window.__dictionaryVersions = {
-  meddra: [],
-  who_drug: [],
+  "meddra": [
+    {
+      "label": "29.0",
+      "file": "29.0"
+    }
+  ],
+  "who_drug": [
+    {
+      "label": "2025 Sep 1",
+      "file": "2025_Sep_1"
+    }
+  ]
 };

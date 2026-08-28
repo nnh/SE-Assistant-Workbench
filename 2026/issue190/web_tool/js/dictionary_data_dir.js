@@ -91,15 +91,26 @@ function hasDataDirAccess() {
   return dataDirAccessGranted;
 }
 
-// kind("meddra"または"who_drug")配下の.jsファイル名(拡張子なし)一覧をバージョンラベルとして返す
+// kind("meddra"または"who_drug")配下の.jsファイル一覧から、バージョンラベルを返す。
+// バージョン名にスペース等の記号が含まれる場合、ファイル名は記号が_に置換されて保存されているため
+// (例: "2025 Sep 1" -> "2025_Sep_1.js")、ファイル名をそのままラベルにすると実際のデータキー
+// (window.__whoDrugVersions等のキー。元のバージョン名そのまま)と一致しなくなる。
+// versions.js(D&D登録時に自動更新され、file->正しいlabelの対応を保持している)と突き合わせて、
+// 対応するエントリがあれば正しいlabelに復元する(無ければファイル名をそのまま使う)
 async function listVersionsFromDataDir(kind) {
   const subDir = await currentDataDirHandle.getDirectoryHandle(kind);
-  const labels = [];
+  const files = [];
   for await (const [name, entryHandle] of subDir.entries()) {
     if (entryHandle.kind === "file" && name.endsWith(".js")) {
-      labels.push(name.replace(/\.js$/, ""));
+      files.push(name.replace(/\.js$/, ""));
     }
   }
+
+  const versionsData = await readVersionsJsData();
+  const fileToLabel = new Map();
+  (versionsData[kind] || []).forEach((v) => fileToLabel.set(v.file, v.label));
+
+  const labels = files.map((file) => fileToLabel.get(file) ?? file);
   labels.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   return labels;
 }
