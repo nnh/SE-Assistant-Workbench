@@ -1,5 +1,9 @@
 // 画面操作の配線: JSONアップロード -> 設定入力 -> 生成 -> プレビュー/ダウンロード
 
+const APP_VERSION = "0.1";
+const APP_BUILD_DATE = "2026-08-28";
+document.getElementById("app-version").textContent = `v${APP_VERSION} (${APP_BUILD_DATE})`;
+
 let edcSpec = null;
 let cdiscVariableValues = null;
 let presenceConditions = null;

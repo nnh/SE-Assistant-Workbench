@@ -2,10 +2,13 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>ダミーデータ生成ツール</title>
+<title>FORGE - Dummy Data Generator</title>
 <style>
   body { font-family: sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1e293b; }
-  h1 { font-size: 1.4rem; }
+  h1 { font-size: 3rem; font-weight: 900; color: #0284c7; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+  .app-subtitle { font-size: 0.875rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.5rem; }
+  .app-version { font-size: 0.75rem; color: #94a3b8; margin: 0 0 1rem; }
+  .app-description { font-size: 0.875rem; color: #64748b; margin: 0 0 1.5rem; }
   section { margin-bottom: 2rem; }
   #drop-zone {
     border: 2px dashed #94a3b8;
@@ -26,7 +29,10 @@
 </style>
 </head>
 <body>
-  <h1>ダミーデータ生成ツール</h1>
+  <h1>FORGE</h1>
+  <p class="app-subtitle">Fabricated Offline Records Generation Engine</p>
+  <p class="app-version" id="app-version"></p>
+  <p class="app-description">EDC仕様ファイル (.json) を読み込み、SDTM形式のダミーデータを自動生成します。</p>
 
   <section id="upload-section">
     <div id="drop-zone">
