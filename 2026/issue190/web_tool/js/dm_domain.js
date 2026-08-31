@@ -215,7 +215,8 @@ function populateDmDomain(
   requiredVars,
   numericBounds,
   fieldRefBounds,
-  ageBounds
+  ageBounds,
+  dateRefBounds
 ) {
   const dmSpec = cdiscVariableValues.filter((r) => r.prefix === "DM");
   const existingColumns = new Set(Object.keys(dm[0] || {}));
@@ -263,17 +264,29 @@ function populateDmDomain(
     }
   });
 
-  const dateVars = [...new Set(dmSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
+  let dateVars = [...new Set(dmSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
     (v) => !existingColumns.has(v)
   );
+  dateVars = sortDateVarsByDependency(dateVars, dateRefBounds);
   const today = new Date().toISOString().slice(0, 10);
   // BRTHDTC(生年月日)より前の日付を生成しないよう、行ごとの下限を「登録開始日とBRTHDTCの遅い方」にする
   // (小児等でBRTHDTCが登録開始日より後になる場合、RFICDTC等がBRTHDTCより前になってしまう矛盾を防ぐ。
-  // Rのpopulate_date_fields()の同様の対応に合わせる)
+  // Rのpopulate_date_fields()の同様の対応に合わせる)。dateRefBoundsが渡された場合、他フィールド参照
+  // (同じ行)による下限/上限も、上記のBRTHDTC由来の下限とあわせて尊重する
   dateVars.forEach((varName) => {
+    const minRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "min_date");
+    const maxRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "max_date");
     dm.forEach((row) => {
-      const start = row.BRTHDTC && row.BRTHDTC > registrationStartDate ? row.BRTHDTC : registrationStartDate;
-      row[varName] = randomDateBetween(start, today);
+      let lower = row.BRTHDTC && row.BRTHDTC > registrationStartDate ? row.BRTHDTC : registrationStartDate;
+      if (minRow != null && row[minRow.ref_cdisc_variable] != null && row[minRow.ref_cdisc_variable] > lower) {
+        lower = row[minRow.ref_cdisc_variable];
+      }
+      let upper = today;
+      if (maxRow != null && row[maxRow.ref_cdisc_variable] != null && row[maxRow.ref_cdisc_variable] < upper) {
+        upper = row[maxRow.ref_cdisc_variable];
+      }
+      if (upper < lower) upper = lower;
+      row[varName] = randomDateBetween(lower, upper);
     });
   });
 

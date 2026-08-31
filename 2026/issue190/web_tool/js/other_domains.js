@@ -384,18 +384,38 @@ function populateGenericChoiceFields(data, spec, requiredVars, numericBounds) {
 
 // date型の項目に、registrationStartDate〜今日の間のランダムな日付を入れる。alias_nameによって
 // 同じcdisc_variableでも定義の有無が異なりうるため、その変数を定義しているalias_nameの行だけに
-// 値を入れる(Rのpopulate_date_fields()のhas_alias_name==TRUEの分岐に対応)
-function populateGenericDateFields(data, spec, registrationStartDate) {
+// 値を入れる(Rのpopulate_date_fields()のhas_alias_name==TRUEの分岐に対応)。
+// dateRefBoundsが渡された場合、validate_date_after_or_equal_to/validate_date_before_or_equal_to
+// (他フィールド参照)による下限/上限(参照先フィールドの値、同じ行)を一律の範囲より優先する
+function populateGenericDateFields(data, spec, registrationStartDate, dateRefBounds) {
   const existingColumns = new Set(Object.keys(data[0] || {}));
-  const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
+  let dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
     (v) => !existingColumns.has(v)
   );
+  dateVars = sortDateVarsByDependency(dateVars, dateRefBounds);
   const today = new Date().toISOString().slice(0, 10);
 
   dateVars.forEach((varName) => {
     const dateAliasNames = new Set(spec.filter((r) => r.field_type === "date" && r.cdisc_variable === varName).map((r) => r.alias_name));
+    const minRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "min_date");
+    const maxRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "max_date");
     data.forEach((row) => {
-      row[varName] = dateAliasNames.has(row.alias_name) ? randomDateBetween(registrationStartDate, today) : null;
+      if (!dateAliasNames.has(row.alias_name)) {
+        row[varName] = null;
+        return;
+      }
+      let lower = registrationStartDate;
+      if (minRow != null && row[minRow.ref_cdisc_variable] != null) {
+        const refVal = row[minRow.ref_cdisc_variable];
+        if (new Date(refVal).getTime() > new Date(lower).getTime()) lower = refVal;
+      }
+      let upper = today;
+      if (maxRow != null && row[maxRow.ref_cdisc_variable] != null) {
+        const refVal = row[maxRow.ref_cdisc_variable];
+        if (new Date(refVal).getTime() < new Date(upper).getTime()) upper = refVal;
+      }
+      if (new Date(upper).getTime() < new Date(lower).getTime()) upper = lower;
+      row[varName] = randomDateBetween(lower, upper);
     });
   });
   return data;
@@ -544,12 +564,16 @@ function addSeq(data, seqVar) {
 // 中止日情報がある被験者については、registrationStartDate〜中止日の範囲に収まるよう日付を
 // 再生成する。中止日情報が無い(nullまたはdiscontinuationDateに無い)被験者は対象外
 // (今まで通りregistrationStartDate〜今日の範囲のまま)。registrationStartDate > 中止日の場合
-// (通常は起こらないはずだが念のため)は中止日そのものにする(Rのclamp_dates_to_discontinuation()に対応)
-function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate) {
+// (通常は起こらないはずだが念のため)は中止日そのものにする(Rのclamp_dates_to_discontinuation()に対応)。
+// dateRefBoundsが渡された場合、他フィールド参照(同じ行)の下限/上限も尊重する。中止日超過に加えて、
+// 同じ行の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が崩れている行も再サンプル対象にする
+// (参照先の値が先の反復で更新されている可能性があるため)。呼び出し側でlabelを跨ぐ行(label!=ref_label)を
+// あらかじめ除いたdateRefBoundsを渡すこと(同じ行内の参照である前提のため)
+function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBounds) {
   if (!discontinuationDate || discontinuationDate.length === 0 || !data[0] || !("USUBJID" in data[0])) {
     return data;
   }
-  const targetVars = dateVars.filter((v) => v in data[0]);
+  const targetVars = sortDateVarsByDependency(dateVars.filter((v) => v in data[0]), dateRefBounds);
   if (targetVars.length === 0) return data;
 
   const disconByUsubjid = {};
@@ -560,11 +584,111 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
   });
 
   targetVars.forEach((varName) => {
+    const minRow = (dateRefBounds || []).find(
+      (r) => r.cdisc_variable === varName && r.bound_type === "min_date" && r.ref_cdisc_variable in data[0]
+    );
+    const maxRow = (dateRefBounds || []).find(
+      (r) => r.cdisc_variable === varName && r.bound_type === "max_date" && r.ref_cdisc_variable in data[0]
+    );
     data.forEach((row) => {
       const discon = disconByUsubjid[row.USUBJID];
-      if (discon == null || row[varName] == null || row[varName] <= discon) return;
-      const upper = discon > registrationStartDate ? discon : registrationStartDate;
-      row[varName] = randomDateBetween(registrationStartDate, upper);
+      const current = row[varName];
+      if (current == null) return;
+      const disconOver = discon != null && current > discon;
+      const minVal = minRow != null ? row[minRow.ref_cdisc_variable] : null;
+      const maxVal = maxRow != null ? row[maxRow.ref_cdisc_variable] : null;
+      const refViolation = (minVal != null && current < minVal) || (maxVal != null && current > maxVal);
+      if (!disconOver && !refViolation) return;
+
+      let lower = registrationStartDate;
+      if (minVal != null && minVal > lower) lower = minVal;
+      let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
+      if (maxVal != null && maxVal < upper) upper = maxVal;
+      if (upper < lower) upper = lower;
+      row[varName] = randomDateBetween(lower, upper);
+    });
+  });
+  return data;
+}
+
+// 1つのalias_name内で、同じcdisc_variable名(例: ECSTDTC/ECENDTC)がlabel(繰り返しの1回分、例: 投与1回目・
+// 2回目...)ごとに複数回登場し、「同じlabel内での開始日<=終了日」と「次のlabelの開始日>=前のlabelの終了日」
+// のようなlabel内参照とlabelを跨ぐ参照が交互に連なるケース(例: EC複数回投与)向けの日付生成。
+// dateRefBoundsのうちこのalias_nameかつchainVarsに関する行(label内・label跨ぎの両方)から
+// (label, cdisc_variable)をノードとする依存グラフを作り、トポロジカル順に1ノードずつ値を確定させていく。
+// buildRepeatedDomain()の通常の変数単位生成(同じ行=同じlabelの参照しか扱えない)を、
+// このalias_nameのchainVarsに関してだけ上書きする形で使う(Rのregenerate_date_chain()に対応)
+function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, registrationStartDate, disconByUsubjid) {
+  const chainVarSet = new Set(chainVars);
+  const bounds = dateRefBounds.filter(
+    (r) => r.alias_name === aliasNameVal && chainVarSet.has(r.cdisc_variable) && r.label != null && r.ref_label != null
+  );
+  if (bounds.length === 0) return data;
+
+  const nodeKey = (label, varName) => `${label}::${varName}`;
+  const nodeMap = new Map();
+  bounds.forEach((b) => {
+    nodeMap.set(nodeKey(b.label, b.cdisc_variable), { label: b.label, varName: b.cdisc_variable });
+    nodeMap.set(nodeKey(b.ref_label, b.ref_cdisc_variable), { label: b.ref_label, varName: b.ref_cdisc_variable });
+  });
+
+  const edgeFrom = bounds.map((b) => nodeKey(b.label, b.cdisc_variable));
+  const edgeTo = bounds.map((b) => nodeKey(b.ref_label, b.ref_cdisc_variable));
+  let remaining = [...nodeMap.keys()];
+  const orderedKeys = [];
+  while (remaining.length > 0) {
+    const remainingSet = new Set(remaining);
+    const unresolved = new Set(edgeFrom.filter((_, i) => remainingSet.has(edgeTo[i])));
+    const ready = remaining.filter((k) => !unresolved.has(k));
+    if (ready.length === 0) {
+      orderedKeys.push(...remaining);
+      break;
+    }
+    orderedKeys.push(...ready);
+    remaining = remaining.filter((k) => !ready.includes(k));
+  }
+
+  const rowsByAliasLabel = new Map();
+  data.forEach((row) => {
+    if (row.alias_name !== aliasNameVal) return;
+    const key = row.label;
+    if (!rowsByAliasLabel.has(key)) rowsByAliasLabel.set(key, []);
+    rowsByAliasLabel.get(key).push(row);
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  orderedKeys.forEach((key) => {
+    const node = nodeMap.get(key);
+    const varName = node.varName;
+    if (!data[0] || !(varName in data[0])) return;
+    const rows = rowsByAliasLabel.get(node.label);
+    if (!rows || rows.length === 0) return;
+
+    const minRow = bounds.find((b) => b.label === node.label && b.cdisc_variable === varName && b.bound_type === "min_date");
+    const maxRow = bounds.find((b) => b.label === node.label && b.cdisc_variable === varName && b.bound_type === "max_date");
+    const refValueFor = (row, refLabel, refVar) => {
+      if (refLabel == null || refVar == null) return null;
+      const refRows = rowsByAliasLabel.get(refLabel);
+      if (!refRows) return null;
+      const refRow = refRows.find((r) => r.USUBJID === row.USUBJID);
+      return refRow ? refRow[refVar] : null;
+    };
+
+    rows.forEach((row) => {
+      let lower = registrationStartDate;
+      if (minRow != null) {
+        const refVal = refValueFor(row, minRow.ref_label, minRow.ref_cdisc_variable);
+        if (refVal != null && refVal > lower) lower = refVal;
+      }
+      let upper = today;
+      const discon = disconByUsubjid ? disconByUsubjid[row.USUBJID] : null;
+      if (discon != null && discon < upper) upper = discon;
+      if (maxRow != null) {
+        const refVal = refValueFor(row, maxRow.ref_label, maxRow.ref_cdisc_variable);
+        if (refVal != null && refVal < upper) upper = refVal;
+      }
+      if (upper < lower) upper = lower;
+      row[varName] = randomDateBetween(lower, upper);
     });
   });
   return data;
@@ -586,13 +710,15 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
+  const dateRefBoundsAll = opts.dateRefBounds || [];
 
-  // presence_conditions/field_ref_bounds/age_boundsは全ドメイン分を含む共通テーブルのため、
+  // presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   // このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
   const ownVars = new Set(spec.map((r) => r.cdisc_variable));
   const scopedPresenceConditions = (presenceConditions || []).filter((pc) => ownVars.has(pc.cdisc_variable));
   const scopedFieldRefBounds = (fieldRefBounds || []).filter((fb) => ownVars.has(fb.cdisc_variable));
   const scopedAgeBounds = ageBounds.filter((ab) => ownVars.has(ab.cdisc_variable));
+  const scopedDateRefBounds = dateRefBoundsAll.filter((db) => ownVars.has(db.cdisc_variable));
 
   const aliasNames = [...new Set(spec.map((r) => r.alias_name))];
   const multiSet = new Set(multiRecordAliasNames);
@@ -644,9 +770,9 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   data = applyMultiRecordSpid(data, spidVar, multiRecordAliasNames);
 
   data = populateGenericChoiceFields(data, spec, requiredVars, numericBounds);
-  data = populateGenericDateFields(data, spec, registrationStartDate);
+  data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
@@ -739,12 +865,14 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
+  const dateRefBoundsAll = opts.dateRefBounds || [];
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
   const requiredSet = new Set(requiredVars || []);
 
   const ownVars = new Set(spec.map((r) => r.cdisc_variable));
   const scopedPresenceConditions = (presenceConditions || []).filter((pc) => ownVars.has(pc.cdisc_variable));
   const scopedAgeBounds = ageBounds.filter((ab) => ownVars.has(ab.cdisc_variable));
+  const scopedDateRefBounds = dateRefBoundsAll.filter((db) => ownVars.has(db.cdisc_variable));
 
   const repeatUnitsMap = new Map();
   spec.forEach((r) => {
@@ -787,7 +915,20 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   data = applyMultiRecordSpid(data, spidVar, multiRecordAliasNames);
 
   const existingColumns = new Set(Object.keys(data[0] || {}));
-  const targetVars = [...new Set(spec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
+  let targetVars = [...new Set(spec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
+
+  // date型の変数同士が、同じ行(同一alias_name×label)の中でvalidate_date_after_or_equal_to/
+  // validate_date_before_or_equal_to(他フィールド参照)によって数珠つなぎに依存し合う場合、参照先が
+  // 先に生成されていないと値を引けない。scopedDateRefBounds(このドメインのdate_vars同士の依存だけ)を
+  // 使って依存が無いものから順に並べ替える(Rのbuild_repeated_domain()内のソート処理に対応)
+  {
+    const dateVarsForSort = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter((v) =>
+      targetVars.includes(v)
+    );
+    const sortedDateVars = sortDateVarsByDependency(dateVarsForSort, scopedDateRefBounds);
+    const sortedDateVarSet = new Set(sortedDateVars);
+    targetVars = [...targetVars.filter((v) => !sortedDateVarSet.has(v)), ...sortedDateVars];
+  }
 
   // (alias_name, label)ごとにグループ化しておく(組み合わせ数×行数のスキャンを避けるため)
   const groups = new Map();
@@ -801,6 +942,11 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const today = new Date().toISOString().slice(0, 10);
 
   targetVars.forEach((varName) => {
+    // var_nameにvalidate_date_after_or_equal_to/validate_date_before_or_equal_to(他フィールド参照)が
+    // あり、かつ参照先が既に生成済み(このforEachの前の反復で追加された変数)なら、そのフィールド名(列名)を
+    // 使う。無ければ一律の範囲で生成する(Rのbuild_repeated_domain()と同じ理由)
+    const dateMinRow = scopedDateRefBounds.find((r) => r.cdisc_variable === varName && r.bound_type === "min_date");
+    const dateMaxRow = scopedDateRefBounds.find((r) => r.cdisc_variable === varName && r.bound_type === "max_date");
     const varSpec = spec.filter((r) => r.cdisc_variable === varName);
     const specByGroup = new Map();
     varSpec.forEach((r) => {
@@ -851,7 +997,16 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
         }
       } else if (g.fieldType === "date") {
         rows.forEach((row) => {
-          row[varName] = randomDateBetween(registrationStartDate, today);
+          let lower = registrationStartDate;
+          if (dateMinRow != null && row[dateMinRow.ref_cdisc_variable] != null && row[dateMinRow.ref_cdisc_variable] > lower) {
+            lower = row[dateMinRow.ref_cdisc_variable];
+          }
+          let upper = today;
+          if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
+            upper = row[dateMaxRow.ref_cdisc_variable];
+          }
+          if (upper < lower) upper = lower;
+          row[varName] = randomDateBetween(lower, upper);
         });
       } else if (g.fieldType === "meddra") {
         const dv = g.defaultValue;
@@ -900,7 +1055,37 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   });
 
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate);
+
+  // 1つのalias内でcdisc_variable名がlabel(繰り返しの1回分)を跨いで連鎖する行(例: 次回投与の開始日が
+  // 前回投与の終了日を参照する)がある場合、通常の変数単位生成ではlabelを跨いだ参照を扱えないため、
+  // regenerateDateChain()でそのalias・その変数だけ生成し直す(Rのbuild_repeated_domain()と同じ理由)
+  const chainBounds = scopedDateRefBounds.filter(
+    (r) => dateVars.includes(r.cdisc_variable) && r.label != null && r.ref_label != null && r.label !== r.ref_label
+  );
+  if (chainBounds.length > 0) {
+    const chainVars = [...new Set([...chainBounds.map((r) => r.cdisc_variable), ...chainBounds.map((r) => r.ref_cdisc_variable)])].filter(
+      (v) => dateVars.includes(v)
+    );
+    let disconByUsubjid = null;
+    if (discontinuationDate && discontinuationDate.length > 0 && data[0] && "USUBJID" in data[0]) {
+      disconByUsubjid = {};
+      discontinuationDate.forEach((r) => {
+        if (r.DISCONDTC != null && !(r.USUBJID in disconByUsubjid)) {
+          disconByUsubjid[r.USUBJID] = r.DISCONDTC;
+        }
+      });
+    }
+    const chainAliasNames = [...new Set(chainBounds.map((r) => r.alias_name))];
+    chainAliasNames.forEach((aliasVal) => {
+      data = regenerateDateChain(data, aliasVal, scopedDateRefBounds, chainVars, registrationStartDate, disconByUsubjid);
+    });
+  }
+  // scopedDateRefBoundsはcdisc_variable単位の判定のため、同じ変数名でもlabelを跨ぐ連鎖を持たない他のlabelまで
+  // clampが丸ごと除外してしまわないよう、clampにはlabelを跨ぐ行(label!=ref_label)だけを除いたものを渡す
+  const dateRefBoundsForClamp = scopedDateRefBounds.filter(
+    (r) => r.label == null || r.ref_label == null || r.label === r.ref_label
+  );
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
 
   let codingCols = [];
   if (addCodingBlock) {
@@ -990,6 +1175,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const whoDrugIdf = opts.whoDrugIdf || null;
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
+  const dateRefBounds = opts.dateRefBounds || [];
 
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
@@ -1009,6 +1195,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       whoDrugIdf,
       visitLookup,
       discontinuationDate,
+      dateRefBounds,
     };
     builtDomains[prefix] =
       forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)

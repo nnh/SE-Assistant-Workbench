@@ -31,7 +31,7 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
   ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH", "alias_name", "label")))
 }
 
-populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL) {
+populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL) {
   # DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   # spec上のcdisc_variable名のままtarget_varsに残ると別列として重複生成されてしまう。ここで除外する
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS", cdisc_variable != "DSEPOCH")
@@ -39,7 +39,7 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
 
   ds <- ds %>%
     populate_radio_button_fields(ds_spec, target_vars, required_vars, numeric_bounds) %>%
-    populate_date_fields(ds_spec, target_vars, registration_start_date) %>%
+    populate_date_fields(ds_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq("DSSEQ")
 
@@ -106,6 +106,14 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
   if (has_dsdtc) {
     dthdtc_map <- death_date$DTHDTC[match(ds$USUBJID[death_row_ids], died_usubjid)]
     ds$DSDTC[death_row_ids] <- dthdtc_map
+
+    # DSDTC(死亡日、AE側の実際の死亡日が根拠)をここで上書きすると、date_ref_boundsが期待する
+    # DSDTC>=DSSTDTC(同じ行)の関係が崩れる場合がある(DSSTDTCは死亡日を知らずに生成されているため)。
+    # 死亡日は動かせない事実なので、矛盾する場合はDSSTDTC側を死亡日に合わせて引き戻す
+    if ("DSSTDTC" %in% colnames(ds)) {
+      violates <- !is.na(ds$DSSTDTC[death_row_ids]) & !is.na(dthdtc_map) & ds$DSSTDTC[death_row_ids] > dthdtc_map
+      ds$DSSTDTC[death_row_ids][violates] <- dthdtc_map[violates]
+    }
   }
 
   # 死亡していない被験者は、最後のレコードの約completed_rateをCOMPLETEDにする

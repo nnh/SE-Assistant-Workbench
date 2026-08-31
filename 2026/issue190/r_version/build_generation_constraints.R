@@ -277,6 +277,34 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     transmute(cdisc_variable, ref_cdisc_variable, bound_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
+  # validate_date_after_or_equal_to/validate_date_before_or_equal_toが他フィールド参照
+  # (例: "field5")の場合の下限/上限(bound_type="min_date"/"max_date")を、field_ref_boundsと
+  # 同様にcdisc_variable名に変換したテーブルにする。populate_date_fields()・build_repeated_domain()で、
+  # 対象フィールドの生成範囲を一律のregistration_start_date/今日ではなく、参照先フィールドの値を
+  # 下限/上限として使うために参照する。
+  # alias_name/label/ref_labelも保持しておく。EC等の繰り返しブロックでは、同じcdisc_variable名
+  # (例: ECSTDTC/ECENDTC)が1つのalias内で複数回(投与1回目・2回目...)登場し、
+  # 「同じlabel内の開始日<=終了日」と「次のlabelの開始日>=前のlabelの終了日」のように、
+  # label(行)を跨いだ参照とlabel内の参照が混在する。cdisc_variable単位まで潰してしまうと
+  # (ECSTDTC min_date ECENDTC / ECENDTC min_date ECSTDTC のように)矛盾した規則に見えてしまうため、
+  # build_repeated_domain側でlabel/ref_labelを見てlabelを跨ぐ参照かどうかを判定できるようにする
+  date_ref_bounds <- validator_table %>%
+    filter(validator_type == "date", !is.na(bound_type), !is.na(ref_field), ref_field != field_name) %>%
+    distinct(alias_name, field_name, ref_field, bound_type) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(
+      field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
+      by = c("alias_name", "ref_field" = "field")
+    ) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(
+      field_to_label %>% rename(ref_label = label),
+      by = c("alias_name", "ref_field" = "field")
+    ) %>%
+    transmute(alias_name, label, cdisc_variable, ref_label, ref_cdisc_variable, bound_type) %>%
+    filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
+    distinct()
+
   # age(fN, fM)>=X && age(fN, fM)<=Y のような年齢条件を、field名からcdisc_variable名に変換し、
   # (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, min_age, max_age)のテーブルにする。
   # cdisc_variableは年齢制約を受ける側の日付(例: RFICDTC)、ref_cdisc_variableはもう一方の日付(例: BRTHDTC)
@@ -300,6 +328,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     required_vars = required_vars,
     numeric_bounds = numeric_bounds,
     field_ref_bounds = field_ref_bounds,
+    date_ref_bounds = date_ref_bounds,
     age_bounds = age_bounds
   )
 }

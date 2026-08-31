@@ -115,20 +115,38 @@ function populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds) {
 // date型のDS項目に、registrationStartDate〜今日の間のランダムな日付を入れる。
 // DSはalias_name(どのDSブロックの行か)によって同じcdisc_variableでも定義の有無が異なりうるため、
 // その変数を定義しているalias_nameの行だけに値を入れる(Rのpopulate_date_fields()の
-// has_alias_name==TRUEの分岐に対応)
-function populateDsDateFields(ds, dsSpec, registrationStartDate) {
+// has_alias_name==TRUEの分岐に対応)。dateRefBoundsが渡された場合、validate_date_after_or_equal_to/
+// validate_date_before_or_equal_to(他フィールド参照、例: DSDTC>=DSSTDTC)による下限/上限
+// (参照先フィールドの値、同じ行)を一律の範囲より優先する
+function populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds) {
   const existingColumns = new Set(Object.keys(ds[0] || {}));
-  const dateVars = [...new Set(dsSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
+  let dateVars = [...new Set(dsSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
     (v) => !existingColumns.has(v)
   );
+  dateVars = sortDateVarsByDependency(dateVars, dateRefBounds);
   const today = new Date().toISOString().slice(0, 10);
 
   dateVars.forEach((varName) => {
     const dateAliasNames = new Set(
       dsSpec.filter((r) => r.field_type === "date" && r.cdisc_variable === varName).map((r) => r.alias_name)
     );
+    const minRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "min_date");
+    const maxRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "max_date");
     ds.forEach((row) => {
-      row[varName] = dateAliasNames.has(row.alias_name) ? randomDateBetween(registrationStartDate, today) : null;
+      if (!dateAliasNames.has(row.alias_name)) {
+        row[varName] = null;
+        return;
+      }
+      let lower = registrationStartDate;
+      if (minRow != null && row[minRow.ref_cdisc_variable] != null && row[minRow.ref_cdisc_variable] > lower) {
+        lower = row[minRow.ref_cdisc_variable];
+      }
+      let upper = today;
+      if (maxRow != null && row[maxRow.ref_cdisc_variable] != null && row[maxRow.ref_cdisc_variable] < upper) {
+        upper = row[maxRow.ref_cdisc_variable];
+      }
+      if (upper < lower) upper = lower;
+      row[varName] = randomDateBetween(lower, upper);
     });
   });
   return ds;
@@ -189,13 +207,13 @@ function addDsSeq(ds) {
 // presence_conditionsゲーティング・field_ref_boundsを適用し、列順を整理する
 // (Rのpopulate_ds_domain()に対応)。alias_name/label列は残したまま返す(他ドメイン生成や
 // finalize_ds_disposition()で使う想定のため、最終出力からはfinalize時に取り除く)
-function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds) {
+function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, dateRefBounds) {
   // DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   // spec上のcdisc_variable名のままだと重複生成されてしまう。ここで除外する
   const dsSpec = cdiscVariableValues.filter((r) => r.prefix === "DS" && r.cdisc_variable !== "DSEPOCH");
 
   ds = populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds);
-  ds = populateDsDateFields(ds, dsSpec, registrationStartDate);
+  ds = populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds);
   ds = populateDsDummyFields(ds, dsSpec);
   ds = addDsSeq(ds);
 
@@ -272,7 +290,14 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     }
     ds[chosen].DSTERM = "DEATH";
     if (hasDsdtc) {
-      ds[chosen].DSDTC = dthdtcByUsubjid[usubjid];
+      const dthdtc = dthdtcByUsubjid[usubjid];
+      ds[chosen].DSDTC = dthdtc;
+      // DSDTC(死亡日、AE側の実際の死亡日が根拠)をここで上書きすると、date_ref_boundsが期待する
+      // DSDTC>=DSSTDTC(同じ行)の関係が崩れる場合がある(DSSTDTCは死亡日を知らずに生成されているため)。
+      // 死亡日は動かせない事実なので、矛盾する場合はDSSTDTC側を死亡日に合わせて引き戻す
+      if ("DSSTDTC" in ds[chosen] && ds[chosen].DSSTDTC != null && dthdtc != null && ds[chosen].DSSTDTC > dthdtc) {
+        ds[chosen].DSSTDTC = dthdtc;
+      }
     }
   });
 

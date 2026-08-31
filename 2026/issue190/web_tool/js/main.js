@@ -11,6 +11,7 @@ let ageBounds = null;
 let requiredVars = null;
 let numericBounds = null;
 let fieldRefBounds = null;
+let dateRefBounds = null;
 let generatedDm = null;
 let generatedAe = null;
 let generatedDs = null;
@@ -169,6 +170,7 @@ function handleFile(file) {
       requiredVars = constraints.requiredVars;
       numericBounds = constraints.numericBounds;
       fieldRefBounds = constraints.fieldRefBounds;
+      dateRefBounds = constraints.dateRefBounds;
       fileNameLabel.textContent = `読み込み済み: ${file.name}`;
       configSection.style.display = "block";
     } catch (e) {
@@ -227,7 +229,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     requiredVars,
     numericBounds,
     fieldRefBounds,
-    ageBounds
+    ageBounds,
+    dateRefBounds
   );
   generatedDm = dm;
   renderPreview(dm, "dm-preview");
@@ -247,7 +250,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // "ae"シートのように、AE報告と同じフォーム上に他prefix(例: FA)のブロックがある場合、
   // そのフィールドも同じ行に追加する。presence_conditionsが同じ行内で完結するようにするため、
   // applyPresenceConditionsより前に行う
-  const linkedResult = populateLinkedBlocks(ae, cdiscVariableValues, "AE", registrationStartDate, meddraData, requiredVars, whoDrugIdf);
+  const linkedResult = populateLinkedBlocks(ae, cdiscVariableValues, "AE", registrationStartDate, meddraData, requiredVars, whoDrugIdf, dateRefBounds);
   ae = linkedResult.data;
   const linkedSpec = linkedResult.linkedSpec;
   ae = populateAeDummyFields(ae, aeSpec);
@@ -262,7 +265,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   renderPreview(ae, "ae-preview");
 
   let ds = buildDsDomain(dm, cdiscVariableValues);
-  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds);
+  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, dateRefBounds);
   const deathDate = buildDeathDateTable(ae);
   ds = finalizeDsDisposition(ds, deathDate, cdiscVariableValues);
   ds = addRandomizationDsRows(ds, dm, registrationStartDate);
@@ -289,6 +292,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     whoDrugIdf,
     visitLookup,
     discontinuationDate,
+    dateRefBounds,
   });
   // DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、
   // presence_conditionsで条件付けされている列(例: DDORRES)が全てnullの行を除外)

@@ -570,6 +570,43 @@ function buildFieldRefBounds(validatorTable, fieldLookup) {
   return rows;
 }
 
+// validate_date_after_or_equal_to/validate_date_before_or_equal_toが他フィールド参照(例: "field5")の場合の
+// 下限/上限(bound_type="min_date"/"max_date")を、buildFieldRefBoundsと同様にcdisc_variable名に変換した
+// テーブルにする。alias_name/label/ref_labelも保持する。ECのような繰り返しブロックでは、同じcdisc_variable名
+// (例: ECSTDTC/ECENDTC)が1つのalias内で複数回(投与1回目・2回目...)登場し、「同じlabel内の開始日<=終了日」と
+// 「次のlabelの開始日>=前のlabelの終了日」のようにlabelを跨ぐ参照と跨がない参照が混在する。cdisc_variable単位
+// まで潰してしまうと(ECSTDTC min_date ECENDTC / ECENDTC min_date ECSTDTCのように)矛盾した規則に見えてしまう
+// ため、buildRepeatedDomain側でlabel/ref_labelを見てlabelを跨ぐ参照かどうかを判定できるようにする
+// (R版build_generation_constraints.Rのdate_ref_boundsと同じ理由)
+function buildDateRefBounds(validatorTable, fieldLookup) {
+  const rows = [];
+  const seen = new Set();
+  validatorTable.forEach((vr) => {
+    if (vr.validator_type !== "date") return;
+    if (vr.bound_type == null || vr.ref_field == null) return;
+    if (vr.ref_field === vr.field_name) return;
+    const key = `${vr.alias_name}|${vr.field_name}|${vr.ref_field}|${vr.bound_type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const ownMatches = lookupField(fieldLookup, vr.alias_name, vr.field_name);
+    const refMatches = lookupField(fieldLookup, vr.alias_name, vr.ref_field);
+    ownMatches.forEach((own) => {
+      refMatches.forEach((ref) => {
+        if (own.cdisc_variable == null || ref.cdisc_variable == null) return;
+        rows.push({
+          alias_name: vr.alias_name,
+          label: own.label != null ? own.label : null,
+          cdisc_variable: own.cdisc_variable,
+          ref_label: ref.label != null ? ref.label : null,
+          ref_cdisc_variable: ref.cdisc_variable,
+          bound_type: vr.bound_type,
+        });
+      });
+    });
+  });
+  return rows;
+}
+
 // age(fN,fM)>=X && age(fN,fM)<=Yのような年齢条件から、(cdisc_variable, ref_cdisc_variable, min_age, max_age)を作る
 function buildAgeBounds(validatorTable, fieldLookup) {
   const rows = [];
@@ -616,6 +653,7 @@ function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable
     requiredVars: buildRequiredVars(validatorTable, fieldLookup),
     numericBounds: buildNumericBounds(validatorTable, fieldLookup),
     fieldRefBounds: buildFieldRefBounds(validatorTable, fieldLookup),
+    dateRefBounds: buildDateRefBounds(validatorTable, fieldLookup),
     ageBounds: buildAgeBounds(validatorTable, fieldLookup),
   };
 }

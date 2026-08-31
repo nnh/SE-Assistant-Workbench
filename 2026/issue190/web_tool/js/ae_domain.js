@@ -264,7 +264,7 @@ function addAeMeddraCodingBlock(ae, meddraSample, prefix) {
 // 正しく判定できるようになる。戻り値のlinkedSpecは、実際に追加したprefix/alias_nameの一覧
 // (呼び出し側で、二重生成を避けるための除外や、後でsplitLinkedDomains()に分離する際に使う)
 // (Rのpopulate_linked_blocks()に対応)
-function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registrationStartDate, meddraData, requiredVars, whoDrugIdf) {
+function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registrationStartDate, meddraData, requiredVars, whoDrugIdf, dateRefBoundsAll) {
   const ownAliasNames = new Set(data.map((r) => r.alias_name));
   const linkedSpec = cdiscVariableValues.filter((r) => r.prefix !== excludePrefix && ownAliasNames.has(r.alias_name));
 
@@ -274,11 +274,26 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
 
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
   const requiredSet = new Set(requiredVars || []);
-  const linkedVars = [...new Set(linkedSpec.map((r) => r.cdisc_variable))];
+  let linkedVars = [...new Set(linkedSpec.map((r) => r.cdisc_variable))];
   const doseChoices = ["50", "100", "150", "200", "250", "300", "400", "500"];
   const today = new Date().toISOString().slice(0, 10);
 
+  // date型の変数同士が他フィールド参照で数珠つなぎに依存し合う場合(buildRepeatedDomain()と同じ理由)、
+  // 参照先が先に生成されるよう並べ替える
+  const linkedVarSet = new Set(linkedVars);
+  const dateRefBounds = (dateRefBoundsAll || []).filter((r) => linkedVarSet.has(r.cdisc_variable));
+  {
+    const linkedDateVars = [...new Set(linkedSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter((v) =>
+      linkedVars.includes(v)
+    );
+    const sortedDateVars = sortDateVarsByDependency(linkedDateVars, dateRefBounds);
+    const sortedDateVarSet = new Set(sortedDateVars);
+    linkedVars = [...linkedVars.filter((v) => !sortedDateVarSet.has(v)), ...sortedDateVars];
+  }
+
   linkedVars.forEach((varName) => {
+    const dateMinRow = dateRefBounds.find((r) => r.cdisc_variable === varName && r.bound_type === "min_date" && r.ref_cdisc_variable in data[0]);
+    const dateMaxRow = dateRefBounds.find((r) => r.cdisc_variable === varName && r.bound_type === "max_date" && r.ref_cdisc_variable in data[0]);
     const varSpec = linkedSpec.filter((r) => r.cdisc_variable === varName);
     const specByAlias = new Map();
     varSpec.forEach((r) => {
@@ -317,7 +332,16 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
         }
       } else if (g.fieldType === "date") {
         rows.forEach((row) => {
-          row[varName] = randomDateBetween(registrationStartDate, today);
+          let lower = registrationStartDate;
+          if (dateMinRow != null && row[dateMinRow.ref_cdisc_variable] != null && row[dateMinRow.ref_cdisc_variable] > lower) {
+            lower = row[dateMinRow.ref_cdisc_variable];
+          }
+          let upper = today;
+          if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
+            upper = row[dateMaxRow.ref_cdisc_variable];
+          }
+          if (upper < lower) upper = lower;
+          row[varName] = randomDateBetween(lower, upper);
         });
       } else if (g.fieldType === "meddra") {
         const dv = g.defaultValue;

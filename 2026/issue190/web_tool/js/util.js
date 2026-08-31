@@ -28,6 +28,30 @@ function sampleCheckBoxValues(choices, n) {
   return values;
 }
 
+// date_vars同士がvalidate_date_after_or_equal_to/validate_date_before_or_equal_to(他フィールド参照)で
+// 数珠つなぎに依存し合う場合、参照先が先に生成されていないと値を引けない。dateRefBounds(このdateVars同士の
+// 依存だけ)を使って依存が無いものから順に並べ替える(トポロジカルソート。循環参照があれば残りは元の順のまま追加する。
+// R版populate_date_fields()内のソート処理に対応)
+function sortDateVarsByDependency(dateVars, dateRefBounds) {
+  if (!dateRefBounds || dateRefBounds.length === 0 || dateVars.length <= 1) return dateVars;
+  const dateVarSet = new Set(dateVars);
+  const deps = dateRefBounds.filter((r) => dateVarSet.has(r.cdisc_variable) && dateVarSet.has(r.ref_cdisc_variable));
+  const sorted = [];
+  let remaining = [...dateVars];
+  while (remaining.length > 0) {
+    const remainingSet = new Set(remaining);
+    const unresolved = new Set(deps.filter((d) => remainingSet.has(d.ref_cdisc_variable)).map((d) => d.cdisc_variable));
+    const ready = remaining.filter((v) => !unresolved.has(v));
+    if (ready.length === 0) {
+      sorted.push(...remaining);
+      break;
+    }
+    sorted.push(...ready);
+    remaining = remaining.filter((v) => !ready.includes(v));
+  }
+  return sorted;
+}
+
 // startDateStr〜endDateStr(YYYY-MM-DD)の間のランダムな日付文字列(YYYY-MM-DD)を返す
 function randomDateBetween(startDateStr, endDateStr) {
   const start = new Date(startDateStr).getTime();
