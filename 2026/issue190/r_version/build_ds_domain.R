@@ -70,7 +70,10 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
   died_usubjid <- death_date[["USUBJID"]]
   has_dsdtc <- "DSDTC" %in% colnames(ds)
 
-  # 既存のDEATH表記は一旦すべて解除(重複・矛盾を避けるため)
+  # 既存のDEATH表記は一旦すべて解除(重複・矛盾を避けるため)。どの行が元々DEATHだったかは、
+  # 実際には死亡していない被験者がランダムでDEATHを選んでいた場合などに、後で(DEATH以外の
+  # 選択肢から)埋め直すために記録しておく
+  was_death <- ds[["DSTERM"]] == "DEATH"
   ds <- ds %>% mutate(DSTERM = if_else(DSTERM == "DEATH", NA_character_, DSTERM))
 
   ds_with_row_id <- ds %>% mutate(.row_id = row_number())
@@ -113,6 +116,24 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
     if ("DSSTDTC" %in% colnames(ds)) {
       violates <- !is.na(ds$DSSTDTC[death_row_ids]) & !is.na(dthdtc_map) & ds$DSSTDTC[death_row_ids] > dthdtc_map
       ds$DSSTDTC[death_row_ids][violates] <- dthdtc_map[violates]
+    }
+  }
+
+  # 元々DEATHだったがdeath_row_idsに選ばれなかった行(実際には死亡していない被験者がランダムで
+  # DEATHを選んでいた、または同じ被験者の別ブロックがDEATH行に選ばれた)は、解除されたまま空白になって
+  # しまうため、DEATH以外の選択肢から改めて値を入れ直す
+  leftover_ids <- setdiff(which(was_death), death_row_ids)
+  if (length(leftover_ids) > 0 && !is.null(cdisc_variable_values) && "alias_name" %in% colnames(ds)) {
+    dsterm_choices <- cdisc_variable_values %>%
+      filter(prefix == "DS", cdisc_variable == "DSTERM") %>%
+      mutate(code = if_else(is.na(code), default_value, code)) %>%
+      filter(!is.na(code), code != "DEATH") %>%
+      distinct(alias_name, code)
+    for (row_id in leftover_ids) {
+      choices <- dsterm_choices %>% filter(alias_name == ds$alias_name[row_id]) %>% pull(code)
+      if (length(choices) > 0) {
+        ds$DSTERM[row_id] <- sample(choices, 1)
+      }
     }
   }
 

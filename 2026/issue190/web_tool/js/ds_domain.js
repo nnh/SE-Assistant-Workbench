@@ -258,9 +258,15 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
   const hasDsdtc = "DSDTC" in ds[0];
   const hasAliasName = "alias_name" in ds[0];
 
-  // 既存のDEATH表記は一旦すべて解除(重複・矛盾を避けるため)
-  ds.forEach((row) => {
-    if (row.DSTERM === "DEATH") row.DSTERM = null;
+  // 既存のDEATH表記は一旦すべて解除(重複・矛盾を避けるため)。どの行が元々DEATHだったかは、
+  // 実際には死亡していない被験者がランダムでDEATHを選んでいた場合などに、後で(DEATH以外の
+  // 選択肢から)埋め直すために記録しておく
+  const wasDeathIndices = new Set();
+  ds.forEach((row, i) => {
+    if (row.DSTERM === "DEATH") {
+      wasDeathIndices.add(i);
+      row.DSTERM = null;
+    }
   });
 
   const deathAliasNames = new Set();
@@ -279,6 +285,7 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     diedIndicesByUsubjid[row.USUBJID].push(i);
   });
 
+  const chosenIndices = new Set();
   Object.keys(diedIndicesByUsubjid).forEach((usubjid) => {
     const indices = diedIndicesByUsubjid[usubjid];
     let chosen;
@@ -288,6 +295,7 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     } else {
       chosen = indices[indices.length - 1];
     }
+    chosenIndices.add(chosen);
     ds[chosen].DSTERM = "DEATH";
     if (hasDsdtc) {
       const dthdtc = dthdtcByUsubjid[usubjid];
@@ -300,6 +308,28 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
       }
     }
   });
+
+  // 元々DEATHだったがchosenIndicesに選ばれなかった行(実際には死亡していない被験者がランダムで
+  // DEATHを選んでいた、または同じ被験者の別ブロックがDEATH行に選ばれた)は、解除されたまま空白になって
+  // しまうため、DEATH以外の選択肢から改めて値を入れ直す
+  if (cdiscVariableValues && hasAliasName) {
+    const dstermChoicesByAlias = {};
+    cdiscVariableValues
+      .filter((r) => r.prefix === "DS" && r.cdisc_variable === "DSTERM")
+      .forEach((r) => {
+        const code = r.code != null ? r.code : r.default_value;
+        if (code == null || code === "DEATH") return;
+        if (!dstermChoicesByAlias[r.alias_name]) dstermChoicesByAlias[r.alias_name] = new Set();
+        dstermChoicesByAlias[r.alias_name].add(code);
+      });
+    wasDeathIndices.forEach((i) => {
+      if (chosenIndices.has(i)) return;
+      const choices = [...(dstermChoicesByAlias[ds[i].alias_name] || [])];
+      if (choices.length > 0) {
+        ds[i].DSTERM = sampleOne(choices);
+      }
+    });
+  }
 
   // 死亡していない被験者は、最後のレコードの約completedRateをCOMPLETEDにする。
   // 最終的にCOMPLETEDとなった被験者は、途中経過のレコードもすべてCOMPLETEDにする
