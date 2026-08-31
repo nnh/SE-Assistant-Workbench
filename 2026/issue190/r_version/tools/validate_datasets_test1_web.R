@@ -51,10 +51,13 @@ source(here("tools/validate_test1_shared.R"))
 # cmはgrDevicesパッケージの関数名と同じだが、ここで代入することでローカル変数が優先される(shadow)
 # だけなので問題ない
 cm <- generated_datasets[["CM"]]
+ds <- generated_datasets[["DS"]]
+ec <- generated_datasets[["EC"]]
 fa <- generated_datasets[["FA"]]
 lb <- generated_datasets[["LB"]]
 mh <- generated_datasets[["MH"]]
 pe <- generated_datasets[["PE"]]
+pr <- generated_datasets[["PR"]]
 qs <- generated_datasets[["QS"]]
 rs <- generated_datasets[["RS"]]
 sc <- generated_datasets[["SC"]]
@@ -63,7 +66,7 @@ tr <- generated_datasets[["TR"]]
 # DMのBRTHDTC/RFSTDTCが今日以前・RFICDTCがBRTHDTC以降今日以前であることを確認する(tools/validate_common.R)
 check_date_before_today(dm, "BRTHDTC", domain_name = "DM")
 check_date_before_today(dm, "RFSTDTC", domain_name = "DM")
-check_rficdtc_range(dm)
+check_date_after_var_before_today(dm, "RFICDTC", "BRTHDTC", domain_name = "DM")
 fa %>% filter(FAOBJ == "Tumor Involvement") %>% check_numeric_range("FAORRES", min_value = 0, max_value = 99, domain_name = "FA")
 lb %>% filter(LBTESTCD == "PBTCCE") %>% check_numeric_range("LBORRES", min_value = 0, max_value = 100, domain_name = "LB")
 lb %>% filter(LBTESTCD == "HGB") %>% check_numeric_range("LBORRES", max_value = 30, domain_name = "LB")
@@ -89,9 +92,13 @@ lb %>% filter(LBTESTCD == "IL2SR") %>% check_numeric_range("LBORRES", max_value 
 lb %>% filter(LBTESTCD == "FIBRINO") %>% check_numeric_range("LBORRES", max_value = 9999, domain_name = "LB")
 
 cm %>% check_date_before_today("CMSTDTC", domain_name = "CM")
+ds %>% check_date_before_today("DSSTDTC", domain_name = "DS")
+ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
+ec %>% check_date_before_today("ECSTDTC", domain_name = "CM")
 lb %>% check_date_before_today("LBDTC", domain_name = "LB")
 mh %>% check_date_before_today("MHDTC", domain_name = "MH")
 pe %>% check_date_before_today("PEDTC", domain_name = "PE")
+pr %>% check_date_before_today("PRSTDTC", domain_name = "PR")
 qs %>% check_date_before_today("QSDTC", domain_name = "QS")
 rs %>% check_date_before_today("RSDTC", domain_name = "RS")
 sc %>% check_date_before_today("SCDTC", domain_name = "SC")
@@ -205,6 +212,13 @@ rs %>% filter(SPDEVID == 1) %>% check_required_vars(c("RSORRES", "RSDTC"), domai
 sc %>% check_required_vars("SCORRES", domain_name = "SC")
 sc %>% filter(SCTESTCD == "STAGE" & SCORRES != "UNKNOWN") %>% check_required_vars("SCDTC", domain_name = "SC")
 tr %>% check_required_vars(c("TRORRES", "TRDTC"), domain_name = "TR")
+pr %>% filter(PRCAT == "Autologous") %>% check_required_vars("PROCCUR", domain_name = "PR")
+pr %>% filter(PRCAT == "Autologous" & PROCCUR == "Y") %>% check_required_vars("PRSTDTC", domain_name = "PR")
+pr %>% filter(PRCAT == "Allogeneic") %>% check_required_vars("PROCCUR", domain_name = "PR")
+pr %>% filter(PRCAT == "Allogeneic" & PROCCUR == "Y") %>% check_required_vars("PRSTDTC", domain_name = "PR")
+ec %>% check_required_vars("ECSTDTC", domain_name = "EC")
+fa %>% filter(FAOBJ != "Bone Marrow Infiltration" & VISITNUM != 100) %>% check_required_vars("FAORRES", domain_name = "FA")
+rs %>% filter(RSENTPT != 100 | (RSENTPT == 100 & SPDEVID == 1)) %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
 compare_domain(generated_datasets, datasets, "DM", "USUBJID")

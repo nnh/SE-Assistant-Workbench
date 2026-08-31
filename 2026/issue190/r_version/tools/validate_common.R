@@ -280,24 +280,29 @@ check_date_before_today <- function(data, date_var, domain_name = NULL) {
 # DMのRFICDTC(同意取得日)が、BRTHDTC(生年月日)以降・今日以前の範囲内かを確認する。
 # BRTHDTC/RFICDTCのどちらかが無い行は判定対象から除く(値の有無自体は別の構造チェックで見る)。
 # 範囲外がある場合はstop()でエラーにする。範囲内ならチェック内容とOKである旨をcatで表示する
-check_rficdtc_range <- function(dm) {
-  brthdtc <- as.Date(dm[["BRTHDTC"]])
-  rficdtc <- as.Date(dm[["RFICDTC"]])
+# data(1ドメイン分。USUBJID列が必要)のdate_var列(日付の文字列)が、ref_date_var列以降・
+# 今日以前の範囲内かを確認する。date_var/ref_date_varのどちらかが無い行は判定対象から除く
+# (値の有無自体はcheck_required_vars等の別チェックで見る)。domain_nameを指定するとメッセージの
+# 先頭に付く。範囲外がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
+check_date_after_var_before_today <- function(data, date_var, ref_date_var, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  ref_dates <- as.Date(data[[ref_date_var]])
+  dates <- as.Date(data[[date_var]])
   today <- Sys.Date()
-  valid_pair <- !is.na(brthdtc) & !is.na(rficdtc)
+  valid_pair <- !is.na(ref_dates) & !is.na(dates)
 
-  invalid <- valid_pair & (rficdtc < brthdtc | rficdtc > today)
-  invalid_usubjid <- dm[["USUBJID"]][invalid]
+  invalid <- valid_pair & (dates < ref_dates | dates > today)
+  invalid_usubjid <- data[["USUBJID"]][invalid]
 
   if (length(invalid_usubjid) > 0) {
     stop(str_c(
-      "RFICDTC範囲チェック: ", length(invalid_usubjid), "件NG(BRTHDTC以降・今日(", as.character(today),
-      ")以前の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+      label, date_var, "範囲チェック: ", length(invalid_usubjid), "件NG(", ref_date_var, "以降・今日(",
+      as.character(today), ")以前の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
     ))
   }
   cat(
-    "RFICDTC範囲チェック: OK(RFICDTCがBRTHDTC以降・今日(", as.character(today), ")以前であることを確認、",
-    sum(valid_pair), "件)\n",
+    label, date_var, "範囲チェック: OK(", date_var, "が", ref_date_var, "以降・今日(", as.character(today),
+    ")以前であることを確認、", sum(valid_pair), "件)\n",
     sep = ""
   )
 }
