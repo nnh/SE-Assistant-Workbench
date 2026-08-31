@@ -47,6 +47,19 @@ source(here("tools/validate_common.R"))
 # 呼び出し・ドメイン名一覧の確認)。validate_test1_shared.Rにまとめてある
 source(here("tools/validate_test1_shared.R"))
 
+# 値必須・空欄・日付チェックで繰り返し参照するドメインを短い変数名に控えておく(タイプ量を減らすため)。
+# cmはgrDevicesパッケージの関数名と同じだが、ここで代入することでローカル変数が優先される(shadow)
+# だけなので問題ない
+cm <- generated_datasets[["CM"]]
+fa <- generated_datasets[["FA"]]
+lb <- generated_datasets[["LB"]]
+mh <- generated_datasets[["MH"]]
+pe <- generated_datasets[["PE"]]
+qs <- generated_datasets[["QS"]]
+rs <- generated_datasets[["RS"]]
+sc <- generated_datasets[["SC"]]
+tr <- generated_datasets[["TR"]]
+
 # DMのBRTHDTC/RFSTDTCが今日以前・RFICDTCがBRTHDTC以降今日以前であることを確認する(tools/validate_common.R)
 check_date_before_today(dm, "BRTHDTC", domain_name = "DM")
 check_date_before_today(dm, "RFSTDTC", domain_name = "DM")
@@ -74,18 +87,6 @@ lb %>% filter(LBTESTCD == "PHOS") %>% check_numeric_range("LBORRES", max_value =
 lb %>% filter(LBTESTCD == "CRP") %>% check_numeric_range("LBORRES", max_value = 99, domain_name = "LB")
 lb %>% filter(LBTESTCD == "IL2SR") %>% check_numeric_range("LBORRES", max_value = 99999, domain_name = "LB")
 lb %>% filter(LBTESTCD == "FIBRINO") %>% check_numeric_range("LBORRES", max_value = 9999, domain_name = "LB")
-# 値必須・空欄・日付チェックで繰り返し参照するドメインを短い変数名に控えておく(タイプ量を減らすため)。
-# cmはgrDevicesパッケージの関数名と同じだが、ここで代入することでローカル変数が優先される(shadow)
-# だけなので問題ない
-cm <- generated_datasets[["CM"]]
-fa <- generated_datasets[["FA"]]
-lb <- generated_datasets[["LB"]]
-mh <- generated_datasets[["MH"]]
-pe <- generated_datasets[["PE"]]
-qs <- generated_datasets[["QS"]]
-rs <- generated_datasets[["RS"]]
-sc <- generated_datasets[["SC"]]
-tr <- generated_datasets[["TR"]]
 
 cm %>% check_date_before_today("CMSTDTC", domain_name = "CM")
 lb %>% check_date_before_today("LBDTC", domain_name = "LB")

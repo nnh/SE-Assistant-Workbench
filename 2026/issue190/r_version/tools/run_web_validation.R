@@ -17,6 +17,21 @@ source(here("test_config.R"))
 source(here("load_edc_spec.R"))
 load_edc_spec(json_path)
 
+# R版とWeb版が同じJSON(同じ試験)から生成されたものかを、STUDYIDの一致で早期に確認する。
+# json_pathの設定忘れ等でtest_config.Rの各パスが別の試験を指していると、以降の全チェックが
+# 無意味なFAILの山になり原因が分かりにくいため、ここで最初にSTOPで気づけるようにする
+dm_web_studyid_check <- read_csv(dm_web_csv_path, col_types = cols(.default = "c"), na = character(0))
+r_studyid <- unique(dm[["STUDYID"]])
+web_studyid <- unique(dm_web_studyid_check[["STUDYID"]])
+if (!identical(r_studyid, web_studyid)) {
+  stop(str_c(
+    "R版とWeb版のSTUDYIDが一致しません(R版: ", paste(r_studyid, collapse = ", "),
+    " / Web版: ", paste(web_studyid, collapse = ", "),
+    ")。test_config.Rのjson_path・dm_web_csv_path等が同じ試験を指しているか確認してください。"
+  ))
+}
+rm(dm_web_studyid_check, r_studyid, web_studyid)
+
 cat("========== DMドメイン ==========\n")
 source(here("tools/validate_web_dm.R"))
 

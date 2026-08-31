@@ -259,11 +259,22 @@ parse_and_clauses <- function(value) {
 cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s|&()]+))$"
 # fieldN==値(または fN==値) の形の条件式のパターン(同一シート内の別フィールド参照)。値側の制約は上記と同様
 and_field_ref_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\"|([^\\s|&()]+))$"
+# fieldN==fieldM(または fN==fM)のように、値側もフィールド参照の形。and_field_ref_patternは
+# 値側を「引用符無しの単純リテラル」として扱うため、これを先に判定しておかないと
+# "fN"という文字列そのものと一致するかのリテラル条件として誤解釈されてしまう
+# (この形は「別フィールドの値をそのままコピーする」という意味で、build_generation_constraints.Rの
+# extract_field_equality_ref()による別のcopy機構で扱われるため、ここでは何もしない扱いにする)
+and_field_equality_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:field|f)([0-9]+)$"
 
 # parse_and_clauses()で分割した1断片を種類ごとに分類する。対応する断片:
 #   - "STAT.blank?"/"STAT.present?"のような接尾辞述語 -> kind="predicate"
 #   - "ref('sheet_alias', N)=='値'"のような別シート参照 -> kind="cross_ref"
+#   - "fieldN==fieldM"のような、値側もフィールド参照のコピー条件 -> kind="field_equality_skip"
+#     (別のcopy機構(extract_field_equality_ref)で扱われるため、ここではpresence_conditions行を作らない)
 #   - "fieldN=='値'"のような同一シート内の別フィールド参照 -> kind="field_ref"
+#   - "fieldN==2 || fieldN==3 || ..."のような、断片自体が同一フィールドに対するOR条件
+#     (例: (field22==2||field22==3||...) && (field348=='CR'||field348=='PR'))
+#     -> kind="field_ref_or"(parse_presence_or_conditions()を再利用し、複数のexpected_valueを持つ)
 # どれにも一致しなければNULL(未対応)
 classify_and_clause <- function(clause) {
   m_pred <- str_match(clause, presence_predicate_pattern)
@@ -279,9 +290,17 @@ classify_and_clause <- function(clause) {
       value = coalesce(m_ref[1, 4], m_ref[1, 5], m_ref[1, 6])
     ))
   }
+  m_eq <- str_match(clause, and_field_equality_pattern)
+  if (!is.na(m_eq[1, 1])) {
+    return(list(kind = "field_equality_skip"))
+  }
   m_field <- str_match(clause, and_field_ref_pattern)
   if (!is.na(m_field[1, 1])) {
     return(list(kind = "field_ref", ref_field = str_c("field", m_field[1, 2]), value = coalesce(m_field[1, 3], m_field[1, 4], m_field[1, 5])))
+  }
+  or_parsed <- parse_presence_or_conditions(clause)
+  if (!is.null(or_parsed)) {
+    return(list(kind = "field_ref_or", ref_field = or_parsed[["field"]], values = or_parsed[["values"]]))
   }
   NULL
 }

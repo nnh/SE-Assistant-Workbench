@@ -149,15 +149,30 @@ function parseAndClauses(value) {
 
 const CROSS_REF_RE = /^ref\('([^']+)'\s*,\s*([0-9]+)\)\s*==\s*(?:'([^']*)'|"([^"]*)"|([^\s|&()]+))$/;
 const AND_FIELD_REF_RE = /^(?:field|f)([0-9]+)\s*==\s*(?:'([^']*)'|"([^"]*)"|([^\s|&()]+))$/;
+// fieldN==fieldM(または fN==fM)のように、値側もフィールド参照の形。AND_FIELD_REF_REは値側を
+// 「引用符無しの単純リテラル」として扱うため、これを先に判定しておかないと"fN"という文字列そのものと
+// 一致するかのリテラル条件として誤解釈されてしまう(この形は「別フィールドの値をそのままコピーする」
+// という意味で、extractFieldEqualityRef()による別のcopy機構で扱われるため、ここでは何もしない扱いにする)
+const AND_FIELD_EQUALITY_RE = /^(?:field|f)([0-9]+)\s*==\s*(?:field|f)([0-9]+)$/;
 
 // parseAndClauses()で分割した1断片を種類ごとに分類する(Rのclassify_and_clause()に対応)
+//   - "fieldN==fieldM"のような、値側もフィールド参照のコピー条件
+//     -> kind="field_equality_skip"(別のcopy機構(extractFieldEqualityRef)で扱われるため、
+//        ここではpresenceConditions行を作らない)
+//   - "fieldN==2 || fieldN==3 || ..."のような、断片自体が同一フィールドに対するOR条件
+//     (例: (field22==2||field22==3||...) && (field348=='CR'||field348=='PR'))
+//     -> kind="field_ref_or"(parsePresenceOrConditions()を再利用し、複数のexpected_valueを持つ)
 function classifyAndClause(clause) {
   const mPred = clause.match(PRESENCE_PREDICATE_RE);
   if (mPred) return { kind: "predicate", suffix: mPred[1], predicateType: mPred[2] };
   const mRef = clause.match(CROSS_REF_RE);
   if (mRef) return { kind: "cross_ref", refAliasName: mRef[1], refField: `field${mRef[2]}`, value: mRef[3] ?? mRef[4] ?? mRef[5] };
+  const mEq = clause.match(AND_FIELD_EQUALITY_RE);
+  if (mEq) return { kind: "field_equality_skip" };
   const mField = clause.match(AND_FIELD_REF_RE);
   if (mField) return { kind: "field_ref", refField: `field${mField[1]}`, value: mField[2] ?? mField[3] ?? mField[4] };
+  const orParsed = parsePresenceOrConditions(clause);
+  if (orParsed) return { kind: "field_ref_or", refField: orParsed.field, values: orParsed.values };
   return null;
 }
 
@@ -371,14 +386,18 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
             expected_value: clause.predicateType === "blank" ? "" : null,
             condition_type: clause.predicateType === "blank" ? "equals" : "not_blank",
           });
+        } else if (clause.kind === "field_equality_skip") {
+          // fieldN==fieldMは別のcopy機構(extractFieldEqualityRef、下記)で扱われるため、
+          // ここではpresenceConditions行を作らない(&&の他の断片(OR条件等)の解析は妨げない)
         } else if (clause.kind === "cross_ref") {
           const refMatches = lookupField(fieldLookup, clause.refAliasName, clause.refField);
           refMatches.forEach((ref) => {
-            if (ref.cdisc_variable == null) return;
+            const refCdiscVariable = ref.field_type === "meddra" ? `${ref.prefix}LLTCD` : ref.cdisc_variable;
+            if (refCdiscVariable == null) return;
             rows.push({
               cdisc_variable: own.cdisc_variable,
               label: own.label,
-              ref_cdisc_variable: ref.cdisc_variable,
+              ref_cdisc_variable: refCdiscVariable,
               ref_alias_name: clause.refAliasName,
               ref_label: ref.label != null ? ref.label : null,
               expected_value: clause.value,
@@ -388,15 +407,36 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
         } else if (clause.kind === "field_ref") {
           const refMatches = lookupField(fieldLookup, vr.alias_name, clause.refField);
           refMatches.forEach((ref) => {
-            if (ref.cdisc_variable == null || ref.cdisc_variable === own.cdisc_variable) return;
+            const refCdiscVariable = ref.field_type === "meddra" ? `${ref.prefix}LLTCD` : ref.cdisc_variable;
+            if (refCdiscVariable == null || refCdiscVariable === own.cdisc_variable) return;
             rows.push({
               cdisc_variable: own.cdisc_variable,
               label: own.label,
-              ref_cdisc_variable: ref.cdisc_variable,
+              ref_cdisc_variable: refCdiscVariable,
               ref_alias_name: vr.alias_name,
               ref_label: ref.label != null ? ref.label : null,
               expected_value: clause.value,
               condition_type: "equals",
+            });
+          });
+        } else if (clause.kind === "field_ref_or") {
+          // 断片自体がOR条件(例: field22==2||field22==3||...)の場合、同じref_cdisc_variableに対する
+          // 複数のexpected_value行を作る(applyPresenceConditions側でref_cdisc_variableごとに
+          // グルーピングされ、値の集合に対するOR判定になる。異なるref_cdisc_variable同士はAND)
+          const refMatches = lookupField(fieldLookup, vr.alias_name, clause.refField);
+          refMatches.forEach((ref) => {
+            const refCdiscVariable = ref.field_type === "meddra" ? `${ref.prefix}LLTCD` : ref.cdisc_variable;
+            if (refCdiscVariable == null || refCdiscVariable === own.cdisc_variable) return;
+            clause.values.forEach((expectedValue) => {
+              rows.push({
+                cdisc_variable: own.cdisc_variable,
+                label: own.label,
+                ref_cdisc_variable: refCdiscVariable,
+                ref_alias_name: vr.alias_name,
+                ref_label: ref.label != null ? ref.label : null,
+                expected_value: expectedValue,
+                condition_type: "equals",
+              });
             });
           });
         }

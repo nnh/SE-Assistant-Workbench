@@ -202,10 +202,15 @@ function resolvePreferredAliasName(candidates, presenceConditions, builtDomains,
 function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDomains, cdiscVariableToPrefix, ageBounds) {
   if (!data || data.length === 0) return { data, injectedCols: [] };
 
+  // label(own_label)は、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス。
+  // 同じref_cdisc_variable(例: RSORRES)でも、参照元のlabelブロックごとに参照先のref_labelが
+  // 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
+  // これを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
+  // (fieldRefBoundsはlabelを持たないため、その場合はnullのままになる)
   const refInstances = [
-    ...(presenceConditions || []).map((r) => ({ ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
-    ...(fieldRefBounds || []).map((r) => ({ ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
-    ...(ageBounds || []).map((r) => ({ ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(presenceConditions || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(fieldRefBounds || []).map((r) => ({ label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
+    ...(ageBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
   ].filter((r) => r.ref_cdisc_variable != null);
 
   const hasDataAliasName = "alias_name" in data[0];
@@ -230,21 +235,33 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
     refInstances
       .filter((r) => r.ref_cdisc_variable === refVar)
       .forEach((r) => {
-        const key = `${r.ref_alias_name}|${r.ref_label}`;
+        const key = `${r.label}|${r.ref_alias_name}|${r.ref_label}`;
         if (!pinKeys.has(key)) {
           pinKeys.add(key);
-          pins.push({ alias: r.ref_alias_name, label: r.ref_label });
+          pins.push({ ownLabel: r.label, alias: r.ref_alias_name, label: r.ref_label });
         }
       });
 
     pins.forEach((pin) => {
       const pinAlias = pin.alias;
       const pinLabel = pin.label;
+      const ownLabel = pin.ownLabel;
 
+      // 絞り込みはown_label(この条件が定義されているdata自身のインスタンス)を優先する。
+      // ref_cdisc_variable(例: RSORRES)がブロックごとに異なるref_labelを持つとき、own_labelが
+      // 無いと「pin_labelがたまたまdata自身のlabelの1つと一致するか」でしか判定できず、参照先と
+      // 参照元のlabelの語彙が違う(例: MHのlabelは047〜051、RSのlabelは034/035/036/...)場合に
+      // 絞り込みが常に失敗し、最後に処理したpinの値が全ブロックに上書きされてしまう(既知のバグ)。
+      // own_labelが無い場合(fieldRefBounds由来)は従来通りpin_labelで判定する
       let targetRows;
       if (hasDataAliasName && pinAlias != null && dataAliasNames.has(pinAlias)) {
         targetRows = data.map((row) => row.alias_name === pinAlias);
-        if (hasDataAlias && pinLabel != null) {
+        if (hasDataAlias && ownLabel != null) {
+          const labelsInAlias = new Set(data.filter((row, i) => targetRows[i]).map((row) => row.label));
+          if (labelsInAlias.has(ownLabel)) {
+            targetRows = data.map((row, i) => targetRows[i] && row.label === ownLabel);
+          }
+        } else if (hasDataAlias && pinLabel != null) {
           const labelsInAlias = new Set(data.filter((row, i) => targetRows[i]).map((row) => row.label));
           if (labelsInAlias.has(pinLabel)) {
             targetRows = data.map((row, i) => targetRows[i] && row.label === pinLabel);

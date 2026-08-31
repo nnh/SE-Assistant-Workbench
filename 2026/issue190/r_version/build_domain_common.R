@@ -415,13 +415,21 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
   if (is.null(age_bounds)) {
     age_bounds <- tibble(ref_cdisc_variable = character(0))
   }
+  # labelは、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス(label)。
+  # 同じref_cdisc_variable(例: RSORRES)でも、参照元のlabelブロックごとに参照先のref_labelが
+  # 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
+  # このlabelを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
+  # (field_ref_bounds/age_boundsはlabelを持たないため、その場合はNAのままになる)
   ref_instances <- bind_rows(
-    presence_conditions %>% select(any_of(c("ref_cdisc_variable", "ref_alias_name", "ref_label"))),
+    presence_conditions %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
     field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
-    age_bounds %>% select(any_of(c("ref_cdisc_variable", "ref_alias_name", "ref_label")))
+    age_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
     distinct()
+  if (!("label" %in% names(ref_instances))) {
+    ref_instances[["label"]] <- NA_character_
+  }
   if (!("ref_alias_name" %in% names(ref_instances))) {
     ref_instances[["ref_alias_name"]] <- NA_character_
   }
@@ -454,23 +462,32 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
     # 型をref_data側に合わせた全NA列を用意し、pinごとに該当行だけ値を埋めていく
     result_col <- ref_data[[ref_var]][rep(NA_integer_, nrow(data))]
 
-    pins <- ref_instances %>% filter(ref_cdisc_variable == ref_var) %>% distinct(ref_alias_name, ref_label)
+    pins <- ref_instances %>% filter(ref_cdisc_variable == ref_var) %>% distinct(label, ref_alias_name, ref_label)
     for (i in seq_len(nrow(pins))) {
       pin_alias <- pins[["ref_alias_name"]][i]
       pin_label <- pins[["ref_label"]][i]
+      own_label <- pins[["label"]][i]
 
       # このpinを適用する対象行: dataがalias_nameを持ち、そのpinのref_alias_nameが
       # data自身のalias_nameのいずれかと一致するならその行だけに絞る。一致しない(またはalias_name不明)なら
-      # 真に外部の固定参照とみなして全行を対象にする。さらに、dataがlabelも持っており、かつ
-      # pin_labelがそのalias_name内でdata自身が実際に持っているlabelの1つでもある場合は、
-      # 同じalias_name内の他labelを巻き込まないようlabelでも絞り込む(例: thrombophilia内の
-      # label="006"へのpinを、同じalias_nameの他label(000〜005)に誤って適用しないため)。
-      # 一方、pin_labelがdata自身のlabel群に存在しない場合(例: PC(label=111〜114)がEC側の
+      # 真に外部の固定参照とみなして全行を対象にする。
+      # さらにlabelでも絞り込む場合、優先するのはown_label(この条件が定義されているdata自身の
+      # インスタンス)。ref_cdisc_variable(例: RSORRES)がブロックごとに異なるref_labelを持つとき
+      # (例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロックを参照する)、own_labelが無いと
+      # 「pin_labelがたまたまdata自身のlabelの1つと一致するか」でしか判定できず、参照先と参照元の
+      # labelの語彙が違う(例: MHのlabelは047〜051、RSのlabelは034/035/036/...)場合に絞り込みが
+      # 常に失敗し、最後に処理したpinの値が全ブロックに上書きされてしまう(既知のバグ)。
+      # own_labelがあればそれを使い、無い場合(field_ref_bounds/age_bounds由来)は従来通り
+      # pin_labelがdata自身のlabel群に含まれるかで判定する(例: thrombophilia内のlabel="006"への
+      # pinを、同じalias_nameの他label(000〜005)に誤って適用しないため)。
+      # pin_label・own_labelいずれもdata自身のlabelと無関係な場合(例: PC(label=111〜114)がEC側の
       # label="054"を参照するような、別prefixの別の繰り返し軸を参照するケース)は、label不一致で
       # 全行が対象外になってしまうのを避けるため、alias_nameのみで絞り込む
       target_rows <- if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
         rows <- data[["alias_name"]] == pin_alias
-        if (has_data_alias && !is.na(pin_label) && pin_label %in% data[["label"]][rows]) {
+        if (has_data_alias && !is.na(own_label) && own_label %in% data[["label"]][rows]) {
+          rows <- rows & data[["label"]] == own_label
+        } else if (has_data_alias && !is.na(pin_label) && pin_label %in% data[["label"]][rows]) {
           rows <- rows & data[["label"]] == pin_label
         }
         rows

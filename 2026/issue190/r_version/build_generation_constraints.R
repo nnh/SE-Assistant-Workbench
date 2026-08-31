@@ -94,6 +94,21 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     filter(!is.na(cdisc_variable))
 
+  # ref_alias_name/ref_fieldからcdisc_variableを引く。参照先がfield_type=="meddra"の場合、
+  # 値(例: 10052464)はLLT名ではなくLLTコードとの比較を意図しているため、その参照先自身のprefixの
+  # LLTCD列(例: AELLTCD)に差し替える(冒頭の平坦なOR専用presence_conditionsと同じルール)。
+  # 見つからなければcharacter(0)を返す
+  resolve_ref_cdisc_variable <- function(ref_alias_name, ref_field) {
+    var <- field_to_cdisc_variable %>% filter(alias_name == ref_alias_name, field == ref_field) %>% pull(cdisc_variable) %>% unname()
+    if (length(var) == 0) return(character(0))
+    ref_type <- field_to_field_type %>% filter(alias_name == ref_alias_name, field == ref_field) %>% pull(field_type) %>% unname()
+    ref_prefix <- field_to_prefix %>% filter(alias_name == ref_alias_name, field == ref_field) %>% pull(prefix) %>% unname()
+    if (length(ref_type) > 0 && coalesce(ref_type[1] == "meddra", FALSE) && length(ref_prefix) > 0) {
+      return(str_c(ref_prefix[1], "LLTCD"))
+    }
+    var[1]
+  }
+
   and_presence_conditions <- ref_condition_rows %>%
     pmap_dfr(function(alias_name, field_name, value, cdisc_variable, label) {
       parsed <- parse_and_conditions(value)
@@ -107,7 +122,11 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
 
       parsed %>%
         map_dfr(function(clause) {
-          if (clause[["kind"]] == "predicate") {
+          if (clause[["kind"]] == "field_equality_skip") {
+            # fieldN==fieldMは別のcopy機構(field_equality_copy_conditions、下記)で扱われるため、
+            # ここではpresence_conditions行を作らない(&&の他の断片(OR条件等)の解析は妨げない)
+            return(tibble())
+          } else if (clause[["kind"]] == "predicate") {
             own_prefix <- field_to_prefix %>% filter(alias_name == .env$alias_name, field == .env$field_name) %>% pull(prefix) %>% unname()
             if (length(own_prefix) == 0) return(tibble())
             tibble(
@@ -120,7 +139,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
               condition_type = if_else(clause[["predicate_type"]] == "blank", "equals", "not_blank")
             )
           } else if (clause[["kind"]] == "cross_ref") {
-            ref_var <- field_to_cdisc_variable %>% filter(alias_name == clause[["ref_alias_name"]], field == clause[["ref_field"]]) %>% pull(cdisc_variable) %>% unname()
+            ref_var <- resolve_ref_cdisc_variable(clause[["ref_alias_name"]], clause[["ref_field"]])
             if (length(ref_var) == 0) return(tibble())
             ref_lbl <- field_to_label %>% filter(alias_name == clause[["ref_alias_name"]], field == clause[["ref_field"]]) %>% pull(label) %>% unname()
             tibble(
@@ -133,7 +152,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
               condition_type = "equals"
             )
           } else if (clause[["kind"]] == "field_ref") {
-            ref_var <- field_to_cdisc_variable %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(cdisc_variable) %>% unname()
+            ref_var <- resolve_ref_cdisc_variable(alias_name, clause[["ref_field"]])
             if (length(ref_var) == 0 || ref_var[1] == cdisc_variable) return(tibble())
             ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
             tibble(
@@ -143,6 +162,22 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
               ref_alias_name = alias_name,
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
               expected_value = clause[["value"]],
+              condition_type = "equals"
+            )
+          } else if (clause[["kind"]] == "field_ref_or") {
+            # 断片自体がOR条件(例: field22==2||field22==3||...)の場合、同じref_cdisc_variableに対する
+            # 複数のexpected_value行を作る(apply_presence_conditions側でref_cdisc_variableごとに
+            # グルーピングされ、値の集合に対するOR判定になる。異なるref_cdisc_variable同士はAND)
+            ref_var <- resolve_ref_cdisc_variable(alias_name, clause[["ref_field"]])
+            if (length(ref_var) == 0 || ref_var[1] == cdisc_variable) return(tibble())
+            ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
+            tibble(
+              cdisc_variable = cdisc_variable,
+              label = label,
+              ref_cdisc_variable = ref_var[1],
+              ref_alias_name = alias_name,
+              ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
+              expected_value = clause[["values"]],
               condition_type = "equals"
             )
           } else {
