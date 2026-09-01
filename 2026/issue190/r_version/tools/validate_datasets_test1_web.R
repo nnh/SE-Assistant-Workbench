@@ -50,23 +50,34 @@ source(here("tools/validate_test1_shared.R"))
 # 値必須・空欄・日付チェックで繰り返し参照するドメインを短い変数名に控えておく(タイプ量を減らすため)。
 # cmはgrDevicesパッケージの関数名と同じだが、ここで代入することでローカル変数が優先される(shadow)
 # だけなので問題ない
-cm <- generated_datasets[["CM"]]
-ds <- generated_datasets[["DS"]]
-ec <- generated_datasets[["EC"]]
-fa <- generated_datasets[["FA"]]
-lb <- generated_datasets[["LB"]]
-mh <- generated_datasets[["MH"]]
-pe <- generated_datasets[["PE"]]
-pr <- generated_datasets[["PR"]]
-qs <- generated_datasets[["QS"]]
-rs <- generated_datasets[["RS"]]
-sc <- generated_datasets[["SC"]]
-tr <- generated_datasets[["TR"]]
+# リストの名前を小文字に変換
+names(other_domains) <- tolower(names(other_domains))
 
-# DMのBRTHDTC/RFSTDTCが今日以前・RFICDTCがBRTHDTC以降今日以前であることを確認する(tools/validate_common.R)
-check_date_before_today(dm, "BRTHDTC", domain_name = "DM")
-check_date_before_today(dm, "RFSTDTC", domain_name = "DM")
-check_date_after_var_before_today(dm, "RFICDTC", "BRTHDTC", domain_name = "DM")
+# グローバル環境に一括展開
+list2env(other_domains, envir = .GlobalEnv)
+
+# test1個別チェック
+
+# 日付整合性
+ae %>% check_date_before_today("AESTDTC", domain_name = "AE")
+ae %>% check_date_after_var_before_today("AEENDTC", "AESTDTC", domain_name = "AE")
+ce %>% check_date_before_today("CEDTC", domain_name = "CE")
+cm %>% check_date_before_today("CMSTDTC", domain_name = "CM")
+dm %>% check_date_before_today("BRTHDTC", domain_name = "DM")
+dm %>% check_date_before_today("RFSTDTC", domain_name = "DM")
+dm %>% check_date_after_var_before_today("RFICDTC", "BRTHDTC", domain_name = "DM")
+ds %>% check_date_before_today("DSSTDTC", domain_name = "DS")
+ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
+ec %>% check_date_before_today("ECSTDTC", domain_name = "CM")
+lb %>% check_date_before_today("LBDTC", domain_name = "LB")
+mh %>% check_date_before_today("MHDTC", domain_name = "MH")
+pe %>% check_date_before_today("PEDTC", domain_name = "PE")
+pr %>% check_date_before_today("PRSTDTC", domain_name = "PR")
+qs %>% check_date_before_today("QSDTC", domain_name = "QS")
+rs %>% check_date_before_today("RSDTC", domain_name = "RS")
+sc %>% check_date_before_today("SCDTC", domain_name = "SC")
+tr %>% check_date_before_today("TRDTC", domain_name = "TR")
+# 数値上限下限
 fa %>% filter(FAOBJ == "Tumor Involvement") %>% check_numeric_range("FAORRES", min_value = 0, max_value = 99, domain_name = "FA")
 lb %>% filter(LBTESTCD == "PBTCCE") %>% check_numeric_range("LBORRES", min_value = 0, max_value = 100, domain_name = "LB")
 lb %>% filter(LBTESTCD == "HGB") %>% check_numeric_range("LBORRES", max_value = 30, domain_name = "LB")
@@ -91,18 +102,6 @@ lb %>% filter(LBTESTCD == "CRP") %>% check_numeric_range("LBORRES", max_value = 
 lb %>% filter(LBTESTCD == "IL2SR") %>% check_numeric_range("LBORRES", max_value = 99999, domain_name = "LB")
 lb %>% filter(LBTESTCD == "FIBRINO") %>% check_numeric_range("LBORRES", max_value = 9999, domain_name = "LB")
 
-cm %>% check_date_before_today("CMSTDTC", domain_name = "CM")
-ds %>% check_date_before_today("DSSTDTC", domain_name = "DS")
-ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
-ec %>% check_date_before_today("ECSTDTC", domain_name = "CM")
-lb %>% check_date_before_today("LBDTC", domain_name = "LB")
-mh %>% check_date_before_today("MHDTC", domain_name = "MH")
-pe %>% check_date_before_today("PEDTC", domain_name = "PE")
-pr %>% check_date_before_today("PRSTDTC", domain_name = "PR")
-qs %>% check_date_before_today("QSDTC", domain_name = "QS")
-rs %>% check_date_before_today("RSDTC", domain_name = "RS")
-sc %>% check_date_before_today("SCDTC", domain_name = "SC")
-tr %>% check_date_before_today("TRDTC", domain_name = "TR")
 
 # FA(FABLFL=="Y"、baseline評価)のFAOBJ==faobjについて、FASTATに応じたFAORRESの必須/空欄を確認する。
 # FASTAT==""(実施済み)ならFAORRESは必須、FASTAT=="NOT DONE"(未実施)ならFAORRESは空欄のはず
@@ -219,10 +218,17 @@ pr %>% filter(PRCAT == "Allogeneic" & PROCCUR == "Y") %>% check_required_vars("P
 ec %>% check_required_vars("ECSTDTC", domain_name = "EC")
 fa %>% filter(FAOBJ != "Bone Marrow Infiltration" & VISITNUM != 100) %>% check_required_vars("FAORRES", domain_name = "FA")
 rs %>% filter(RSENTPT != 100 | (RSENTPT == 100 & SPDEVID == 1)) %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
+ce %>% check_required_vars("CEOCCUR", domain_name = "CE")
+ce %>% filter(CEOCCUR == "Y") %>% check_required_vars(c("CETERM", "CEDTC"), domain_name = "CE")
+ce %>% filter(CEOCCUR == "N") %>% check_blank_vars(c("CETERM", "CEDTC"), domain_name = "CE")
+ds %>% check_required_vars(c("DSTERM", "DSDTC", "DSSTDTC"), domain_name = "DS")
+ae %>% check_required_vars(c("AETERM", "AETOXGR", "AESTDTC", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC"), domain_name = "AE")
+ae %>% filter(AESER =="Y") %>% check_required_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
+ae %>% filter(AESER !="Y") %>% check_blank_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
-compare_domain(generated_datasets, datasets, "DM", "USUBJID")
-compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"))
-compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"))
-compare_domain_by_index(generated_datasets, datasets, 1, exclude = special_domain_names)
+#compare_domain(generated_datasets, datasets, "DM", "USUBJID")
+#compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"))
+#compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"))
+#compare_domain_by_index(generated_datasets, datasets, 1, exclude = special_domain_names)
 # compare_domain_by_index(generated_datasets, datasets, 13, exclude = special_domain_names)
