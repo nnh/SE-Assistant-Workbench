@@ -805,6 +805,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
+  data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVars, prefix);
   data = applyFieldRefBounds(data, spec, scopedFieldRefBounds);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
@@ -1130,6 +1131,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
+  data = dropAllBlankRequiredRecords(data, targetVars, requiredVars, prefix);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
     injected.injectedCols.forEach((c) => delete row[c]);

@@ -50,7 +50,7 @@ source(here("tools/validate_common.R"))
 # ここから下はvalidate_datasets_test1.Rと共通の処理(CM/TR特別チェック・run_full_validation
 # 呼び出し・ドメイン名一覧の確認)。validate_test1_shared.Rにまとめてある
 source(here("tools/validate_test1_shared.R"))
-
+rm(generated_datasets)
 # 値必須・空欄・日付チェックで繰り返し参照するドメインを短い変数名に控えておく(タイプ量を減らすため)。
 # cmはgrDevicesパッケージの関数名と同じだが、ここで代入することでローカル変数が優先される(shadow)
 # だけなので問題ない
@@ -178,9 +178,22 @@ check_prior_line_therapy_gating(2, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(3, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(4, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(5, cm, rs, mh, prior_line_therapy_by_scorres)
-c("CMTRT") %>%
+c("CMCAT", "CMPRESP", "CMOCCUR", "CMENRTPT", "CMENTPT") %>%
   walk(~ run_value_equals_checks_from_csv(cm, "CM", .x, fixed_value_checks_csv_path))
-
+tmp_cm <- cm %>% filter(SPDEVID == 1)
+c("CMTRT") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+tmp_cm <- cm %>% filter(SPDEVID != 1 & SPDEVID != 5)
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, "_1"), c(CMTRT))
+c("CMTRT_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+# 治療歴５だけは複数治療名が入る
+tmp_cm <- cm %>%
+  filter(SPDEVID == 5) %>%
+  rename(CMTRT_1 = CMTRT)
+tmp_cm %>%
+  separate_rows(CMTRT_1, sep = ",\\s*") %>%
+  run_value_equals_checks_from_csv("CM", "CMTRT_1", fixed_value_checks_csv_path)
 dm %>% check_required_vars(c("RFICDTC", "BRTHDTC", "SEX", "RACE", "RFSTDTC"), domain_name = "DM")
 c("SEX", "RACE") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
 fa %>% filter(FABLFL == "Y" & FAOBJ == "Bulky Mass") %>% check_required_vars("FAORRES", domain_name = "FA")
@@ -354,8 +367,13 @@ ae %>% filter(AESER !="Y") %>% check_blank_vars(c("AESDTH", "AESLIFE", "AESHOSP"
 
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
-#compare_domain(generated_datasets, datasets, "DM", "USUBJID")
-#compare_domain(generated_datasets, datasets, "AE", c("USUBJID", "AESEQ"))
-#compare_domain(generated_datasets, datasets, "DS", c("USUBJID", "DSSEQ"))
-#compare_domain_by_index(generated_datasets, datasets, 1, exclude = special_domain_names)
+csv_list <- list()
+csv_list$DM <- dm
+csv_list$AE <- ae
+csv_list$DS <- ds
+compare_domain(csv_list, datasets, "DM", "USUBJID")
+compare_domain(csv_list, datasets, "AE", c("USUBJID", "AESEQ"))
+compare_domain(csv_list, datasets, "DS", c("USUBJID", "DSSEQ"))
+compare_domain_by_index(other_domains, datasets, 1, exclude = special_domain_names)
+compare_domain_by_index(other_domains, datasets, 2, exclude = special_domain_names)
 # compare_domain_by_index(generated_datasets, datasets, 13, exclude = special_domain_names)

@@ -52,6 +52,26 @@ function sortDateVarsByDependency(dateVars, dateRefBounds) {
   return sorted;
 }
 
+// targetVars(このドメイン自身の対象列)のうちrequiredVars(全ドメイン共通の必須cdisc_variable一覧)に
+// 含まれる列(このドメインの必須列)を求め、それらが全て空(nullまたは空文字列"")であるレコードを
+// 削除する。presence_conditions等のゲーティングにより、そのインスタンス(行)が実質「存在しない」もの
+// (必須項目も含め何も入力されていない)になった場合、ダミーデータとしてもプレースホルダー行を残さず
+// 削除するために使う。このドメインに必須列が1つも無い場合(requiredVarsとtargetVarsの共通部分が空の
+// 場合)は何もしない。ただしprefixSTAT(例: LBSTAT)が"NOT DONE"の行は、必須列が全て空でも削除しない
+// (未実施を示す正当な状態のため)(R版drop_all_blank_required_records()に対応)
+function dropAllBlankRequiredRecords(data, targetVars, requiredVars, prefix) {
+  if (!data[0]) return data;
+  const requiredSet = new Set(requiredVars || []);
+  const domainRequiredVars = targetVars.filter((v) => requiredSet.has(v) && v in data[0]);
+  if (domainRequiredVars.length === 0) return data;
+  const statVar = `${prefix}STAT`;
+  const hasStatVar = statVar in data[0];
+  return data.filter((row) => {
+    if (hasStatVar && row[statVar] === "NOT DONE") return true;
+    return !domainRequiredVars.every((v) => row[v] == null || row[v] === "");
+  });
+}
+
 // 同じcdisc_variable(date型)が複数のalias_name(シート)にまたがって定義されているドメイン
 // (例: AEが"sae_report"/"ae2"の2シートに分かれる、EC/LB/VSが来院ごとに多数のシートに分かれる)では、
 // 各シートの日付が互いに独立に生成されるため、シートの本来の並び順(sheet_orders$seq、

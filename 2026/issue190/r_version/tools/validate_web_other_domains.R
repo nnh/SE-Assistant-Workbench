@@ -51,10 +51,21 @@ report_other_domains_validation(validate_other_domains(other_domains_web, dm, cd
 # 差があれば、それがWeb側の未実装箇所を示すのでFAILとして検出する(validate_other_domains()は
 # 「許容範囲内か」しか見ないため、「R版にはあるがWeb版に無いパターン」までは検出できない。
 # ここで直接比較する。validate_web_ds.R等のcompare_r_web_ds()と同じ考え方を、全ドメインに適用する)
-# test3(fortest3_260826_1452.json)のPR:PROCCUR/PRPRESPは、PRのalias_name一覧のうち"sct1"だけが
-# この2項目を定義しておらず、被験者ごとのalias_name選択抽選で"sct1"が選ばれた場合だけ空欄になる、
-# 真の乱数由来の既知パターン(presence_conditions等のゲーティングは無い。R自身を複数回実行しても
-# 同じ頻度で発生することを確認済み)。test3の場合に限りFAILではなくワーニング扱いにする
+# test3(fortest3_260826_1452.json)には、R/Web双方に共通する真の乱数由来で、R/Web比較が
+# たまたま食い違うことがある既知パターンが複数ある(presence_conditions等のゲーティングの
+# 実装差ではない。R自身を複数回実行しても同じ頻度で発生することを確認済み)。
+# 該当する場合はFAILではなくワーニング扱いにする:
+# - PR:PROCCUR/PRPRESP・CM:CMOCCUR/CMPRESP: それぞれのalias_name一覧のうち"sct1"だけが
+#   この2項目を定義しておらず、被験者ごとのalias_name選択抽選で"sct1"が選ばれた場合だけ空欄になる
+# - FA:VISITNUM: FATESTCD=="EORTCMSG"(alias_name"deepmycosisz"、category="multiple")・
+#   "ASTCTGR"(alias_name"immunomonitoring1/2/3"、category="ordered")はVISITNUMを定義しない
+#   alias由来で、レコード自体が生成される件数が乱数依存(0件になる回もある)なため
+test3_known_limitation_vars <- list(
+  PR = c("PROCCUR", "PRPRESP"),
+  CM = c("CMOCCUR", "CMPRESP"),
+  FA = c("VISITNUM")
+)
+
 compare_r_web_other_domains <- function(other_domains_r, other_domains_web) {
   is_test3 <- identical(basename(json_path), "fortest3_260826_1452.json")
   common_domains <- intersect(names(other_domains_r), names(other_domains_web))
@@ -72,10 +83,10 @@ compare_r_web_other_domains <- function(other_domains_r, other_domains_web) {
           r_has_blank <- any(is.na(r_col) | r_col == "")
           web_has_blank <- any(is.na(web_col) | web_col == "")
           passed <- r_has_blank == web_has_blank
-          known_limitation <- !passed && is_test3 && domain_name == "PR" && col %in% c("PROCCUR", "PRPRESP")
+          known_limitation <- !passed && is_test3 && col %in% test3_known_limitation_vars[[domain_name]]
           detail <- str_c("R版に空欄あり=", r_has_blank, " / Web版に空欄あり=", web_has_blank)
           if (known_limitation) {
-            detail <- str_c(detail, "(alias_name\"sct1\"のみPROCCUR/PRPRESP未定義。乱数選択次第で発生する既知のパターン)")
+            detail <- str_c(detail, "(alias_nameの一部がこの項目を未定義、またはレコード自体の生成数が乱数依存。乱数次第で発生する既知のパターン)")
           } else if (r_has_blank && !web_has_blank) {
             detail <- str_c(
               detail, "(R版は空欄になる場合があるのにWeb版は一度も空欄にならない: ",
@@ -97,7 +108,7 @@ report_r_web_comparison <- function(results) {
   if (nrow(known_fail) > 0) {
     known_summary <- known_fail %>% mutate(label = str_c(domain, ":", check)) %>% pull(label)
     warning(str_c(
-      "R/Web比較: ", nrow(known_fail), "件は既知の乱数パターン(test3のPR sct1)によるワーニング(",
+      "R/Web比較: ", nrow(known_fail), "件は既知の乱数パターン(test3)によるワーニング(",
       paste(known_summary, collapse = ", "), ")"
     ), call. = FALSE, immediate. = TRUE)
   }

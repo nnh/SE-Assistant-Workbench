@@ -311,6 +311,24 @@ apply_presence_conditions <- function(data, presence_conditions) {
   data
 }
 
+# target_vars(このドメイン自身の対象列)のうちrequired_vars(全ドメイン共通の必須cdisc_variable
+# リスト)に含まれる列(このドメインの必須列)を求め、それらが全て空(NAまたは空文字列"")である
+# レコードを削除する。presence_conditions等のゲーティングにより、そのインスタンス(行)が
+# 実質「存在しない」もの(必須項目も含め何も入力されていない)になった場合、ダミーデータとしても
+# プレースホルダー行を残さず削除するために使う。このドメインに必須列が1つも無い場合
+# (required_varsとtarget_varsの共通部分が空の場合)は何もしない。
+# ただしxxSTAT(xxはprefix。例: LBSTAT)が"NOT DONE"の行は、必須列が全て空でも削除しない
+# (未実施を示す正当な状態のため)
+drop_all_blank_required_records <- function(data, target_vars, required_vars, prefix) {
+  domain_required_vars <- intersect(required_vars, target_vars) %>% intersect(colnames(data))
+  if (length(domain_required_vars) == 0) {
+    return(data)
+  }
+  stat_var <- str_c(prefix, "STAT")
+  not_done <- if (stat_var %in% colnames(data)) data[[stat_var]] == "NOT DONE" & !is.na(data[[stat_var]]) else FALSE
+  data %>% filter(not_done | !if_all(all_of(domain_required_vars), ~ is.na(.x) | (is.character(.x) & .x == "")))
+}
+
 # field_ref_bounds(cdisc_variable, ref_cdisc_variable, bound_type)に基づき、
 # cdisc_variableの値がref_cdisc_variableの値との大小関係(max_value/min_value/exact_value)を
 # 満たさない場合、条件を満たすradio_button選択肢から選び直す。
@@ -1229,6 +1247,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
+    drop_all_blank_required_records(target_vars, required_vars, prefix) %>%
     apply_field_ref_bounds(spec, field_ref_bounds) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
@@ -1470,6 +1489,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
+    drop_all_blank_required_records(target_vars, required_vars, prefix) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
