@@ -212,8 +212,13 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
   // spec上のcdisc_variable名のままだと重複生成されてしまう。ここで除外する
   const dsSpec = cdiscVariableValues.filter((r) => r.prefix === "DS" && r.cdisc_variable !== "DSEPOCH");
 
+  const dsDateVars = [...new Set(dsSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
+
   ds = populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds);
   ds = populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds);
+  // DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
+  // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
+  ds = reorderDatesBySheetSeq(ds, dsDateVars, dsSpec, registrationStartDate);
   ds = populateDsDummyFields(ds, dsSpec);
   ds = addDsSeq(ds);
 

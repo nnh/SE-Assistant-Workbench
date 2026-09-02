@@ -862,6 +862,96 @@ resolve_preferred_alias_name <- function(candidates, presence_conditions, built_
     select(-.satisfied)
 }
 
+# 同じcdisc_variable(date型)が複数のalias_name(シート)にまたがって定義されているドメイン
+# (例: AEが"sae_report"/"ae2"の2シートに分かれる、EC/LB/VSが来院ごとに多数のシートに分かれる)では、
+# 各シートの日付が互いに独立に生成されるため、シートの本来の並び順(sheet_orders$seq、
+# EDC仕様上のフォーム表示順)と生成された日付の前後関係が矛盾することがある
+# (例: 来院1のLBDTCが来院3のLBDTCより後になる)。
+# 被験者ごとに、シート(alias_name)ブロック単位でまとめて日付をシフトすることでこれを解消する:
+# 各(USUBJID, alias_name)ブロックの代表日付(そのブロック内で最も早い非NA日付)を求め、
+# sheet_seq昇順に並べたブロックに、代表日付を昇順に並べ替えたものを割り当て直す。
+# ブロック内の全date型列を同じ日数分シフトすることで、ブロック内の関係(同じ行の開始日<=終了日、
+# 同じalias内のlabelを跨ぐ連鎖等)は変えずに保つ。シフト後の値は被験者の中止日(discontinuation_date、
+# 無ければ今日)を上限にする(この関数はclamp_dates_to_discontinuationより後に呼ぶこと。
+# シフトが中止日を超えないようこの関数自身で保証するため、これより後に他の日付再生成処理を
+# 挟むと、その処理がシフト結果を独立に書き換えてalias間の順序を崩してしまう可能性がある)。
+# alias_name列を持たない、またはdate_varsが複数aliasにまたがらないドメインでは何もしない
+reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, registration_start_date, discontinuation_date = NULL) {
+  if (!("alias_name" %in% colnames(data)) || !("USUBJID" %in% colnames(data))) {
+    return(data)
+  }
+  date_vars <- intersect(date_vars, colnames(data))
+  if (length(date_vars) == 0) {
+    return(data)
+  }
+
+  alias_seq_map <- cdisc_variable_values %>%
+    filter(!is.na(sheet_seq)) %>%
+    distinct(alias_name, sheet_seq)
+  if (nrow(alias_seq_map) == 0) {
+    return(data)
+  }
+
+  reg_start <- as.Date(registration_start_date)
+  today <- Sys.Date()
+  discon_lookup <- NULL
+  if (!is.null(discontinuation_date) && nrow(discontinuation_date) > 0) {
+    discon_map <- discontinuation_date %>% filter(!is.na(DISCONDTC)) %>% distinct(USUBJID, .keep_all = TRUE)
+    discon_lookup <- set_names(as.Date(discon_map[["DISCONDTC"]]), discon_map[["USUBJID"]])
+  }
+
+  date_long <- data %>%
+    mutate(.row_id = row_number()) %>%
+    select(.row_id, USUBJID, alias_name, all_of(date_vars)) %>%
+    pivot_longer(cols = all_of(date_vars), names_to = "var", values_to = "val") %>%
+    filter(!is.na(val))
+  if (nrow(date_long) == 0) {
+    return(data)
+  }
+
+  anchors <- date_long %>%
+    group_by(USUBJID, alias_name) %>%
+    summarise(anchor = min(as.Date(val)), .groups = "drop") %>%
+    inner_join(alias_seq_map, by = "alias_name")
+
+  multi_usubjid <- anchors %>% count(USUBJID) %>% filter(n > 1) %>% pull(USUBJID)
+  anchors <- anchors %>% filter(USUBJID %in% multi_usubjid)
+  if (nrow(anchors) == 0) {
+    return(data)
+  }
+
+  delta_table <- anchors %>%
+    group_by(USUBJID) %>%
+    arrange(sheet_seq, .by_group = TRUE) %>%
+    mutate(new_anchor = sort(anchor)) %>%
+    ungroup() %>%
+    mutate(delta = as.numeric(new_anchor - anchor)) %>%
+    filter(delta != 0) %>%
+    select(USUBJID, alias_name, delta)
+  if (nrow(delta_table) == 0) {
+    return(data)
+  }
+
+  data <- data %>%
+    left_join(delta_table, by = c("USUBJID", "alias_name"))
+
+  row_upper_bound <- rep(today, nrow(data))
+  if (!is.null(discon_lookup)) {
+    row_discon <- discon_lookup[data[["USUBJID"]]]
+    row_upper_bound <- pmin(row_upper_bound, row_discon, na.rm = TRUE)
+  }
+
+  for (var_name in date_vars) {
+    has_val <- !is.na(data[[var_name]]) & !is.na(data[["delta"]])
+    if (!any(has_val)) next
+    new_dates <- as.Date(data[[var_name]][has_val]) + data[["delta"]][has_val]
+    new_dates <- pmin(pmax(new_dates, reg_start), row_upper_bound[has_val])
+    data[[var_name]][has_val] <- as.character(new_dates)
+  }
+
+  data %>% select(-delta)
+}
+
 # other_domainsのdate型項目は登録開始日〜今日の範囲でランダムに生成されるが、被験者の中止日
 # (DISCONDTC)は考慮しないため、中止後に検査等が発生しているように見えてしまうことがある
 # (validate_other_domains.Rのno_records_after_discontinuationチェックで検出される)。
@@ -1108,6 +1198,10 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     populate_radio_button_fields(spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds) %>%
     clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds) %>%
+    # 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
+    # alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
+    # (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
+    reorder_dates_by_sheet_seq(date_vars, spec, registration_start_date, discontinuation_date) %>%
     populate_dose_fields(target_vars) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq(seq_var)
@@ -1346,6 +1440,11 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
     date_ref_bounds
   }
   data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp)
+  # 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
+  # シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。
+  # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
+  # regenerate_date_chain()・clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
+  data <- reorder_dates_by_sheet_seq(data, date_vars, spec, registration_start_date, discontinuation_date)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、

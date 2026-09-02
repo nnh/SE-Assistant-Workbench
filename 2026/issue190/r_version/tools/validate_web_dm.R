@@ -48,7 +48,7 @@ valid_arm_codes <- function(sheets, sheet_groups) {
   sheets %>%
     keep(~ .x[["alias_name"]] %in% default_allocation_alias) %>%
     map(~ .x[["allocation"]][["groups"]]) %>%
-    flatten() %>%
+    purrr::flatten() %>%
     map_chr(~ .x[["code"]]) %>%
     union("")
 }

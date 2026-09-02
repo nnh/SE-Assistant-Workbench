@@ -9,6 +9,10 @@ library(here)
 # 「ZIPで一括ダウンロード」したdummy_data.zipの展開先に設定しておくこと
 rm(list = ls())
 
+# check_value_equals(固定値チェック)用のCSV設定ファイルのパス。内容(チェックしたい固定値)は
+# 試験ごとに異なるため、test_config.R(共通)ではなくここで指定する。リポジトリ外の任意の場所でよい
+fixed_value_checks_csv_path <- "/Users/mariko/Downloads/fixed_value_checks_test2.csv"
+
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))
 
@@ -35,10 +39,14 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "who_drug_idf", "json_path", "discontinuation_date")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "who_drug_idf", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
 
 source(here("tools/validate_common.R"))
 
 # ここから下はvalidate_datasets_test2.Rと共通の処理(CM/TR特別チェック・run_full_validation
 # 呼び出し・ドメイン名一覧の確認)。validate_test2_shared.Rにまとめてある
 source(here("tools/validate_test2_shared.R"))
+
+# 固定値チェック(fixed_value_checks_csv_pathのdomain/var(/visit)行と一致するか確認)。
+# 例: qs %>% run_value_equals_checks_from_csv("QS", "QSORRES", fixed_value_checks_csv_path)
+#     qs %>% run_value_equals_checks_from_csv("QS", "QSORRES", fixed_value_checks_csv_path, visit = "Cycle1Day1")

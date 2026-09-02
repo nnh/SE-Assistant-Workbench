@@ -37,9 +37,14 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS", cdisc_variable != "DSEPOCH")
   target_vars <- compute_target_vars(ds, ds_spec)
 
+  ds_date_vars <- ds_spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique()
+
   ds <- ds %>%
     populate_radio_button_fields(ds_spec, target_vars, required_vars, numeric_bounds) %>%
     populate_date_fields(ds_spec, target_vars, registration_start_date, date_ref_bounds) %>%
+    # DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
+    # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
+    reorder_dates_by_sheet_seq(ds_date_vars, ds_spec, registration_start_date) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq("DSSEQ")
 

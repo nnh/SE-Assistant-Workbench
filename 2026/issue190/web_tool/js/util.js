@@ -52,6 +52,100 @@ function sortDateVarsByDependency(dateVars, dateRefBounds) {
   return sorted;
 }
 
+// 同じcdisc_variable(date型)が複数のalias_name(シート)にまたがって定義されているドメイン
+// (例: AEが"sae_report"/"ae2"の2シートに分かれる、EC/LB/VSが来院ごとに多数のシートに分かれる)では、
+// 各シートの日付が互いに独立に生成されるため、シートの本来の並び順(sheet_orders$seq、
+// EDC仕様上のフォーム表示順)と生成された日付の前後関係が矛盾することがある
+// (例: 来院1のLBDTCが来院3のLBDTCより後になる)。
+// 被験者ごとに、シート(alias_name)ブロック単位でまとめて日付をシフトすることでこれを解消する:
+// 各(USUBJID, alias_name)ブロックの代表日付(そのブロック内で最も早い非null日付)を求め、
+// sheet_seq昇順に並べたブロックに、代表日付を昇順に並べ替えたものを割り当て直す。
+// ブロック内の全date型列を同じ日数分シフトすることで、ブロック内の関係(同じ行の開始日<=終了日、
+// 同じalias内のlabelを跨ぐ連鎖等)は変えずに保つ。シフト後の値は被験者の中止日(discontinuationDate、
+// 無ければ今日)を上限にする(この関数はclampDatesToDiscontinuationより後に呼ぶこと。シフトが
+// 中止日を超えないようこの関数自身で保証するため、これより後に他の日付再生成処理を挟むと、
+// その処理がシフト結果を独立に書き換えてalias間の順序を崩してしまう可能性がある)。
+// alias_name列を持たない、またはdateVarsが複数aliasにまたがらないドメインでは何もしない
+// (R版reorder_dates_by_sheet_seq()に対応)
+function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registrationStartDate, discontinuationDate) {
+  if (!data[0] || !("alias_name" in data[0]) || !("USUBJID" in data[0])) return data;
+  dateVars = dateVars.filter((v) => v in data[0]);
+  if (dateVars.length === 0) return data;
+
+  const seqByAlias = {};
+  (cdiscVariableValues || []).forEach((r) => {
+    if (r.sheet_seq != null && !(r.alias_name in seqByAlias)) {
+      seqByAlias[r.alias_name] = r.sheet_seq;
+    }
+  });
+  if (Object.keys(seqByAlias).length === 0) return data;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const regStartTime = new Date(registrationStartDate).getTime();
+  const todayTime = new Date(today).getTime();
+  const disconTimeByUsubjid = {};
+  (discontinuationDate || []).forEach((r) => {
+    if (r.DISCONDTC != null && !(r.USUBJID in disconTimeByUsubjid)) {
+      disconTimeByUsubjid[r.USUBJID] = new Date(r.DISCONDTC).getTime();
+    }
+  });
+
+  // (USUBJID, alias_name)ごとの代表日付(そのブロック内で最も早い非null日付)を求める
+  const anchorsByUsubjid = {};
+  data.forEach((row) => {
+    if (!(row.alias_name in seqByAlias)) return;
+    let minVal = null;
+    dateVars.forEach((v) => {
+      const val = row[v];
+      if (val != null && (minVal == null || val < minVal)) minVal = val;
+    });
+    if (minVal == null) return;
+    if (!anchorsByUsubjid[row.USUBJID]) anchorsByUsubjid[row.USUBJID] = {};
+    const existing = anchorsByUsubjid[row.USUBJID][row.alias_name];
+    if (existing == null || minVal < existing) {
+      anchorsByUsubjid[row.USUBJID][row.alias_name] = minVal;
+    }
+  });
+
+  // 被験者ごとに、sheet_seq順のalias一覧に、代表日付を昇順に並べ替えたものを割り当て直し、
+  // (alias_name -> ずらす日数)のdeltaを求める
+  const deltaByUsubjidAlias = {};
+  Object.keys(anchorsByUsubjid).forEach((usubjid) => {
+    const aliasAnchors = anchorsByUsubjid[usubjid];
+    const aliasNames = Object.keys(aliasAnchors);
+    if (aliasNames.length <= 1) return;
+    const sortedBySeq = [...aliasNames].sort((a, b) => seqByAlias[a] - seqByAlias[b]);
+    const sortedAnchors = aliasNames.map((a) => aliasAnchors[a]).sort();
+    sortedBySeq.forEach((alias, i) => {
+      const oldAnchor = aliasAnchors[alias];
+      const newAnchor = sortedAnchors[i];
+      if (newAnchor === oldAnchor) return;
+      const deltaDays = Math.round((new Date(newAnchor).getTime() - new Date(oldAnchor).getTime()) / (24 * 60 * 60 * 1000));
+      if (deltaDays === 0) return;
+      if (!deltaByUsubjidAlias[usubjid]) deltaByUsubjidAlias[usubjid] = {};
+      deltaByUsubjidAlias[usubjid][alias] = deltaDays;
+    });
+  });
+  if (Object.keys(deltaByUsubjidAlias).length === 0) return data;
+
+  const oneDay = 24 * 60 * 60 * 1000;
+  data.forEach((row) => {
+    const deltaMap = deltaByUsubjidAlias[row.USUBJID];
+    const delta = deltaMap ? deltaMap[row.alias_name] : null;
+    if (delta == null) return;
+    const disconTime = disconTimeByUsubjid[row.USUBJID];
+    const upperTime = disconTime != null ? Math.min(todayTime, disconTime) : todayTime;
+    dateVars.forEach((v) => {
+      if (row[v] == null) return;
+      let t = new Date(row[v]).getTime() + delta * oneDay;
+      if (t < regStartTime) t = regStartTime;
+      if (t > upperTime) t = upperTime;
+      row[v] = new Date(t).toISOString().slice(0, 10);
+    });
+  });
+  return data;
+}
+
 // startDateStr〜endDateStr(YYYY-MM-DD)の間のランダムな日付文字列(YYYY-MM-DD)を返す
 function randomDateBetween(startDateStr, endDateStr) {
   const start = new Date(startDateStr).getTime();

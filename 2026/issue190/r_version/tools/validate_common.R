@@ -307,6 +307,91 @@ check_date_after_var_before_today <- function(data, date_var, ref_date_var, doma
   )
 }
 
+# 値のベクトルを、1つずつダブルクォートで囲んでからカンマ区切りで連結する。値そのものにカンマを
+# 含む文字列(例: "PTCL, NOS")がある場合に、メッセージ上で値の区切りのカンマなのか値の一部なのか
+# 区別できるようにするため(check_value_equals・run_value_equals_checks_from_csvのメッセージで使う)
+quote_join <- function(x) {
+  str_c('"', x, '"', collapse = ", ")
+}
+
+# data(1ドメイン分。USUBJID列が必要)のvar列の値が、全行expected_value(単一値、または許容する
+# 複数値のベクトル)のいずれかと一致することを確認する。domain_nameを指定するとメッセージの先頭に付く。
+# 一致しない値がある行がある場合はstop()でエラーにする(USUBJIDと実際の値を表示)。
+# 問題なければチェック内容とOKである旨をcatで表示する
+check_value_equals <- function(data, var, expected_value, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+
+  if (!(var %in% colnames(data))) {
+    stop(str_c(label, var, "一致チェック: dataに列がありません"))
+  }
+
+  invalid <- !(data[[var]] %in% expected_value)
+  invalid_usubjid <- data[["USUBJID"]][invalid]
+
+  if (length(invalid_usubjid) > 0) {
+    detail <- str_c(invalid_usubjid, '("', data[[var]][invalid], '")') %>% paste(collapse = ", ")
+    stop(str_c(
+      label, var, "一致チェック: ", length(invalid_usubjid), "件NG(期待値: ",
+      quote_join(expected_value), "。実際の値 - ", detail, ")"
+    ))
+  }
+  cat(
+    label, var, "一致チェック: OK(", var, "が全", nrow(data), "行で",
+    quote_join(expected_value), "のいずれかであることを確認)\n",
+    sep = ""
+  )
+}
+
+# data(1ドメイン分。USUBJID列が必要。例: lb/qs等、testN_web.R側で既に取り出し済みの変数を
+# そのまま渡す)のvar列の値が、CSV(csv_path。domain, var, expected_value、任意でvisit列を持つ)に
+# 登録されている期待値と全行一致することを確認する。domain・varでCSVを絞り込み、該当行の
+# expected_valueを「許容する複数値」として使う(同じdomain・var・visitの行が複数あれば、
+# それらをまとめて許容値とする)。visit列が空欄の行は「どのvisitでも使える値」を表す:
+# visit未指定の呼び出しでは空欄の行だけが対象になり、visit指定の呼び出しでは、その
+# visit専用の行に加えて空欄の行も許容値に含める。visitを指定した場合は、dataをVISITNUM==visitで
+# 絞り込んでからチェックする(dataにVISITNUM列が必要)。
+# CSVに該当する行が無い場合、またはvisit指定があるのにdataにVISITNUM列が無い場合はstop()でエラーにする。
+# また、CSVで許容値として登録したexpected_valueのうち、実際のdataのvar列に一度も出現しなかった
+# 値があれば、CSVの設定ミス・不要な行に気づけるようwarning()で知らせる(チェック自体はOKのまま)
+run_value_equals_checks_from_csv <- function(data, domain, var, csv_path, visit = NULL) {
+  config <- read_csv(csv_path, col_types = cols(.default = "c"))
+  missing_cols <- setdiff(c("domain", "var", "expected_value"), colnames(config))
+  if (length(missing_cols) > 0) {
+    stop(str_c("固定値チェックCSV: 必要な列がありません(", paste(missing_cols, collapse = ", "), ")"))
+  }
+  if (!("visit" %in% colnames(config))) {
+    config[["visit"]] <- NA_character_
+  }
+  config[["visit"]] <- na_if(config[["visit"]], "")
+
+  label <- if (is.null(visit)) domain else str_c(domain, "(VISITNUM=", visit, ")")
+
+  # visit未指定の呼び出しはvisit空欄の行(全visit共通の値)だけが対象。visit指定の呼び出しは、
+  # そのvisit専用の行に加えて、visit空欄の行(どのvisitでも使える値)も許容値に含める
+  visit_match <- if (is.null(visit)) is.na(config[["visit"]]) else is.na(config[["visit"]]) | config[["visit"]] == visit
+  matched <- config[config[["domain"]] == domain & config[["var"]] == var & visit_match, ]
+  if (nrow(matched) == 0) {
+    stop(str_c(label, ": ", var, "一致チェック: CSVに該当する行がありません(", csv_path, ")"))
+  }
+
+  if (!is.null(visit)) {
+    if (!("VISITNUM" %in% colnames(data))) {
+      stop(str_c(label, ": dataにVISITNUM列がありません"))
+    }
+    data <- data %>% filter(VISITNUM == visit)
+  }
+
+  check_value_equals(data, var, matched[["expected_value"]], label)
+
+  unused_values <- setdiff(matched[["expected_value"]], data[[var]])
+  if (length(unused_values) > 0) {
+    warning(str_c(
+      label, ": ", var, "一致チェック: CSVのexpected_valueのうち、実際の値に一度も出現しなかったものがあります(",
+      quote_join(unused_values), ")"
+    ))
+  }
+}
+
 # load_edc_spec.Rで生成したae/dm/ds/other_domainsと、csv_dir直下のCSVを一括で比較・検証する。
 # データセットの過不足確認、列名diff、DM/DS/AE/other_domainsの構造的な自動チェック、AE/DSの死亡情報の
 # 整合性チェックまでをまとめて実行する。testN.R側は csv_dir と other_domains_special_checks

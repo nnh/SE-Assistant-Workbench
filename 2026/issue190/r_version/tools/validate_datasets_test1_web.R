@@ -9,6 +9,10 @@ library(here)
 # 「ZIPで一括ダウンロード」したdummy_data.zipの展開先に設定しておくこと
 rm(list = ls())
 
+# check_value_equals(固定値チェック)用のCSV設定ファイルのパス。内容(チェックしたい固定値)は
+# 試験ごとに異なるため、test_config.R(共通)ではなくここで指定する。リポジトリ外の任意の場所でよい
+fixed_value_checks_csv_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/fixed_value_checks_test1.csv"
+
 source(here("test_config.R"))
 source(here("tools/validate_common.R"))
 
@@ -39,7 +43,7 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path", "discontinuation_date")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
 
 source(here("tools/validate_common.R"))
 
@@ -119,6 +123,19 @@ check_lb_status_orres <- function(lb, lbtestcd) {
   lb %>% filter(LBTESTCD == lbtestcd, LBSTAT == "NOT DONE") %>% check_blank_vars("LBORRES", domain_name = label)
 }
 
+# LB(LBTESTCD==lbtestcd)について、LBORRESが必須であることと、target_lb(列名ベクトル)にsuffixを
+# 付けた列(例: LBTEST_1)がfixed_value_checks_csv_pathの固定値と一致することを確認する。
+# 同じLBTESTCDを複数回チェックする際に列名が重複しないよう、suffixで区別できるようにする想定。
+# 列名変更後のtmp_lb(LBTESTCD==lbtestcdに絞り込んだデータ)を返す
+check_lb_testcd_fixed_values <- function(lb, lbtestcd, target_lb, suffix, csv_path) {
+  tmp_lb <- lb %>% filter(LBTESTCD == lbtestcd)
+  lb_cols <- target_lb %>% str_c(suffix)
+  tmp_lb <- tmp_lb %>% rename_with(~ str_c(.x, suffix), all_of(target_lb))
+  lb_cols %>%
+    walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, csv_path))
+  tmp_lb
+}
+
 # CM/RS/MH(SPDEVID==spdevid)について、prior_line_therapy(SC/PLOTNUM)のSCORRESがspdevid以上
 # (thresholds[[spdevid]]に該当するUSUBJID。check_cm_cmtrtのthresholdsと同じ考え方)なら
 # CMTRT/CMSTDTC・RSORRES/RSDTCが必須、それ以外は空欄のはずであることを確認する。
@@ -161,18 +178,104 @@ check_prior_line_therapy_gating(2, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(3, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(4, cm, rs, mh, prior_line_therapy_by_scorres)
 check_prior_line_therapy_gating(5, cm, rs, mh, prior_line_therapy_by_scorres)
+c("CMTRT") %>%
+  walk(~ run_value_equals_checks_from_csv(cm, "CM", .x, fixed_value_checks_csv_path))
 
 dm %>% check_required_vars(c("RFICDTC", "BRTHDTC", "SEX", "RACE", "RFSTDTC"), domain_name = "DM")
+c("SEX", "RACE") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
 fa %>% filter(FABLFL == "Y" & FAOBJ == "Bulky Mass") %>% check_required_vars("FAORRES", domain_name = "FA")
 fa %>% filter(FABLFL == "Y" & FAOBJ == "Tumor Involvement") %>% check_required_vars("FAORRES", domain_name = "FA")
 check_fa_baseline_orres(fa, "Bone Marrow Infiltration")
-lb %>% filter(LBTESTCD == "WBC") %>% check_required_vars("LBORRES", domain_name = "LB")
-lb %>% filter(LBTESTCD == "NEUT") %>% check_required_vars("LBORRES", domain_name = "LB")
-lb %>% filter(LBTESTCD == "PLAT") %>% check_required_vars("LBORRES", domain_name = "LB")
-lb %>% filter(LBTESTCD == "BILI") %>% check_required_vars("LBORRES", domain_name = "LB")
-lb %>% filter(LBTESTCD == "AST") %>% check_required_vars("LBORRES", domain_name = "LB")
-lb %>% filter(LBTESTCD == "ALT") %>% check_required_vars("LBORRES", domain_name = "LB")
+c("FABLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(fa, "FA", .x, fixed_value_checks_csv_path, visit=100))
+tmp_fa <- fa %>% filter(FATESTCD=="OCCUR")
+tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, "_1"), c(FATEST, FAOBJ, VISITNUM, FAORRES))
+c("FATEST_1", "FAOBJ_1", "VISITNUM_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa <- tmp_fa %>% filter(FAOBJ_1=="Bulky Mass")
+c("FAORRES_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa <- fa %>% filter(FAOBJ=="Bone Marrow Infiltration")
+fa %>% filter(FAOBJ=="Bone Marrow Infiltration" & FASTAT == "NOT DONE") %>% check_blank_vars("FAORRES", domain_name="FA")
+tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, "_2"), c(FALOC, FAORRES))
+c("FALOC_2") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa <- tmp_fa %>% filter(FASTAT != "NOT DONE")
+c("FAORRES_2") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa <- fa %>% filter(FATESTCD=="LESNUM")
+tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, "_3"), c(FATEST, FAOBJ, VISITNUM, FACAT))
+c("FATEST_3", "FAOBJ_3", "VISITNUM_3", "FACAT_3") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+c("VISITNUM", "LBBLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(lb, "LB", .x, fixed_value_checks_csv_path))
+suffix <- 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "WBC", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "NEUT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "LYM", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "PBTCCE", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "RBC", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "HGB", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "HCT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "PLAT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "PROT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "ALB", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "BILI", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "AST", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "ALT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+tmp_lb %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "LDH", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
 lb %>% filter(LBTESTCD == "CREAT") %>% check_required_vars("LBORRES", domain_name = "LB")
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "ALP", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "GGT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "UREAN", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "CREAT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "SODIUM", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "K", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "CL", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "CA", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "CRP", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "IL2SR", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "B2MICG", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "INR", c("LBTEST", "LBCAT", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "APTT", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "DDIMER", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "FIBRINO", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
+suffix <- suffix + 1
+tmp_lb <- check_lb_testcd_fixed_values(lb, "FDP", c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC"), str_c("_", as.character(suffix)), fixed_value_checks_csv_path)
 check_lb_status_orres(lb, "LYM")
 check_lb_status_orres(lb, "PBTCCE")
 check_lb_status_orres(lb, "RBC")
@@ -204,13 +307,35 @@ rs_spdevid_1_others <- rs %>% filter(SPDEVID == 1 & (RSORRES != "CR" & RSORRES !
 mh_spdevid_1 <- mh %>%  filter(SPDEVID == 1)
 mh %>% filter(SPDEVID == 1) %>% inner_join(rs_spdevid_1_cr_pr, by="USUBJID") %>% check_required_vars("MHOCCUR", domain_name = "MH")
 mh %>% filter(SPDEVID == 1) %>% inner_join(rs_spdevid_1_others, by="USUBJID") %>% check_blank_vars("MHOCCUR", domain_name = "MH")
+tmp_mh <- mh
+tmp_mh$VISITNUM <- tmp_mh$MHENTPT
+c("MHTERM", "MHCAT", "MHPRESP", "MHENRTPT") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path, visit = 100))
 pe %>% check_required_vars("PEORRES", domain_name = "PE")
 pe %>% filter(PEORRES != "U") %>% check_required_vars("PEDTC", domain_name = "PE")
+c("PETESTCD", "PETEST", "PEORRES") %>%
+  walk(~ run_value_equals_checks_from_csv(pe, "PE", .x, fixed_value_checks_csv_path, visit = 50))
+c("PETESTCD", "PETEST", "PEORRES", "PEBLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(pe, "PE", .x, fixed_value_checks_csv_path, visit = 100))
 qs %>% check_required_vars(c("QSORRES", "QSDTC"), domain_name = "QS")
+c("QSTESTCD", "QSTEST", "QSCAT", "QSORRES", "QSBLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(qs, "QS", .x, fixed_value_checks_csv_path, visit = 100))
 rs %>% filter(SPDEVID == 1) %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 sc %>% check_required_vars("SCORRES", domain_name = "SC")
 sc %>% filter(SCTESTCD == "STAGE" & SCORRES != "UNKNOWN") %>% check_required_vars("SCDTC", domain_name = "SC")
+tmp_sc <- sc %>% filter(SCTESTCD == "STAGE")
+tmp_sc <- tmp_sc %>% rename_with(~ str_c(.x, "_1"), c(SCTEST, SCCAT, SCORRES))
+c("SCTEST_1", "SCCAT_1", "SCORRES_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_sc, "SC", .x, fixed_value_checks_csv_path))
+tmp_sc <- sc %>% filter(SCTESTCD == "PLOTNUM")
+tmp_sc <- tmp_sc %>% rename_with(~ str_c(.x, "_2"), c(SCTEST, SCCAT, SCORRES))
+c("SCTEST_2", "SCORRES_2") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_sc, "SC", .x, fixed_value_checks_csv_path))
 tr %>% check_required_vars(c("TRORRES", "TRDTC"), domain_name = "TR")
+c("TRLNKID", "TRTESTCD", "TRTEST", "TRORRESU", "VISITNUM", "TRBLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(tr, "TR", .x, fixed_value_checks_csv_path))
+c("TULNKID", "TUTESTCD", "TUTEST", "TUORRES","TULOC", "VISITNUM", "TUBLFL") %>%
+  walk(~ run_value_equals_checks_from_csv(tu, "TU", .x, fixed_value_checks_csv_path))
 pr %>% filter(PRCAT == "Autologous") %>% check_required_vars("PROCCUR", domain_name = "PR")
 pr %>% filter(PRCAT == "Autologous" & PROCCUR == "Y") %>% check_required_vars("PRSTDTC", domain_name = "PR")
 pr %>% filter(PRCAT == "Allogeneic") %>% check_required_vars("PROCCUR", domain_name = "PR")
@@ -225,6 +350,8 @@ ds %>% check_required_vars(c("DSTERM", "DSDTC", "DSSTDTC"), domain_name = "DS")
 ae %>% check_required_vars(c("AETERM", "AETOXGR", "AESTDTC", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC"), domain_name = "AE")
 ae %>% filter(AESER =="Y") %>% check_required_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
 ae %>% filter(AESER !="Y") %>% check_blank_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
+# VISIT順日付チェック
+
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
 #compare_domain(generated_datasets, datasets, "DM", "USUBJID")

@@ -54,6 +54,10 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     }
   }
 
+  # AE報告が複数のalias(シート、例: "sae_report"/"ae2")にまたがる場合、シートの本来の並び順
+  # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする(同じ行のAESTDTC<=AEENDTCの関係は保つ)
+  ae <- reorder_dates_by_sheet_seq(ae, ordered_date_vars, ae_spec, registration_start_date)
+
   # meddra: field_type=="meddra"に該当する変数はLLT名を直接格納し、MedDRAコーディングブロック(LLT〜SOC)を追加
   meddra_vars <- compute_meddra_vars(ae_spec, target_vars)
   meddra_sample <- sample_meddra_rows(meddra, nrow(ae)) %>%

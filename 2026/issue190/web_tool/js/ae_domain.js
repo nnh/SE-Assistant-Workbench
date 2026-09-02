@@ -121,6 +121,10 @@ function populateAeDateFields(ae, aeSpec, registrationStartDate) {
       row[varName] = randomDateBetween(start, today);
     });
   });
+
+  // AE報告が複数のalias(シート、例: "sae_report"/"ae2")にまたがる場合、シートの本来の並び順
+  // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする(同じ行のAESTDTC<=AEENDTCの関係は保つ)
+  ae = reorderDatesBySheetSeq(ae, orderedDateVars, aeSpec, registrationStartDate);
   return ae;
 }
 

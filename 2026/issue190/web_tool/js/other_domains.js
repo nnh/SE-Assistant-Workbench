@@ -773,6 +773,10 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
   data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
+  // 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
+  // alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
+  // (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
+  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
@@ -1086,6 +1090,11 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     (r) => r.label == null || r.ref_label == null || r.label === r.ref_label
   );
   data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
+  // 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
+  // シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。alias内の関係
+  // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
+  // clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
+  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
 
   let codingCols = [];
   if (addCodingBlock) {
