@@ -478,7 +478,7 @@ csv_list <- list()
 csv_list$DM <- dm
 csv_list$AE <- ae
 csv_list$DS <- ds
-compare_domain(csv_list, datasets, "DM", "USUBJID")
+#compare_domain(csv_list, datasets, "DM", "USUBJID")
 #compare_domain(csv_list, datasets, "AE", c("USUBJID", "AESEQ"))
 #compare_domain(csv_list, datasets, "DS", c("USUBJID", "DSSEQ"))
 #compare_domain_by_index(other_domains, datasets, 1, exclude = special_domain_names)

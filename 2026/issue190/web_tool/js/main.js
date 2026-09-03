@@ -234,6 +234,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     ageBounds,
     dateRefBounds
   );
+  dm = sortBySeq(dm, "DM");
   generatedDm = dm;
   renderPreview(dm, "dm-preview");
   resultSection.style.display = "block";
@@ -263,6 +264,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const aeResult = finalizeAeDomain(ae, aeSpec, linkedSpec);
   ae = aeResult.ae;
   const aeLinkedDomains = aeResult.linked;
+  ae = sortBySeq(ae, "AE");
   generatedAe = ae;
   renderPreview(ae, "ae-preview");
 
@@ -306,6 +308,11 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   mergeLinkedDomains(otherDomains, aeLinkedDomains);
   // LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
   applyOrresPopulators(otherDomains, { LB: populateLbOrres, TR: populateTrOrres, VS: populateVsOrres });
+  // prefixSEQ列を持つドメインは、その列で行を並べ替えておく(mergeやfilter等で崩れた行順を
+  // 最終出力前に揃えるため)
+  Object.keys(otherDomains).forEach((prefix) => {
+    otherDomains[prefix] = sortBySeq(otherDomains[prefix], prefix);
+  });
   generatedOtherDomains = otherDomains;
   renderOtherDomainPreviews(otherDomains);
 
@@ -315,6 +322,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     const { alias_name, label, ...rest } = row;
     return rest;
   });
+  ds = sortBySeq(ds, "DS");
   generatedDs = ds;
   renderPreview(ds, "ds-preview");
 });

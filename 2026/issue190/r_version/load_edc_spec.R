@@ -128,6 +128,13 @@ load_edc_spec <- function(json_path) {
     other_domains[["DD"]] <- drop_empty_domain_rows(other_domains[["DD"]], dd_gated_vars)
   }
 
+  # prefixSEQ列を持つドメインは、その列で行を並べ替えておく(mergeやfilter等で崩れた行順を
+  # 最終出力前に揃えるため)
+  ae <- sort_by_seq(ae, "AE")
+  dm <- sort_by_seq(dm, "DM")
+  ds <- sort_by_seq(ds, "DS")
+  other_domains <- other_domains %>% imap(sort_by_seq)
+
   # 生成データ(ae/dm/ds/other_domains)をCSVとして出力する(ドメイン名の大文字+"_dummy.csv"、例: DM_dummy.csv)。
   # RのNAは空欄として書き出す(コードリストの選択肢として文字列"NA"が使われているケースがあるため、
   # 空欄と文字列としての"NA"を区別できるようにするため)

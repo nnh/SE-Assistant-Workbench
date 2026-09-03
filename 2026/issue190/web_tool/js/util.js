@@ -106,6 +106,15 @@ function dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, pre
   });
 }
 
+// prefixSEQ列(例: AESEQ)を持つドメインは、出力直前にその列でソートする。SEQ付与時点では
+// 行順=SEQ順だが、その後のmerge/filter等で行順が崩れることがあるため、最終出力前に明示的に揃える。
+// prefixSEQ列が無いドメイン(例: DM)は何もしない(R版sort_by_seq()に対応)
+function sortBySeq(data, prefix) {
+  const seqVar = `${prefix}SEQ`;
+  if (!data[0] || !(seqVar in data[0])) return data;
+  return [...data].sort((a, b) => a[seqVar] - b[seqVar]);
+}
+
 // 同じcdisc_variable(date型)が複数のalias_name(シート)にまたがって定義されているドメイン
 // (例: AEが"sae_report"/"ae2"の2シートに分かれる、EC/LB/VSが来院ごとに多数のシートに分かれる)では、
 // 各シートの日付が互いに独立に生成されるため、シートの本来の並び順(sheet_orders$seq、

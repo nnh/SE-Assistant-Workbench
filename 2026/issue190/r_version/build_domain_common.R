@@ -799,6 +799,17 @@ add_seq <- function(data, seq_var) {
   data %>% mutate(!!seq_var := row_number())
 }
 
+# prefixSEQ列(例: AESEQ)を持つドメインは、出力直前にその列でソートする。add_seq()の時点では
+# 行順=SEQ順だが、その後のmerge/filter等で行順が崩れることがあるため、最終出力前に明示的に揃える。
+# prefixSEQ列が無いドメイン(例: DM)は何もしない
+sort_by_seq <- function(data, prefix) {
+  seq_var <- str_c(prefix, "SEQ")
+  if (seq_var %in% colnames(data)) {
+    data <- data %>% arrange(.data[[seq_var]])
+  }
+  data
+}
+
 # 列順を整理: front_cols -> その他 -> end_cols。存在しない列はエラーにならず無視する
 reorder_domain_columns <- function(data, front_cols = character(0), end_cols = character(0)) {
   data %>%
