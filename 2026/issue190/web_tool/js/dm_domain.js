@@ -255,13 +255,14 @@ function populateDmDomain(
     }
     if (choices.length === 0) return;
     if (fieldTypeByVariable[varName] === "check_box") {
-      const values = sampleCheckBoxValues(choices, dm.length);
+      const values = sampleCheckBoxValuesWithCoverage(choices, dm.length);
       dm.forEach((row, i) => {
         row[varName] = values[i];
       });
     } else {
-      dm.forEach((row) => {
-        row[varName] = sampleOne(choices);
+      const values = sampleValuesWithCoverage(choices, dm.length);
+      dm.forEach((row, i) => {
+        row[varName] = values[i];
       });
     }
   });

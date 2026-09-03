@@ -28,10 +28,13 @@ validate_ds <- function(ds, dm, cdisc_variable_values) {
     str_c("DSに無い: ", paste(missing_usubjid, collapse = ", "), " / DM以外: ", paste(extra_usubjid, collapse = ", "))
   )
 
-  # DSTERM=="DEATH"がUSUBJIDごとに高々1件(死亡は重複しない)
+  # DSTERM=="DEATH"が同一USUBJID×同一EPOCH内では高々1件(同じEPOCH内で死亡が重複しない)。
+  # 異なるEPOCH(例: TREATMENT・FOLLOW-UP)にまたがって複数DEATH行を持つのは、
+  # finalize_ds_disposition()のearly_death_probによる正当なケースのため許容する
   if ("DSTERM" %in% colnames(ds)) {
-    death_counts <- ds %>% filter(DSTERM == "DEATH") %>% count(USUBJID)
-    dup_death <- death_counts %>% filter(n > 1) %>% pull(USUBJID)
+    group_cols <- if ("EPOCH" %in% colnames(ds)) c("USUBJID", "EPOCH") else "USUBJID"
+    death_counts <- ds %>% filter(DSTERM == "DEATH") %>% count(across(all_of(group_cols)))
+    dup_death <- death_counts %>% filter(n > 1) %>% pull(USUBJID) %>% unique()
     add_check("death_not_duplicated", length(dup_death) == 0, str_c("重複: ", paste(dup_death, collapse = ", ")))
   }
 

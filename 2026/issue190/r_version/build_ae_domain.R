@@ -79,14 +79,6 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     apply_presence_conditions(presence_conditions) %>%
     apply_field_ref_bounds(ae_spec, field_ref_bounds)
 
-  # USUBJIDごとにAETOXGR=5のレコードが最後になるよう並べ替え
-  if ("AETOXGR" %in% colnames(ae)) {
-    ae <- ae %>%
-      group_by(USUBJID) %>%
-      arrange(AETOXGR == "5", .by_group = TRUE) %>%
-      ungroup()
-  }
-
   # AETOXGR=5(死亡)のAEENDTCより後に開始する他のAEは矛盾するため除外
   if (all(c("AETOXGR", "AESTDTC", "AEENDTC") %in% colnames(ae))) {
     death_dates <- ae %>%
@@ -104,7 +96,12 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   ae <- ae %>%
     group_by(USUBJID) %>%
     mutate(AESPID = str_c(alias_name, row_number())) %>%
-    ungroup() %>%
+    ungroup()
+
+  # AESEQはUSUBJID・AESTDTC・AESPIDの昇順で振る(同日にAETOXGR=5(死亡)と他のAEがある場合の
+  # 前後関係は問わない)
+  ae <- ae %>%
+    arrange(USUBJID, AESTDTC, AESPID) %>%
     add_seq("AESEQ")
 
   # populate_linked_blocks()で同じ行に追加した他prefix(例: FA)の列を、対応するドメインの

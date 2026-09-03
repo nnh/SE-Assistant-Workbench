@@ -39,6 +39,7 @@ function buildDsDomain(dm, cdiscVariableValues) {
           DSSPID: epoch.alias_name,
           alias_name: epoch.alias_name,
           label: epoch.label,
+          sheet_seq: epoch.sheet_seq,
         });
       });
     });
@@ -50,8 +51,8 @@ function buildDsDomain(dm, cdiscVariableValues) {
     row.DOMAIN = "DS";
   });
 
-  // 列順を STUDYID/DOMAIN/USUBJID -> DSSPID/EPOCH/alias_name/label(存在するもののみ) に整理する
-  const frontCols = ["STUDYID", "DOMAIN", "USUBJID", "DSSPID", "EPOCH", "alias_name", "label"];
+  // 列順を STUDYID/DOMAIN/USUBJID -> DSSPID/EPOCH/alias_name/label/sheet_seq(存在するもののみ) に整理する
+  const frontCols = ["STUDYID", "DOMAIN", "USUBJID", "DSSPID", "EPOCH", "alias_name", "label", "sheet_seq"];
   return ds.map((row) => {
     const newRow = {};
     frontCols.forEach((c) => {
@@ -98,13 +99,14 @@ function populateDsChoiceFields(ds, dsSpec, numericBounds) {
       const targetRows = ds.filter((row) => row.alias_name === an);
       if (choices.length === 0 || targetRows.length === 0) return;
       if (isCheckBox) {
-        const values = sampleCheckBoxValues(choices, targetRows.length);
+        const values = sampleCheckBoxValuesWithCoverage(choices, targetRows.length);
         targetRows.forEach((row, i) => {
           row[varName] = values[i];
         });
       } else {
-        targetRows.forEach((row) => {
-          row[varName] = sampleOne(choices);
+        const values = sampleValuesWithCoverage(choices, targetRows.length);
+        targetRows.forEach((row, i) => {
+          row[varName] = values[i];
         });
       }
     });
@@ -195,6 +197,24 @@ function populateDsMeddraFields(ds, dsSpec, meddraData, meddraSample) {
   return ds;
 }
 
+// DSSEQを振るための並び替え。USUBJID・DSSTDTC・sheetSeq(シートの本来の並び順)の順で昇順にする。
+// DSSTDTCが無い行(例: RANDOMIZED)は、実際の日付より前に来るよう非常に早い日付(センチネル)として
+// 扱う(その被験者の他の全行より前に来ることを表す)。sheetSeqが無い行があれば、それも他の全
+// sheetSeqより前として扱う(Rのsort_ds_for_seq()に対応)
+const DS_SORT_DATE_SENTINEL = "1900-01-01";
+function sortDsForSeq(ds) {
+  return [...ds].sort((a, b) => {
+    if (a.USUBJID !== b.USUBJID) return a.USUBJID < b.USUBJID ? -1 : 1;
+    const aDtc = a.DSSTDTC != null ? a.DSSTDTC : DS_SORT_DATE_SENTINEL;
+    const bDtc = b.DSSTDTC != null ? b.DSSTDTC : DS_SORT_DATE_SENTINEL;
+    if (aDtc !== bDtc) return aDtc < bDtc ? -1 : 1;
+    const aSeq = a.sheet_seq != null ? a.sheet_seq : -Infinity;
+    const bSeq = b.sheet_seq != null ? b.sheet_seq : -Infinity;
+    if (aSeq !== bSeq) return aSeq < bSeq ? -1 : 1;
+    return 0;
+  });
+}
+
 // DSSEQ(全体通番)を付与する(Rのadd_seq("DSSEQ")に対応)
 function addDsSeq(ds) {
   ds.forEach((row, i) => {
@@ -220,6 +240,8 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
   // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
   ds = reorderDatesBySheetSeq(ds, dsDateVars, dsSpec, registrationStartDate);
   ds = populateDsDummyFields(ds, dsSpec);
+  // DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る
+  ds = sortDsForSeq(ds);
   ds = addDsSeq(ds);
 
   const meddraVars = dsSpec.filter((r) => r.field_type === "meddra");
@@ -252,7 +274,23 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
 // そのブロックの行にDEATHを設定する(単に時系列上最後の行に設定すると、DEATHを選択肢に持たない
 // 別ブロック(例: withdrawal)の行になってしまう可能性があるため)。判別できない場合は、
 // 従来通り各被験者の最後の行に設定する(Rのfinalize_ds_disposition()に対応)
-function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate = 0.6) {
+// 死亡確定行の候補(同一USUBJIDの複数インデックス、元の並び順)から、DEATHとするインデックスの
+// 配列を返す。最後の行(=sheet_seqが最も遅いブロック、例: FOLLOW-UP)は常にDEATHとする
+// (死亡した被験者は最終的にFollowUpでもDEATHとして記録されるのが正しいため)。それに加えて、
+// ごく低い確率(earlyDeathProb)で、最後以外の行(例: TREATMENT中のdiscon)もランダムに1つ
+// DEATHにする(TREATMENT中に死亡が判明していたケースを表す)。候補が1件しかない場合は常に
+// その行のみを返す(R版pick_death_rows()に対応)
+function pickDeathIndices(candidates, earlyDeathProb) {
+  const last = candidates[candidates.length - 1];
+  if (candidates.length <= 1 || Math.random() >= earlyDeathProb) {
+    return [last];
+  }
+  const nonLast = candidates.slice(0, -1);
+  const extra = nonLast[Math.floor(Math.random() * nonLast.length)];
+  return [last, extra];
+}
+
+function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate = 0.6, earlyDeathProb = 0.1) {
   if (!ds[0] || !("DSTERM" in ds[0])) return ds;
 
   const diedUsubjidSet = new Set((deathDate || []).map((d) => d.USUBJID));
@@ -296,22 +334,24 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     let chosen;
     if (deathAliasNames.size > 0) {
       const preferred = indices.filter((i) => deathAliasNames.has(ds[i].alias_name));
-      chosen = preferred.length > 0 ? preferred[preferred.length - 1] : indices[indices.length - 1];
+      chosen = preferred.length > 0 ? pickDeathIndices(preferred, earlyDeathProb) : pickDeathIndices(indices, earlyDeathProb);
     } else {
-      chosen = indices[indices.length - 1];
+      chosen = pickDeathIndices(indices, earlyDeathProb);
     }
-    chosenIndices.add(chosen);
-    ds[chosen].DSTERM = "DEATH";
-    if (hasDsdtc) {
-      const dthdtc = dthdtcByUsubjid[usubjid];
-      ds[chosen].DSDTC = dthdtc;
-      // DSDTC(死亡日、AE側の実際の死亡日が根拠)をここで上書きすると、date_ref_boundsが期待する
-      // DSDTC>=DSSTDTC(同じ行)の関係が崩れる場合がある(DSSTDTCは死亡日を知らずに生成されているため)。
-      // 死亡日は動かせない事実なので、矛盾する場合はDSSTDTC側を死亡日に合わせて引き戻す
-      if ("DSSTDTC" in ds[chosen] && ds[chosen].DSSTDTC != null && dthdtc != null && ds[chosen].DSSTDTC > dthdtc) {
-        ds[chosen].DSSTDTC = dthdtc;
+    chosen.forEach((idx) => {
+      chosenIndices.add(idx);
+      ds[idx].DSTERM = "DEATH";
+      if (hasDsdtc) {
+        const dthdtc = dthdtcByUsubjid[usubjid];
+        ds[idx].DSDTC = dthdtc;
+        // DSDTC(死亡日、AE側の実際の死亡日が根拠)をここで上書きすると、date_ref_boundsが期待する
+        // DSDTC>=DSSTDTC(同じ行)の関係が崩れる場合がある(DSSTDTCは死亡日を知らずに生成されているため)。
+        // 死亡日は動かせない事実なので、矛盾する場合はDSSTDTC側を死亡日に合わせて引き戻す
+        if ("DSSTDTC" in ds[idx] && ds[idx].DSSTDTC != null && dthdtc != null && ds[idx].DSSTDTC > dthdtc) {
+          ds[idx].DSSTDTC = dthdtc;
+        }
       }
-    }
+    });
   });
 
   // 元々DEATHだったがchosenIndicesに選ばれなかった行(実際には死亡していない被験者がランダムで
@@ -353,7 +393,63 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     if (completedUsubjidSet.has(row.USUBJID)) row.DSTERM = "COMPLETED";
   });
 
-  return ds;
+  // ここまででDEATH/COMPLETEDに確定した行を除いた「自由な」行(まだランダムな理由が入りうる行)について、
+  // DEATH/COMPLETED以外の選択肢が一度も出現していなければ、可能な範囲でランダムな自由行に反映させる
+  // (populateGenericChoiceFields()等のカバレッジ保証と同じ考え方を、DEATH/COMPLETED上書き後に
+  // 残った行に対して適用する。DEATH/COMPLETED上書きでカバレッジが崩れることがあるため)
+  if (cdiscVariableValues && hasAliasName) {
+    const freeIndices = ds
+      .map((row, i) => i)
+      .filter((i) => !chosenIndices.has(i) && !completedUsubjidSet.has(ds[i].USUBJID));
+    const freeByAlias = {};
+    freeIndices.forEach((i) => {
+      const an = ds[i].alias_name;
+      if (!freeByAlias[an]) freeByAlias[an] = [];
+      freeByAlias[an].push(i);
+    });
+    Object.keys(freeByAlias).forEach((an) => {
+      const anFreeIndices = freeByAlias[an];
+      const choices = [
+        ...new Set(
+          cdiscVariableValues
+            .filter((r) => r.prefix === "DS" && r.cdisc_variable === "DSTERM" && r.alias_name === an)
+            .map((r) => (r.code != null ? r.code : r.default_value))
+            .filter((c) => c != null && c !== "DEATH" && c !== "COMPLETED")
+        ),
+      ];
+      if (choices.length === 0) return;
+      const present = new Set(anFreeIndices.map((i) => ds[i].DSTERM));
+      const missing = choices.filter((c) => !present.has(c));
+      if (missing.length === 0) return;
+      // 上書きする行は、値が重複している(=他にも同じ値を持つ行がある)行を優先して選ぶ。
+      // ユニークな値を持つ行を上書きすると、その値が新たに欠落してしまうため
+      const valueCounts = {};
+      anFreeIndices.forEach((i) => {
+        const v = ds[i].DSTERM;
+        valueCounts[v] = (valueCounts[v] || 0) + 1;
+      });
+      const dupOrBlank = anFreeIndices.filter((i) => {
+        const v = ds[i].DSTERM;
+        return v == null || v === "" || valueCounts[v] > 1;
+      });
+      const unique = anFreeIndices.filter((i) => !dupOrBlank.includes(i));
+      const orderedIndices = [...shuffledCopy(dupOrBlank), ...shuffledCopy(unique)];
+      const targets = orderedIndices.slice(0, Math.min(missing.length, orderedIndices.length));
+      targets.forEach((idx, i) => {
+        ds[idx].DSTERM = missing[i];
+      });
+    });
+  }
+
+  // DEATH確定行のDSSTDTCを死亡日に合わせてクランプした影響で、populateDsDomain()側で
+  // 既に確定していたDSSEQ(USUBJID・DSSTDTC・sheet_seq昇順)の並びが崩れることがあるため、
+  // ここで振り直す
+  let result = sortDsForSeq(ds);
+  if (result[0] && "DSSEQ" in result[0]) {
+    result = addDsSeq(result);
+  }
+
+  return result;
 }
 
 // 割り付け(群)があるUSUBJID(dm.ARMが空でない)に対して、DSドメインにランダム化のマイルストーン行
@@ -388,7 +484,10 @@ function addRandomizationDsRows(ds, dm, registrationStartDate) {
       return row;
     });
 
-  const combined = [...randomizationRows, ...ds];
+  // DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る。RANDOMIZED行は
+  // DSSTDTC・sheet_seqのどちらも持たないため、sortDsForSeq()により各被験者の他の全行より
+  // 前に来る(無作為化は治療開始前のイベントのため)
+  let combined = sortDsForSeq([...randomizationRows, ...ds]);
   combined.forEach((row, i) => {
     row.DSSEQ = i + 1;
   });

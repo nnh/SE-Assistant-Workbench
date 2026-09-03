@@ -32,11 +32,12 @@ function buildCdiscVariableToPrefix(cdiscVariableValues) {
 // presence_conditions/field_ref_bounds/age_boundsのうち、cdisc_variableとref_cdisc_variableのprefixが
 // 異なる(=ドメインをまたぐ参照)行から、(from, to)の依存エッジ一覧を作る。fromはtoに依存する
 // (toを先に生成する必要がある)(Rのbuild_cross_prefix_edges()に対応)
-function buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds) {
+function buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
   const pairs = [
     ...(presenceConditions || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
     ...(fieldRefBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
     ...(ageBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
+    ...(dateRefBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
   ];
   const seen = new Set();
   const result = [];
@@ -199,18 +200,23 @@ function resolvePreferredAliasName(candidates, presenceConditions, builtDomains,
 // どちらの情報も無ければUSUBJIDのみで結合する(参照元に複数レコードあると最初の1件を使う)。
 // 戻り値は{ data, injectedCols }(injectedColsはこのために追加した列名。呼び出し側でゲーティングに
 // 使い終わった後に削除する想定)(Rのinject_cross_domain_refs()に対応)
-function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDomains, cdiscVariableToPrefix, ageBounds) {
+function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDomains, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
   if (!data || data.length === 0) return { data, injectedCols: [] };
 
   // label(own_label)は、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス。
   // 同じref_cdisc_variable(例: RSORRES)でも、参照元のlabelブロックごとに参照先のref_labelが
   // 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
   // これを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
-  // (fieldRefBoundsはlabelを持たないため、その場合はnullのままになる)
+  // (fieldRefBoundsはlabelを持たないため、その場合はnullのままになる)。
+  // dateRefBoundsはref_alias_nameを持たないが、参照先は常に自分自身と同じalias_name内の
+  // フィールドとして解決されている(build_generation_constraints.jsのdate_ref_bounds構築時に、
+  // field_name/ref_fieldを同一alias_name内でlookupしているため)ので、alias_nameをそのまま
+  // ref_alias_nameとして補って良い
   const refInstances = [
     ...(presenceConditions || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
     ...(fieldRefBounds || []).map((r) => ({ label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
     ...(ageBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(dateRefBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.alias_name, ref_label: r.ref_label })),
   ].filter((r) => r.ref_cdisc_variable != null);
 
   const hasDataAliasName = "alias_name" in data[0];
@@ -368,13 +374,14 @@ function populateGenericChoiceFields(data, spec, numericBounds) {
       const targetRows = data.filter((row) => row.alias_name === an);
       if (choices.length === 0 || targetRows.length === 0) return;
       if (isCheckBox) {
-        const values = sampleCheckBoxValues(choices, targetRows.length);
+        const values = sampleCheckBoxValuesWithCoverage(choices, targetRows.length);
         targetRows.forEach((row, i) => {
           row[varName] = values[i];
         });
       } else {
-        targetRows.forEach((row) => {
-          row[varName] = sampleOne(choices);
+        const values = sampleValuesWithCoverage(choices, targetRows.length);
+        targetRows.forEach((row, i) => {
+          row[varName] = values[i];
         });
       }
     });
@@ -768,6 +775,13 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   });
   data = applyMultiRecordSpid(data, spidVar, multiRecordAliasNames);
 
+  // dateRefBoundsが他ドメインの日付列を参照する場合、populateGenericDateFields()より前にbuiltDomains
+  // から該当列を結合しておく(そうしないと生成時点でref_cdisc_variableがdataの列に無く、下限/上限制約が
+  // 適用されないまま日付が生成されてしまう)(Rのbuild_generic_domain()と同じ理由)
+  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
+  data = dateInjected.data;
+  const dateInjectedCols = dateInjected.injectedCols;
+
   data = populateGenericChoiceFields(data, spec, numericBounds);
   data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
@@ -776,6 +790,10 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
   // (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
   data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
+  // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
+  // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
+  // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
@@ -801,7 +819,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
 
   // presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   // builtDomains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
-  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
+  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
   data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVarInstances, prefix);
@@ -809,6 +827,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
     injected.injectedCols.forEach((c) => delete row[c]);
+    dateInjectedCols.forEach((c) => delete row[c]);
   });
 
   // drug変数の値がwhoDrugIdfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
@@ -917,6 +936,13 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   });
   data = applyMultiRecordSpid(data, spidVar, multiRecordAliasNames);
 
+  // dateRefBoundsが他ドメインの日付列を参照する場合、このあとの日付生成より前にbuiltDomainsから
+  // 該当列を結合しておく(そうしないと生成時点でref_cdisc_variableがdataの列に無く、下限/上限制約が
+  // 適用されないまま日付が生成されてしまう)(Rのbuild_repeated_domain()と同じ理由)
+  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
+  data = dateInjected.data;
+  const dateInjectedCols = dateInjected.injectedCols;
+
   const existingColumns = new Set(Object.keys(data[0] || {}));
   let targetVars = [...new Set(spec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
 
@@ -990,13 +1016,14 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
             row[varName] = null;
           });
         } else if (g.fieldType === "check_box") {
-          const values = sampleCheckBoxValues(codes, rows.length);
+          const values = sampleCheckBoxValuesWithCoverage(codes, rows.length);
           rows.forEach((row, i) => {
             row[varName] = values[i];
           });
         } else {
-          rows.forEach((row) => {
-            row[varName] = sampleOne(codes);
+          const values = sampleValuesWithCoverage(codes, rows.length);
+          rows.forEach((row, i) => {
+            row[varName] = values[i];
           });
         }
       } else if (g.fieldType === "date") {
@@ -1062,9 +1089,19 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 
   // 1つのalias内でcdisc_variable名がlabel(繰り返しの1回分)を跨いで連鎖する行(例: 次回投与の開始日が
   // 前回投与の終了日を参照する)がある場合、通常の変数単位生成ではlabelを跨いだ参照を扱えないため、
-  // regenerateDateChain()でそのalias・その変数だけ生成し直す(Rのbuild_repeated_domain()と同じ理由)
+  // regenerateDateChain()でそのalias・その変数だけ生成し直す(Rのbuild_repeated_domain()と同じ理由)。
+  // refCdiscVariableも自ドメインのdateVars内にある場合のみ対象にする(regenerateDateChain()は同じ
+  // dataフレーム内にrefLabelの行がある前提のため、refCdiscVariableが他ドメインの変数(例: RSDTCが
+  // CMSTDTCを参照)の場合はrefLabelの行が存在せず機能しない。他ドメイン参照はinjectCrossDomainRefs()で
+  // 既にrefCdiscVariable列自体がdataに結合済みなので、通常の変数単位生成・下のclampDatesToDiscontinuation
+  // のref違反判定に任せればよい)
   const chainBounds = scopedDateRefBounds.filter(
-    (r) => dateVars.includes(r.cdisc_variable) && r.label != null && r.ref_label != null && r.label !== r.ref_label
+    (r) =>
+      dateVars.includes(r.cdisc_variable) &&
+      dateVars.includes(r.ref_cdisc_variable) &&
+      r.label != null &&
+      r.ref_label != null &&
+      r.label !== r.ref_label
   );
   if (chainBounds.length > 0) {
     const chainVars = [...new Set([...chainBounds.map((r) => r.cdisc_variable), ...chainBounds.map((r) => r.ref_cdisc_variable)])].filter(
@@ -1085,9 +1122,11 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     });
   }
   // scopedDateRefBoundsはcdisc_variable単位の判定のため、同じ変数名でもlabelを跨ぐ連鎖を持たない他のlabelまで
-  // clampが丸ごと除外してしまわないよう、clampにはlabelを跨ぐ行(label!=ref_label)だけを除いたものを渡す
+  // clampが丸ごと除外してしまわないよう、clampにはchainBoundsで処理した(同一ドメイン内でlabelを跨ぐ)行だけを
+  // 除いたものを渡す。他ドメイン参照(refCdiscVariableが自ドメインのdateVars外)はchainBoundsで処理されないため、
+  // ここには残してclampのref違反判定に任せる
   const dateRefBoundsForClamp = scopedDateRefBounds.filter(
-    (r) => r.label == null || r.ref_label == null || r.label === r.ref_label
+    (r) => r.label == null || r.ref_label == null || r.label === r.ref_label || !dateVars.includes(r.ref_cdisc_variable)
   );
   data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
@@ -1095,6 +1134,10 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
   // clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
   data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
+  // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
+  // (dateRefBoundsForClamp)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
+  // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
 
   let codingCols = [];
   if (addCodingBlock) {
@@ -1127,13 +1170,14 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 
   // presence_conditions/age_boundsが他ドメインの変数を参照している場合、builtDomainsから値を結合してから
   // 条件を適用し、結合用に追加した列は最後に外す(field_ref_boundsはRのbuild_repeated_domain()と同様に対象外)
-  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
+  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
   data = dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, prefix);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
     injected.injectedCols.forEach((c) => delete row[c]);
+    dateInjectedCols.forEach((c) => delete row[c]);
   });
 
   // drug変数の値がwhoDrugIdfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
@@ -1189,7 +1233,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
 
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
-  const edges = buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds);
+  const edges = buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds);
   const orderedPrefixes = topoSortPrefixes(prefixes, edges);
 
   orderedPrefixes.forEach((prefix) => {

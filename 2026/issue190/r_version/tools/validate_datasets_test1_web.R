@@ -81,6 +81,26 @@ qs %>% check_date_before_today("QSDTC", domain_name = "QS")
 rs %>% check_date_before_today("RSDTC", domain_name = "RS")
 sc %>% check_date_before_today("SCDTC", domain_name = "SC")
 tr %>% check_date_before_today("TRDTC", domain_name = "TR")
+# CMSTDTC <= RSDTC <= 今日であることを確認、範囲外の場合STOPエラーとする
+tmp_cm <- cm %>% filter(SPDEVID == 1) %>% select(USUBJID, CMSTDTC)
+tmp_rs <- rs %>% filter(SPDEVID == 1) %>% select(USUBJID, RSDTC)
+tmp_cm %>% inner_join(tmp_rs, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC", domain_name = "CM/RS")
+tmp_cm_2 <- cm %>% filter(SPDEVID == 2) %>% select(USUBJID, CMSTDTC_2=CMSTDTC)
+tmp_cm %>% inner_join(tmp_cm_2, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_2", "CMSTDTC", domain_name = "CM")
+tmp_rs_2 <- rs %>% filter(SPDEVID == 2) %>% select(USUBJID, RSDTC)
+tmp_cm_2 %>% inner_join(tmp_rs_2, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_2", domain_name = "CM/RS")
+tmp_cm_3 <- cm %>% filter(SPDEVID == 3) %>% select(USUBJID, CMSTDTC_3=CMSTDTC)
+tmp_cm_3 %>% inner_join(tmp_cm_2, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_3", "CMSTDTC_2", domain_name = "CM")
+tmp_rs_3 <- rs %>% filter(SPDEVID == 3) %>% select(USUBJID, RSDTC)
+tmp_cm_3 %>% inner_join(tmp_rs_3, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_3", domain_name = "CM/RS")
+tmp_cm_4 <- cm %>% filter(SPDEVID == 4) %>% select(USUBJID, CMSTDTC_4=CMSTDTC)
+tmp_cm_4 %>% inner_join(tmp_cm_3, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_4", "CMSTDTC_3", domain_name = "CM")
+tmp_rs_4 <- rs %>% filter(SPDEVID == 4) %>% select(USUBJID, RSDTC)
+tmp_cm_4 %>% inner_join(tmp_rs_4, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_4", domain_name = "CM/RS")
+tmp_cm_5 <- cm %>% filter(SPDEVID == 5) %>% select(USUBJID, CMSTDTC_5=CMSTDTC)
+tmp_cm_5 %>% inner_join(tmp_cm_4, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_4", "CMSTDTC_3", domain_name = "CM")
+tmp_rs_5 <- rs %>% filter(SPDEVID == 5) %>% select(USUBJID, RSDTC)
+tmp_cm_5 %>% inner_join(tmp_rs_5, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_5", domain_name = "CM/RS")
 # 数値上限下限
 fa %>% filter(FAOBJ == "Tumor Involvement") %>% check_numeric_range("FAORRES", min_value = 0, max_value = 99, domain_name = "FA")
 lb %>% filter(LBTESTCD == "PBTCCE") %>% check_numeric_range("LBORRES", min_value = 0, max_value = 100, domain_name = "LB")
@@ -431,6 +451,7 @@ c("PRTRT_2") %>%
 qs %>% check_required_vars(c("QSORRES", "QSDTC"), domain_name = "QS")
 c("QSTESTCD", "QSTEST", "QSCAT", "QSORRES", "QSBLFL") %>%
   walk(~ run_value_equals_checks_from_csv(qs, "QS", .x, fixed_value_checks_csv_path, visit = 100))
+# RS
 rs %>% filter(SPDEVID == 1) %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 c("RSCAT", "RSEVAL", "RSORRES") %>%
   walk(~ run_value_equals_checks_from_csv(rs, "RS", .x, fixed_value_checks_csv_path))
@@ -441,6 +462,8 @@ tmp_rs <- rs %>% filter(RSTESTCD == "OVRLRESP")
 tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_1"), c(RSTEST,VISITNUM))
 c("RSTEST_1", "VISITNUM_1") %>%
   walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+
+# SC
 sc %>% check_required_vars("SCORRES", domain_name = "SC")
 sc %>% filter(SCTESTCD == "STAGE" & SCORRES != "UNKNOWN") %>% check_required_vars("SCDTC", domain_name = "SC")
 tmp_sc <- sc %>% filter(SCTESTCD == "STAGE")
@@ -470,7 +493,6 @@ ds %>% check_required_vars(c("DSTERM", "DSDTC", "DSSTDTC"), domain_name = "DS")
 ae %>% check_required_vars(c("AETERM", "AETOXGR", "AESTDTC", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC"), domain_name = "AE")
 ae %>% filter(AESER =="Y") %>% check_required_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
 ae %>% filter(AESER !="Y") %>% check_blank_vars(c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE"), domain_name = "AE")
-# VISIT順日付チェック
 
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
@@ -478,10 +500,18 @@ csv_list <- list()
 csv_list$DM <- dm
 csv_list$AE <- ae
 csv_list$DS <- ds
+names(other_domains) <- toupper(names(other_domains))
 #compare_domain(csv_list, datasets, "DM", "USUBJID")
 #compare_domain(csv_list, datasets, "AE", c("USUBJID", "AESEQ"))
 #compare_domain(csv_list, datasets, "DS", c("USUBJID", "DSSEQ"))
 #compare_domain_by_index(other_domains, datasets, 1, exclude = special_domain_names)
 #compare_domain_by_index(other_domains, datasets, 2, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 3, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 4, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 5, exclude = special_domain_names)
 #compare_domain_by_index(other_domains, datasets, 6, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 7, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 8, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 9, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 10, exclude = special_domain_names)
 # compare_domain_by_index(generated_datasets, datasets, 13, exclude = special_domain_names)

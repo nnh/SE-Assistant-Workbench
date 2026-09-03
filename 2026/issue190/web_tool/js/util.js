@@ -28,6 +28,50 @@ function sampleCheckBoxValues(choices, n) {
   return values;
 }
 
+// 配列をシャッフルしたコピーを返す(Fisher-Yates)
+function shuffledCopy(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// radio_button用: choicesからn件選ぶ際、単純なランダムサンプリング(重複あり)だと選択肢数が多い場合に
+// 一部の選択肢が一度も出現しないことがある。ダミーデータとして全選択肢が実際に出現することが
+// 望ましいため、可能な限り全選択肢を含めるようにする。
+// n<=choices.lengthなら重複無しでn件選ぶ(入るだけ全種類異なる値、入りきらない分は諦める)。
+// n>choices.lengthなら全選択肢を最低1回ずつ含め、残りは通常通りランダム(重複あり)で埋めてから
+// 順序をシャッフルする(Rのsample_values_with_coverage()に対応)
+function sampleValuesWithCoverage(choices, n) {
+  if (choices.length === 0 || n === 0) return [];
+  if (n <= choices.length) {
+    return shuffledCopy(choices).slice(0, n);
+  }
+  const extra = Array.from({ length: n - choices.length }, () => sampleOne(choices));
+  return shuffledCopy([...choices, ...extra]);
+}
+
+// check_box用: sampleCheckBoxValues()で生成した後、一度も出現しなかった選択肢があれば、
+// ランダムな行に追記して全選択肢が最低1回は出現するようにする(空欄""は選択肢としてカウントしない。
+// hasBlankにより既に自然に出現しうるため)。Rのsample_check_box_values_with_coverage()に対応
+function sampleCheckBoxValuesWithCoverage(choices, n) {
+  const values = sampleCheckBoxValues(choices, n);
+  const realChoices = choices.filter((c) => c !== "");
+  if (realChoices.length === 0 || n === 0) return values;
+  const present = new Set(values.flatMap((v) => (v ? v.split(",") : [])).filter((v) => v !== ""));
+  const missing = realChoices.filter((c) => !present.has(c));
+  if (missing.length === 0) return values;
+  missing.forEach((choice) => {
+    const rowIdx = Math.floor(Math.random() * n);
+    const parts = values[rowIdx] ? values[rowIdx].split(",") : [];
+    if (!parts.includes(choice)) parts.push(choice);
+    values[rowIdx] = parts.join(",");
+  });
+  return values;
+}
+
 // date_vars同士がvalidate_date_after_or_equal_to/validate_date_before_or_equal_to(他フィールド参照)で
 // 数珠つなぎに依存し合う場合、参照先が先に生成されていないと値を引けない。dateRefBounds(このdateVars同士の
 // 依存だけ)を使って依存が無いものから順に並べ替える(トポロジカルソート。循環参照があれば残りは元の順のまま追加する。

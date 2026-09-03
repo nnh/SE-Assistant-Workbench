@@ -27,6 +27,47 @@ sample_check_box_values <- function(choices, n) {
   })
 }
 
+# radio_button用: choicesからn件選ぶ際、単純なランダムサンプリング(重複あり)だと選択肢数が
+# 多い場合に一部の選択肢が一度も出現しないことがある。ダミーデータとして全選択肢が実際に
+# 出現することが望ましいため、可能な限り全選択肢を含めるようにする。
+# n<=length(choices)なら重複無しでn件選ぶ(入るだけ全種類異なる値、入りきらない分は諦める)。
+# n>length(choices)なら全選択肢を最低1回ずつ含め、残りは通常通りランダム(重複あり)で埋めてから
+# 順序をシャッフルする(inject_required_llt_codes()と同じ「必須値を混ぜ込む」考え方)
+sample_values_with_coverage <- function(choices, n) {
+  if (length(choices) == 0 || n == 0) {
+    return(character(0))
+  }
+  if (n <= length(choices)) {
+    return(sample(choices, size = n, replace = FALSE))
+  }
+  extra <- sample(choices, size = n - length(choices), replace = TRUE)
+  sample(c(choices, extra))
+}
+
+# check_box用: sample_check_box_values()で生成した後、一度も出現しなかった選択肢があれば、
+# ランダムな行に追記して全選択肢が最低1回は出現するようにする(空欄""は選択肢としてカウントしない。
+# has_blankにより既に自然に出現しうるため)
+sample_check_box_values_with_coverage <- function(choices, n) {
+  values <- sample_check_box_values(choices, n)
+  real_choices <- setdiff(choices, "")
+  if (length(real_choices) == 0 || n == 0) {
+    return(values)
+  }
+  present <- unique(unlist(str_split(values, ","))) %>% discard(~ is.na(.x) | .x == "")
+  missing <- setdiff(real_choices, present)
+  if (length(missing) == 0) {
+    return(values)
+  }
+  target_rows <- sample(seq_len(n), size = length(missing), replace = length(missing) > n)
+  for (i in seq_along(missing)) {
+    row_i <- target_rows[i]
+    existing <- values[row_i]
+    parts <- if (is.na(existing) || existing == "") character(0) else str_split(existing, ",")[[1]]
+    values[row_i] <- str_c(union(parts, missing[i]), collapse = ",")
+  }
+  values
+}
+
 # radio_button/check_box: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
 # そのalias_name/labelのインスタンスがis_required(presence型のvalidatorを持つ)でなく、かつ
 # is_invisibleがFALSE(可視項目)の場合は必須ではないため、空白("")も選択肢に加える。
@@ -73,9 +114,9 @@ populate_radio_button_fields <- function(data, spec, target_vars, numeric_bounds
         target <- data[["alias_name"]] == an
         if (length(choices) > 0 && any(target)) {
           data[[var_name]][target] <- if (any(an_rows[["field_type"]] == "check_box")) {
-            sample_check_box_values(choices, sum(target))
+            sample_check_box_values_with_coverage(choices, sum(target))
           } else {
-            sample(choices, size = sum(target), replace = TRUE)
+            sample_values_with_coverage(choices, sum(target))
           }
         }
       }
@@ -83,9 +124,9 @@ populate_radio_button_fields <- function(data, spec, target_vars, numeric_bounds
       choices <- build_choices(var_rows, var_name)
       if (length(choices) > 0) {
         data[[var_name]] <- if (any(var_rows[["field_type"]] == "check_box")) {
-          sample_check_box_values(choices, nrow(data))
+          sample_check_box_values_with_coverage(choices, nrow(data))
         } else {
-          sample(choices, size = nrow(data), replace = TRUE)
+          sample_values_with_coverage(choices, nrow(data))
         }
       }
     }
@@ -465,14 +506,18 @@ build_cdisc_variable_to_prefix <- function(cdisc_variable_values) {
 
 # presence_conditions/field_ref_boundsのうち、cdisc_variableとref_cdisc_variableのprefixが異なる
 # (=ドメインをまたぐ参照)行から、(from, to)の依存エッジ一覧を作る。fromはtoに依存する(toを先に生成する必要がある)
-build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds = NULL) {
+build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL) {
   if (is.null(age_bounds)) {
     age_bounds <- tibble(cdisc_variable = character(0), ref_cdisc_variable = character(0))
+  }
+  if (is.null(date_ref_bounds)) {
+    date_ref_bounds <- tibble(cdisc_variable = character(0), ref_cdisc_variable = character(0))
   }
   bind_rows(
     presence_conditions %>% select(cdisc_variable, ref_cdisc_variable),
     field_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable),
-    age_bounds %>% select(cdisc_variable, ref_cdisc_variable)
+    age_bounds %>% select(cdisc_variable, ref_cdisc_variable),
+    date_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable)
   ) %>%
     distinct() %>%
     left_join(cdisc_variable_to_prefix, by = "cdisc_variable") %>%
@@ -516,22 +561,34 @@ topo_sort_prefixes <- function(prefixes, edges) {
 # dataがalias_nameを持たない場合や、そのref_alias_nameがdata自身のalias_nameのどれとも一致しない場合
 # (=真に外部の固定参照)は、全行に対して適用する
 # 戻り値はlist(data=結合後のdata, injected_cols=このために追加した列名)
-inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL) {
+inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL) {
+  if (is.null(presence_conditions)) {
+    presence_conditions <- tibble(ref_cdisc_variable = character(0))
+  }
   if (is.null(field_ref_bounds)) {
     field_ref_bounds <- tibble(ref_cdisc_variable = character(0))
   }
   if (is.null(age_bounds)) {
     age_bounds <- tibble(ref_cdisc_variable = character(0))
   }
+  if (is.null(date_ref_bounds)) {
+    date_ref_bounds <- tibble(ref_cdisc_variable = character(0))
+  }
   # labelは、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス(label)。
   # 同じref_cdisc_variable(例: RSORRES)でも、参照元のlabelブロックごとに参照先のref_labelが
   # 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
   # このlabelを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
   # (field_ref_bounds/age_boundsはlabelを持たないため、その場合はNAのままになる)
+  # date_ref_boundsはref_alias_nameを持たないが、ref_field(参照先)は常に自分自身と同じ
+  # alias_name内のフィールドとして解決されている(build_generation_constraints.Rのdate_ref_bounds
+  # 構築時に、field_name/ref_fieldを同一alias_nameでlookupしているため)。よってalias_nameを
+  # そのままref_alias_nameとして補って良い
   ref_instances <- bind_rows(
     presence_conditions %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
     field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
-    age_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label")))
+    age_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
+    date_ref_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_label", "alias_name"))) %>%
+      rename(any_of(c(ref_alias_name = "alias_name")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
     distinct()
@@ -1260,6 +1317,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 
   date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
 
+  # date_ref_boundsが他ドメインの日付列を参照する場合、populate_date_fields()より前に
+  # built_domainsから該当列を結合しておく(そうしないと生成時点でref_cdisc_variableが
+  # colnames(data)に無く、下限/上限制約が適用されないまま日付が生成されてしまう)
+  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds)
+  data <- date_injected[["data"]]
+  date_injected_cols <- date_injected[["injected_cols"]]
+
   data <- data %>%
     populate_radio_button_fields(spec, target_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds) %>%
@@ -1268,6 +1332,10 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     # alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
     # (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
     reorder_dates_by_sheet_seq(date_vars, spec, registration_start_date, discontinuation_date) %>%
+    # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
+    # 他ドメイン参照(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
+    # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds) %>%
     populate_dose_fields(target_vars) %>%
     populate_dummy_fields(target_vars) %>%
     add_seq(seq_var)
@@ -1292,13 +1360,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 
   # presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   # built_domains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
-  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds)
+  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_field_ref_bounds(spec, field_ref_bounds) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
-    select(-any_of(injected[["injected_cols"]]))
+    select(-any_of(c(injected[["injected_cols"]], date_injected_cols)))
 
   # drug変数の値がwho_drug_idfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
   # generic_name_enを格納する(presence_conditions等で値が変わった後の最終状態を見る)。
@@ -1347,6 +1415,13 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   spid_var <- str_c(prefix, "SPID")
   data[[spid_var]] <- data[["alias_name"]]
   data <- data %>% apply_multi_record_spid(spid_var, multi_record_alias_names)
+
+  # date_ref_boundsが他ドメインの日付列を参照する場合、このあとの日付生成ループより前に
+  # built_domainsから該当列を結合しておく(そうしないと生成時点でref_cdisc_variableが
+  # colnames(data)に無く、下限/上限制約が適用されないまま日付が生成されてしまう)
+  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds)
+  data <- date_injected[["data"]]
+  date_injected_cols <- date_injected[["injected_cols"]]
 
   target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
 
@@ -1430,9 +1505,9 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
           if (length(cs) == 0) {
             rep(NA_character_, nn)
           } else if (ft == "check_box") {
-            sample_check_box_values(cs, nn)
+            sample_check_box_values_with_coverage(cs, nn)
           } else {
-            sample(cs, nn, replace = TRUE)
+            sample_values_with_coverage(cs, nn)
           }
         } else if (ft == "date") {
           if (is.na(date_min_ref) && is.na(date_max_ref)) {
@@ -1481,9 +1556,14 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   # 1つのalias内でcdisc_variable名がlabel(繰り返しの1回分)を跨いで連鎖する行(例: 次回投与の開始日が
   # 前回投与の終了日を参照する)がある場合、通常の列単位生成ではlabelを跨いだ参照を扱えないため、
-  # regenerate_date_chain()でそのalias・その変数だけ生成し直す。それ以外の変数はclamp_dates_to_discontinuationに任せる
+  # regenerate_date_chain()でそのalias・その変数だけ生成し直す。それ以外の変数はclamp_dates_to_discontinuationに任せる。
+  # ref_cdisc_variableも自ドメインのdate_vars内にある場合のみ対象にする(regenerate_date_chain()は
+  # 同じdataフレーム内にref_labelの行がある前提のため、ref_cdisc_variableが他ドメインの変数
+  # (例: RSDTCがCMSTDTCを参照)の場合はref_labelの行が存在せず機能しない。他ドメイン参照は
+  # inject_cross_domain_refs()で既にref_cdisc_variable列自体がdataに結合済みなので、通常の
+  # 列単位生成・下のclamp_dates_to_discontinuationのref_violation判定に任せればよい)
   chain_bounds <- if (!is.null(date_ref_bounds)) {
-    date_ref_bounds %>% filter(cdisc_variable %in% date_vars, !is.na(label), !is.na(ref_label), label != ref_label)
+    date_ref_bounds %>% filter(cdisc_variable %in% date_vars, ref_cdisc_variable %in% date_vars, !is.na(label), !is.na(ref_label), label != ref_label)
   } else {
     date_ref_bounds
   }
@@ -1500,10 +1580,12 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   }
   # chain_varsはcdisc_variable単位の判定のため、同じ変数名でもlabelを跨ぐ連鎖を持たない他のlabel
   # (例: RSDTCのうち "baseline" alias以外の通常のvisit)まで丸ごとclampから除外してしまうと、
-  # そちらの中止日超過チェックが素通りしてしまう。clampにはlabelを跨ぐ行(label!=ref_label)だけを
-  # 除いたdate_ref_boundsを渡し、変数自体は除外せず全date_varsを対象にする
+  # そちらの中止日超過チェックが素通りしてしまう。clampにはchain_boundsで処理した(同一ドメイン内で
+  # labelを跨ぐ)行だけを除いたdate_ref_boundsを渡し、変数自体は除外せず全date_varsを対象にする。
+  # 他ドメイン参照(ref_cdisc_variableが自ドメインのdate_vars外)はchain_boundsで処理されないため、
+  # ここには残してclampのref_violation判定に任せる
   date_ref_bounds_for_clamp <- if (!is.null(date_ref_bounds)) {
-    date_ref_bounds %>% filter(is.na(label) | is.na(ref_label) | label == ref_label)
+    date_ref_bounds %>% filter(is.na(label) | is.na(ref_label) | label == ref_label | !(ref_cdisc_variable %in% date_vars))
   } else {
     date_ref_bounds
   }
@@ -1513,6 +1595,10 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
   # regenerate_date_chain()・clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
   data <- reorder_dates_by_sheet_seq(data, date_vars, spec, registration_start_date, discontinuation_date)
+  # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
+  # 他ドメイン参照(date_ref_bounds_for_clamp)の下限/上限が再び崩れる場合がある。ここでもう一度
+  # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、
@@ -1535,12 +1621,12 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   # presence_conditions/age_boundsが他ドメインの変数を参照している場合、built_domainsから値を結合してから適用し、
   # 結合用に追加した列は最後に外す(alias_name/labelが揃っている場合はそれも突き合わせキーに使う)
-  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds)
+  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
-    select(-any_of(injected[["injected_cols"]]))
+    select(-any_of(c(injected[["injected_cols"]], date_injected_cols)))
 
   # drug変数の値がwho_drug_idfの薬剤名(full_name_en)に完全一致する場合、prefixDECODに
   # generic_name_enを格納する(presence_conditions等で値が変わった後の最終状態を見る)。
@@ -1649,9 +1735,9 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
           if (length(cs) == 0) {
             rep(NA_character_, nn)
           } else if (ft == "check_box") {
-            sample_check_box_values(cs, nn)
+            sample_check_box_values_with_coverage(cs, nn)
           } else {
-            sample(cs, nn, replace = TRUE)
+            sample_values_with_coverage(cs, nn)
           }
         } else if (ft == "date") {
           if (is.na(date_min_ref) && is.na(date_max_ref)) {
@@ -1745,7 +1831,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
-  edges <- build_cross_prefix_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds)
+  edges <- build_cross_prefix_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
   ordered_prefixes <- topo_sort_prefixes(prefixes, edges)
 
   for (px in ordered_prefixes) {

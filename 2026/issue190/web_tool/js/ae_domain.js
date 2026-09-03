@@ -86,13 +86,14 @@ function populateAeChoiceFields(ae, aeSpec, numericBounds) {
       const targetRows = ae.filter((row) => row.alias_name === an);
       if (choices.length === 0 || targetRows.length === 0) return;
       if (isCheckBox) {
-        const values = sampleCheckBoxValues(choices, targetRows.length);
+        const values = sampleCheckBoxValuesWithCoverage(choices, targetRows.length);
         targetRows.forEach((row, i) => {
           row[varName] = values[i];
         });
       } else {
-        targetRows.forEach((row) => {
-          row[varName] = sampleOne(choices);
+        const values = sampleValuesWithCoverage(choices, targetRows.length);
+        targetRows.forEach((row, i) => {
+          row[varName] = values[i];
         });
       }
     });
@@ -327,13 +328,14 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
       if (g.fieldType === "radio_button" || g.fieldType === "check_box") {
         if (codes.length === 0) return;
         if (g.fieldType === "check_box") {
-          const values = sampleCheckBoxValues(codes, rows.length);
+          const values = sampleCheckBoxValuesWithCoverage(codes, rows.length);
           rows.forEach((row, i) => {
             row[varName] = values[i];
           });
         } else {
-          rows.forEach((row) => {
-            row[varName] = sampleOne(codes);
+          const values = sampleValuesWithCoverage(codes, rows.length);
+          rows.forEach((row, i) => {
+            row[varName] = values[i];
           });
         }
       } else if (g.fieldType === "date") {
@@ -435,29 +437,6 @@ function populateAeDummyFields(ae, aeSpec) {
   return ae;
 }
 
-// USUBJIDごとに、AETOXGR=="5"(死亡)のレコードが最後に来るよう並べ替える(Rのpopulate_ae_domain()の
-// 該当部分に対応。表示順の整理のみで、他のレコードの妥当性には影響しない)
-function sortAeDeathLast(ae) {
-  if (!ae[0] || !("AETOXGR" in ae[0])) return ae;
-  const byUsubjid = {};
-  const order = [];
-  ae.forEach((row) => {
-    if (!byUsubjid[row.USUBJID]) {
-      byUsubjid[row.USUBJID] = [];
-      order.push(row.USUBJID);
-    }
-    byUsubjid[row.USUBJID].push(row);
-  });
-  const result = [];
-  order.forEach((usubjid) => {
-    const rows = byUsubjid[usubjid];
-    const alive = rows.filter((r) => r.AETOXGR !== "5");
-    const dead = rows.filter((r) => r.AETOXGR === "5");
-    result.push(...alive, ...dead);
-  });
-  return result;
-}
-
 // AETOXGR=="5"(死亡)のAEENDTC(被験者ごとの最も早い日)より後にAESTDTCが始まる他のAEレコードは、
 // 死亡後に新たな有害事象が発生したことになり矛盾するため除外する(Rのpopulate_ae_domain()の
 // 該当部分に対応)
@@ -502,6 +481,17 @@ function finalizeAeDomain(ae, aeSpec, linkedSpec) {
   ae.forEach((row) => {
     usubjidCounters[row.USUBJID] = (usubjidCounters[row.USUBJID] || 0) + 1;
     row.AESPID = `${row.alias_name}${usubjidCounters[row.USUBJID]}`;
+  });
+
+  // AESEQはUSUBJID・AESTDTC・AESPIDの昇順で振る(同日にAETOXGR=="5"(死亡)と他のAEがある場合の
+  // 前後関係は問わない)
+  ae = [...ae].sort((a, b) => {
+    if (a.USUBJID !== b.USUBJID) return a.USUBJID < b.USUBJID ? -1 : 1;
+    const aDtc = a.AESTDTC || "";
+    const bDtc = b.AESTDTC || "";
+    if (aDtc !== bDtc) return aDtc < bDtc ? -1 : 1;
+    if (a.AESPID !== b.AESPID) return a.AESPID < b.AESPID ? -1 : 1;
+    return 0;
   });
   ae.forEach((row, i) => {
     row.AESEQ = i + 1;

@@ -259,7 +259,6 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   ae = populateAeDummyFields(ae, aeSpec);
   ae = applyPresenceConditions(ae, presenceConditions);
   ae = applyFieldRefBounds(ae, aeSpec, fieldRefBounds);
-  ae = sortAeDeathLast(ae);
   ae = filterAeDeathDateConsistency(ae);
   const aeResult = finalizeAeDomain(ae, aeSpec, linkedSpec);
   ae = aeResult.ae;
@@ -316,10 +315,10 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   generatedOtherDomains = otherDomains;
   renderOtherDomainPreviews(otherDomains);
 
-  // alias_name/labelは他ドメイン生成時の突き合わせキーとして使うためここまで保持していたが、
-  // 最終出力には不要なので取り除く(Rのload_edc_spec.Rでの同様の処理に対応)
+  // alias_name/label/sheet_seqは他ドメイン生成時の突き合わせキーやDSSEQ並び替えに使うため
+  // ここまで保持していたが、最終出力には不要なので取り除く(Rのload_edc_spec.Rでの同様の処理に対応)
   ds = ds.map((row) => {
-    const { alias_name, label, ...rest } = row;
+    const { alias_name, label, sheet_seq, ...rest } = row;
     return rest;
   });
   ds = sortBySeq(ds, "DS");

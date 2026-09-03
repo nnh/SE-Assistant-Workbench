@@ -21,14 +21,42 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
       arrange(sheet_seq)
     ds <- epoch_table %>%
       pmap_dfr(function(alias_name, label, default_value, sheet_seq) {
-        dm %>% select(USUBJID, STUDYID) %>% mutate(EPOCH = default_value, DSSPID = alias_name, alias_name = alias_name, label = label)
+        dm %>% select(USUBJID, STUDYID) %>% mutate(EPOCH = default_value, DSSPID = alias_name, alias_name = alias_name, label = label, sheet_seq = sheet_seq)
       })
   } else {
     ds <- dm %>% select(USUBJID, STUDYID)
   }
 
   ds[["DOMAIN"]] <- "DS"
-  ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH", "alias_name", "label")))
+  # sheet_seq(シートの本来の並び順)はDSSEQを振る際の並び替えキーとして使う。alias_name/labelと
+  # 同様、最終的な出力からはload_edc_spec.R側で使い終わった後に取り除く
+  ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH", "alias_name", "label", "sheet_seq")))
+}
+
+# DSSEQを振るための並び替え。USUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の順で昇順にする。
+# DSSTDTCが無い行(例: RANDOMIZED)は、実際の日付より前に来るよう非常に早い日付として扱う
+# (その被験者の他の全行より前に来ることを表す。sheet_seqが無い行があれば、それも他の全sheet_seq
+# より前として扱う)。DSSTDTC/sheet_seqのどちらの列も無ければUSUBJIDのみで並べる
+sort_ds_for_seq <- function(ds) {
+  has_dsstdtc <- "DSSTDTC" %in% colnames(ds)
+  has_sheet_seq <- "sheet_seq" %in% colnames(ds)
+  if (!has_dsstdtc && !has_sheet_seq) {
+    return(ds %>% arrange(USUBJID))
+  }
+  if (has_dsstdtc) {
+    ds[[".sort_dsstdtc"]] <- coalesce(ds[["DSSTDTC"]], as.Date("1900-01-01"))
+  }
+  if (has_sheet_seq) {
+    ds[[".sort_sheet_seq"]] <- coalesce(ds[["sheet_seq"]], -Inf)
+  }
+  sorted <- if (has_dsstdtc && has_sheet_seq) {
+    ds %>% arrange(USUBJID, .sort_dsstdtc, .sort_sheet_seq)
+  } else if (has_dsstdtc) {
+    ds %>% arrange(USUBJID, .sort_dsstdtc)
+  } else {
+    ds %>% arrange(USUBJID, .sort_sheet_seq)
+  }
+  sorted %>% select(-any_of(c(".sort_dsstdtc", ".sort_sheet_seq")))
 }
 
 populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL) {
@@ -45,8 +73,10 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
     # DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
     # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
     reorder_dates_by_sheet_seq(ds_date_vars, ds_spec, registration_start_date) %>%
-    populate_dummy_fields(target_vars) %>%
-    add_seq("DSSEQ")
+    populate_dummy_fields(target_vars)
+
+  # DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る
+  ds <- ds %>% sort_ds_for_seq() %>% add_seq("DSSEQ")
 
   meddra_vars <- compute_meddra_vars(ds_spec, target_vars)
   if (length(meddra_vars) > 0) {
@@ -67,7 +97,21 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
 # そのブロックの行にDEATHを設定する(単に時系列上最後の行に設定すると、DEATHを選択肢に持たない
 # 別ブロック(例: allocation/withdrawal)の行になってしまい、DEATHを参照する他ドメインの判定が
 # 常に不一致になるため)。判別できない場合は、従来通り各被験者の最後の行に設定する
-finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL, completed_rate = 0.6) {
+# 死亡確定行の候補(同一USUBJIDの複数行)から、DEATHとする行を選ぶ。最後の行(=sheet_seqが
+# 最も遅いブロック、例: FOLLOW-UP)は常にDEATHとする(死亡した被験者は最終的にFollowUpでも
+# DEATHとして記録されるのが正しいため)。それに加えて、ごく低い確率(early_death_prob)で、
+# 最後以外の行(例: TREATMENT中のdiscon)もランダムに1つDEATHにする(TREATMENT中に死亡が
+# 判明していたケースを表す)。候補が1行しかない場合は常にその行のみを返す
+pick_death_rows <- function(rows, early_death_prob) {
+  last_row <- rows %>% slice_tail(n = 1)
+  if (nrow(rows) <= 1 || runif(1) >= early_death_prob) {
+    return(last_row)
+  }
+  extra_row <- rows %>% slice(seq_len(n() - 1)) %>% slice_sample(n = 1)
+  bind_rows(last_row, extra_row)
+}
+
+finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL, completed_rate = 0.6, early_death_prob = 0.1) {
   if (!"DSTERM" %in% colnames(ds)) {
     return(ds)
   }
@@ -99,13 +143,13 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
     fallback <- died_data %>% filter(!(USUBJID %in% unique(preferred[["USUBJID"]])))
     death_row_ids <- bind_rows(preferred, fallback) %>%
       group_by(USUBJID) %>%
-      slice_tail(n = 1) %>%
+      group_modify(~ pick_death_rows(.x, early_death_prob)) %>%
       ungroup() %>%
       pull(.row_id)
   } else {
     death_row_ids <- died_data %>%
       group_by(USUBJID) %>%
-      slice_tail(n = 1) %>%
+      group_modify(~ pick_death_rows(.x, early_death_prob)) %>%
       ungroup() %>%
       pull(.row_id)
   }
@@ -155,6 +199,48 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
   # 最終的にCOMPLETEDとなった被験者は、途中経過のレコードもすべてCOMPLETEDにする
   ds$DSTERM[ds$USUBJID %in% completed_usubjid] <- "COMPLETED"
 
+  # ここまででDEATH/COMPLETEDに確定した行を除いた「自由な」行(まだランダムな理由が入りうる行)について、
+  # DEATH/COMPLETED以外の選択肢が一度も出現していなければ、可能な範囲でランダムな自由行に反映させる
+  # (populate_radio_button_fields()のカバレッジ保証と同じ考え方を、DEATH/COMPLETED上書き後に
+  # 残った行に対して適用する。DEATH/COMPLETED上書きでカバレッジが崩れることがあるため)
+  if (!is.null(cdisc_variable_values) && "alias_name" %in% colnames(ds)) {
+    free_ids <- setdiff(seq_len(nrow(ds)), c(death_row_ids, which(ds[["USUBJID"]] %in% completed_usubjid)))
+    if (length(free_ids) > 0) {
+      for (an in unique(ds[["alias_name"]][free_ids])) {
+        an_free_ids <- free_ids[ds[["alias_name"]][free_ids] == an]
+        choices <- cdisc_variable_values %>%
+          filter(prefix == "DS", cdisc_variable == "DSTERM", alias_name == an) %>%
+          mutate(code = if_else(is.na(code), default_value, code)) %>%
+          filter(!is.na(code), !(code %in% c("DEATH", "COMPLETED"))) %>%
+          pull(code) %>%
+          unique()
+        if (length(choices) == 0) next
+        present <- unique(ds[["DSTERM"]][an_free_ids])
+        missing <- setdiff(choices, present)
+        if (length(missing) == 0) next
+        # 上書きする行は、値が重複している(=他にも同じ値を持つ行がある)行を優先して選ぶ。
+        # ユニークな値を持つ行を上書きすると、その値が新たに欠落してしまうため
+        value_counts <- table(ds[["DSTERM"]][an_free_ids])
+        is_dup_or_blank <- vapply(an_free_ids, function(i) {
+          v <- ds[["DSTERM"]][i]
+          is.na(v) || v == "" || value_counts[[v]] > 1
+        }, logical(1))
+        safe_shuffle <- function(x) if (length(x) <= 1) x else sample(x)
+        ordered_ids <- c(safe_shuffle(an_free_ids[is_dup_or_blank]), safe_shuffle(an_free_ids[!is_dup_or_blank]))
+        target <- ordered_ids[seq_len(min(length(missing), length(ordered_ids)))]
+        ds[["DSTERM"]][target] <- missing[seq_along(target)]
+      }
+    }
+  }
+
+  # DEATH確定行のDSSTDTCを死亡日に合わせてクランプした影響で、populate_ds_domain()側で
+  # 既に確定していたDSSEQ(USUBJID・DSSTDTC・sheet_seq昇順)の並びが崩れることがあるため、
+  # ここで振り直す
+  ds <- ds %>% sort_ds_for_seq()
+  if ("DSSEQ" %in% colnames(ds)) {
+    ds <- ds %>% add_seq("DSSEQ")
+  }
+
   ds
 }
 
@@ -194,7 +280,12 @@ add_randomization_ds_rows <- function(ds, dm, registration_start_date) {
   }
   randomization_rows <- randomization_rows %>% select(-any_of("RFICDTC"))
 
-  bind_rows(randomization_rows, ds) %>%
+  combined <- bind_rows(randomization_rows, ds)
+  # DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る。RANDOMIZED行は
+  # DSSTDTC・sheet_seqのどちらも持たないため、sort_ds_for_seq()により各被験者の他の全行より
+  # 前に来る(無作為化は治療開始前のイベントのため)
+  combined <- combined %>% sort_ds_for_seq()
+  combined %>%
     add_seq("DSSEQ") %>%
     reorder_domain_columns(front_cols = domain_front_cols("DS"))
 }

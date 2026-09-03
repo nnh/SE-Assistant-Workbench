@@ -93,9 +93,11 @@ align_for_comparison <- function(generated_df, csv_df, sort_col) {
   generated_col_order <- c(common_cols, setdiff(colnames(generated_df), common_cols))
   csv_col_order <- c(common_cols, setdiff(colnames(csv_df), common_cols))
   list(
-    generated = generated_df %>% select(all_of(generated_col_order)) %>% arrange(across(all_of(sort_col))) %>%
+    generated = generated_df %>% select(all_of(generated_col_order)) %>%
+      # arrange(across(all_of(sort_col))) %>%
       mutate(across(everything(), ~ replace_na(as.character(.x), ""))),
-    csv = csv_df %>% select(all_of(csv_col_order)) %>% arrange(across(all_of(sort_col))) %>%
+    csv = csv_df %>% select(all_of(csv_col_order)) %>%
+      # arrange(across(all_of(sort_col))) %>%
       mutate(across(everything(), ~ replace_na(as.character(.x), "")))
   )
 }

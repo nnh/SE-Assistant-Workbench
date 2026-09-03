@@ -107,8 +107,9 @@ load_edc_spec <- function(json_path) {
     active_sheet_table = active_sheet_table, visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds
   )
 
-  # alias_name/labelは他ドメイン生成時の突き合わせキーとして使い終わったため、最終出力からは取り除く
-  ds <- ds %>% select(-any_of(c("alias_name", "label")))
+  # alias_name/label/sheet_seqは他ドメイン生成時の突き合わせキーやDSSEQ並び替えに使い終わったため、
+  # 最終出力からは取り除く
+  ds <- ds %>% select(-any_of(c("alias_name", "label", "sheet_seq")))
 
   # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
   other_domains <- merge_linked_domains(other_domains, ae_linked_domains)
