@@ -98,7 +98,7 @@ tmp_cm_4 %>% inner_join(tmp_cm_3, by = "USUBJID") %>% check_date_after_var_befor
 tmp_rs_4 <- rs %>% filter(SPDEVID == 4) %>% select(USUBJID, RSDTC)
 tmp_cm_4 %>% inner_join(tmp_rs_4, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_4", domain_name = "CM/RS")
 tmp_cm_5 <- cm %>% filter(SPDEVID == 5) %>% select(USUBJID, CMSTDTC_5=CMSTDTC)
-tmp_cm_5 %>% inner_join(tmp_cm_4, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_4", "CMSTDTC_3", domain_name = "CM")
+tmp_cm_5 %>% inner_join(tmp_cm_4, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_5", "CMSTDTC_4", domain_name = "CM")
 tmp_rs_5 <- rs %>% filter(SPDEVID == 5) %>% select(USUBJID, RSDTC)
 tmp_cm_5 %>% inner_join(tmp_rs_5, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_5", domain_name = "CM/RS")
 # 数値上限下限

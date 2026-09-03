@@ -324,7 +324,27 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   ds = sortBySeq(ds, "DS");
   generatedDs = ds;
   renderPreview(ds, "ds-preview");
+  renderDomainSummary(generatedDm, generatedAe, generatedDs, generatedOtherDomains);
 });
+
+// 生成された全ドメイン(DM/AE/DS/その他)の名前とレコード数を一覧表示する
+function renderDomainSummary(dm, ae, ds, otherDomains) {
+  const container = document.getElementById("domain-summary");
+  const rows = [
+    { prefix: "DM", data: dm },
+    { prefix: "AE", data: ae },
+    { prefix: "DS", data: ds },
+    ...Object.keys(otherDomains || {})
+      .sort()
+      .map((prefix) => ({ prefix, data: otherDomains[prefix] })),
+  ];
+  let html = "<table><thead><tr><th>ドメイン</th><th>レコード数</th></tr></thead><tbody>";
+  rows.forEach((r) => {
+    html += `<tr><td>${r.prefix}</td><td>${r.data ? r.data.length : 0}</td></tr>`;
+  });
+  html += "</tbody></table>";
+  container.innerHTML = html;
+}
 
 function renderPreview(data, containerOrId) {
   const container = typeof containerOrId === "string" ? document.getElementById(containerOrId) : containerOrId;
