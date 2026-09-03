@@ -52,23 +52,57 @@ function sortDateVarsByDependency(dateVars, dateRefBounds) {
   return sorted;
 }
 
-// targetVars(このドメイン自身の対象列)のうちrequiredVars(全ドメイン共通の必須cdisc_variable一覧)に
-// 含まれる列(このドメインの必須列)を求め、それらが全て空(nullまたは空文字列"")であるレコードを
-// 削除する。presence_conditions等のゲーティングにより、そのインスタンス(行)が実質「存在しない」もの
-// (必須項目も含め何も入力されていない)になった場合、ダミーデータとしてもプレースホルダー行を残さず
-// 削除するために使う。このドメインに必須列が1つも無い場合(requiredVarsとtargetVarsの共通部分が空の
-// 場合)は何もしない。ただしprefixSTAT(例: LBSTAT)が"NOT DONE"の行は、必須列が全て空でも削除しない
+// targetVars(このドメイン自身の対象列)のうちrequiredVarInstances(alias_name/label単位の必須判定。
+// attachIsRequired()の元になったbuildRequiredVarInstances()に対応)に含まれる列を、各行が属する
+// alias_name(・label)ごとに求め、その行にとって必須な列が1つ以上あり、かつそれらが全て空
+// (nullまたは空文字列"")であるレコードを削除する。同じcdisc_variable名でもalias_name/labelの
+// インスタンスによって必須/非必須が異なりうるため(例: MHTERMは主診断labelでは必須だが、
+// 再発診断labelでは必須でない)、cdisc_variable名だけで一律に判定しない。
+// presence_conditions等のゲーティングにより、そのインスタンス(行)が実質「存在しない」もの
+// (必須項目も含め何も入力されていない)になった場合、ダミーデータとしてもプレースホルダー行を
+// 残さず削除するために使う。alias_name列が無い、またはこのドメインに必須列が1つも無い場合は
+// 何もしない。ただしprefixSTAT(例: LBSTAT)が"NOT DONE"の行は、必須列が全て空でも削除しない
 // (未実施を示す正当な状態のため)(R版drop_all_blank_required_records()に対応)
-function dropAllBlankRequiredRecords(data, targetVars, requiredVars, prefix) {
+function dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, prefix) {
   if (!data[0]) return data;
-  const requiredSet = new Set(requiredVars || []);
-  const domainRequiredVars = targetVars.filter((v) => requiredSet.has(v) && v in data[0]);
-  if (domainRequiredVars.length === 0) return data;
+  if (!requiredVarInstances || requiredVarInstances.length === 0) return data;
+  const targetVarSet = new Set(targetVars);
+  const candidateVars = [...new Set(requiredVarInstances.map((r) => r.cdisc_variable))].filter(
+    (v) => targetVarSet.has(v) && v in data[0]
+  );
+  if (candidateVars.length === 0 || !("alias_name" in data[0])) return data;
+  const hasLabel = "label" in data[0];
+
+  // labelが無い(そのfieldにlabelが無い)required_var_instanceは、alias_name全体を必須とみなす(緩い一致)。
+  // labelがある場合は(alias_name, label)の完全一致のみ必須とみなす
+  const aliasOnlyByVar = {};
+  candidateVars.forEach((v) => {
+    aliasOnlyByVar[v] = new Set();
+  });
+  const requiredByAliasLabel = new Map();
+  requiredVarInstances.forEach((r) => {
+    if (!candidateVars.includes(r.cdisc_variable)) return;
+    if (!hasLabel || r.label == null) {
+      aliasOnlyByVar[r.cdisc_variable].add(r.alias_name);
+    } else {
+      const key = `${r.alias_name}|${r.label}`;
+      if (!requiredByAliasLabel.has(key)) requiredByAliasLabel.set(key, new Set());
+      requiredByAliasLabel.get(key).add(r.cdisc_variable);
+    }
+  });
+
   const statVar = `${prefix}STAT`;
   const hasStatVar = statVar in data[0];
+
   return data.filter((row) => {
     if (hasStatVar && row[statVar] === "NOT DONE") return true;
-    return !domainRequiredVars.every((v) => row[v] == null || row[v] === "");
+    const requiredHere = new Set(requiredByAliasLabel.get(`${row.alias_name}|${row.label}`) || []);
+    candidateVars.forEach((v) => {
+      if (aliasOnlyByVar[v].has(row.alias_name)) requiredHere.add(v);
+    });
+    if (requiredHere.size === 0) return true;
+    const allBlank = [...requiredHere].every((v) => row[v] == null || row[v] === "");
+    return !allBlank;
   });
 }
 

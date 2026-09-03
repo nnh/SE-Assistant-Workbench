@@ -28,12 +28,14 @@ sample_check_box_values <- function(choices, n) {
 }
 
 # radio_button/check_box: 全codeパターン(codeが無ければdefault_value)からランダムに割り振り。
-# required_vars(presence型のvalidatorを持つcdisc_variable)に含まれず、かつis_invisibleがFALSE(可視項目)の場合は
-# 必須ではないため、空白("")も選択肢に加える。
+# そのalias_name/labelのインスタンスがis_required(presence型のvalidatorを持つ)でなく、かつ
+# is_invisibleがFALSE(可視項目)の場合は必須ではないため、空白("")も選択肢に加える。
+# is_requiredはcdisc_variable名単位ではなくalias_name/label単位の判定(build_generation_constraints.R
+# のrequired_var_instances由来)のため、同じcdisc_variable名でもインスタンスによって必須/非必須が異なりうる。
 # numeric_bounds(cdisc_variable, min_value, max_value)がある場合、数値として範囲外のcodeは選択肢から除く。
 # dataにalias_name列がある場合(build_generic_domainなど)は、同じcdisc_variableでも
 # 定義しているalias_nameが違えばcodeを混ぜず、そのalias_nameの行だけ自分のcodeから選ぶ
-populate_radio_button_fields <- function(data, spec, target_vars, required_vars = character(0), numeric_bounds = NULL) {
+populate_radio_button_fields <- function(data, spec, target_vars, numeric_bounds = NULL) {
   options_spec <- spec %>% filter(field_type %in% c("radio_button", "check_box"))
   options_spec[["code"]] <- ifelse(is.na(options_spec[["code"]]), options_spec[["default_value"]], options_spec[["code"]])
   options_target_vars <- intersect(unique(options_spec[["cdisc_variable"]]), target_vars)
@@ -42,7 +44,8 @@ populate_radio_button_fields <- function(data, spec, target_vars, required_vars 
   build_choices <- function(rows, var_name) {
     choices <- rows %>% pull(code) %>% unique()
     is_visible <- !any(rows[["is_invisible"]], na.rm = TRUE)
-    if (!(var_name %in% required_vars) && is_visible) {
+    is_required <- any(rows[["is_required"]], na.rm = TRUE)
+    if (!is_required && is_visible) {
       choices <- union(choices, "")
     }
     if (!is.null(numeric_bounds)) {
@@ -311,22 +314,56 @@ apply_presence_conditions <- function(data, presence_conditions) {
   data
 }
 
-# target_vars(このドメイン自身の対象列)のうちrequired_vars(全ドメイン共通の必須cdisc_variable
-# リスト)に含まれる列(このドメインの必須列)を求め、それらが全て空(NAまたは空文字列"")である
-# レコードを削除する。presence_conditions等のゲーティングにより、そのインスタンス(行)が
-# 実質「存在しない」もの(必須項目も含め何も入力されていない)になった場合、ダミーデータとしても
-# プレースホルダー行を残さず削除するために使う。このドメインに必須列が1つも無い場合
-# (required_varsとtarget_varsの共通部分が空の場合)は何もしない。
+# target_vars(このドメイン自身の対象列)のうちrequired_var_instances(alias_name/label単位の必須
+# 判定テーブル。build_generation_constraints.Rのrequired_var_instancesに対応)に含まれる列を、
+# 各行が属するalias_name(・label)ごとに求め、その行にとって必須な列が1つ以上あり、かつそれらが
+# 全て空(NAまたは空文字列"")であるレコードを削除する。同じcdisc_variable名でもalias_name/labelの
+# インスタンスによって必須/非必須が異なりうるため(例: MHTERMは主診断labelでは必須だが、
+# 再発診断labelでは必須でない)、cdisc_variable名だけで一律に判定しない。
+# presence_conditions等のゲーティングにより、そのインスタンス(行)が実質「存在しない」もの
+# (必須項目も含め何も入力されていない)になった場合、ダミーデータとしてもプレースホルダー行を
+# 残さず削除するために使う。alias_name列が無い、またはこのドメインに必須列が1つも無い場合は何もしない。
 # ただしxxSTAT(xxはprefix。例: LBSTAT)が"NOT DONE"の行は、必須列が全て空でも削除しない
 # (未実施を示す正当な状態のため)
-drop_all_blank_required_records <- function(data, target_vars, required_vars, prefix) {
-  domain_required_vars <- intersect(required_vars, target_vars) %>% intersect(colnames(data))
-  if (length(domain_required_vars) == 0) {
+drop_all_blank_required_records <- function(data, target_vars, required_var_instances, prefix) {
+  if (is.null(required_var_instances) || nrow(required_var_instances) == 0) {
     return(data)
   }
+  candidate_vars <- intersect(unique(required_var_instances[["cdisc_variable"]]), target_vars) %>% intersect(colnames(data))
+  if (length(candidate_vars) == 0 || !("alias_name" %in% colnames(data))) {
+    return(data)
+  }
+  has_label <- "label" %in% colnames(data)
+
+  is_required_mat <- matrix(FALSE, nrow = nrow(data), ncol = length(candidate_vars), dimnames = list(NULL, candidate_vars))
+  is_blank_mat <- matrix(FALSE, nrow = nrow(data), ncol = length(candidate_vars), dimnames = list(NULL, candidate_vars))
+  for (v in candidate_vars) {
+    req_rows <- required_var_instances %>% filter(cdisc_variable == v)
+    if (!has_label) {
+      is_required_mat[, v] <- data[["alias_name"]] %in% unique(req_rows[["alias_name"]])
+    } else {
+      # labelがNA(そのfieldにlabelが無い)場合は、alias_name全体を必須とみなす(緩い一致)。
+      # labelがある場合は(alias_name, label)の完全一致のみ必須とみなす
+      alias_only <- req_rows %>% filter(is.na(label)) %>% pull(alias_name) %>% unique()
+      alias_label <- req_rows %>% filter(!is.na(label)) %>% distinct(alias_name, label)
+      matched <- data[["alias_name"]] %in% alias_only
+      if (nrow(alias_label) > 0) {
+        matched <- matched | (str_c(data[["alias_name"]], "", data[["label"]]) %in% str_c(alias_label[["alias_name"]], "", alias_label[["label"]]))
+      }
+      is_required_mat[, v] <- matched
+    }
+    col <- data[[v]]
+    is_blank_mat[, v] <- is.na(col) | (is.character(col) & col == "")
+  }
+
   stat_var <- str_c(prefix, "STAT")
   not_done <- if (stat_var %in% colnames(data)) data[[stat_var]] == "NOT DONE" & !is.na(data[[stat_var]]) else FALSE
-  data %>% filter(not_done | !if_all(all_of(domain_required_vars), ~ is.na(.x) | (is.character(.x) & .x == "")))
+
+  has_any_required <- apply(is_required_mat, 1, any)
+  all_required_blank <- apply(!is_required_mat | is_blank_mat, 1, all)
+  should_delete <- has_any_required & all_required_blank & !not_done
+
+  data %>% filter(!should_delete)
 }
 
 # field_ref_bounds(cdisc_variable, ref_cdisc_variable, bound_type)に基づき、
@@ -1150,7 +1187,7 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
 # 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
   # presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   # 同じref_cdisc_variableを別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -1213,7 +1250,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
 
   data <- data %>%
-    populate_radio_button_fields(spec, target_vars, required_vars, numeric_bounds) %>%
+    populate_radio_button_fields(spec, target_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds) %>%
     clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds) %>%
     # 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
@@ -1247,7 +1284,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
-    drop_all_blank_required_records(target_vars, required_vars, prefix) %>%
+    drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_field_ref_bounds(spec, field_ref_bounds) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
@@ -1268,7 +1305,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_vars = character(0), add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
   drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
   # presence_conditions/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   # 同じref_cdisc_variableを別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が
@@ -1360,10 +1397,11 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
         default_value = first(default_value),
         codes = list(unique(ifelse(is.na(code), default_value, code))),
         is_invisible_any = any(is_invisible, na.rm = TRUE),
+        is_required_any = any(is_required, na.rm = TRUE),
         .groups = "drop"
       ) %>%
-      mutate(codes = map2(codes, is_invisible_any, function(cs, inv) {
-        if (!(var_name %in% required_vars) && !inv) union(cs, "") else cs
+      mutate(codes = pmap(list(codes, is_invisible_any, is_required_any), function(cs, inv, req) {
+        if (!req && !inv) union(cs, "") else cs
       }))
 
     # case_when()は条件に関係なく全分岐のRHSを評価してしまい、labelが一致しないグループで
@@ -1425,7 +1463,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
         }
       }) %>%
       ungroup() %>%
-      select(-field_type, -default_value, -codes, -is_invisible_any)
+      select(-field_type, -default_value, -codes, -is_invisible_any, -is_required_any)
   }
 
   date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
@@ -1489,7 +1527,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions) %>%
-    drop_all_blank_required_records(target_vars, required_vars, prefix) %>%
+    drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(injected[["injected_cols"]]))
 
@@ -1516,7 +1554,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 # 扱われ、ブロックをまたぐpresence_conditions(例: FAOBJがAELLTCDを参照)がドメインをまたぐ結合なしに
 # 正しく判定できるようになる。戻り値のlinked_specは、実際に追加したprefix/alias_nameの一覧
 # (呼び出し側で、二重生成を避けるための除外や、後でsplit_linked_domains()に分離する際に使う)
-populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, registration_start_date, meddra, required_vars = character(0), who_drug_idf = NULL, date_ref_bounds = NULL) {
+populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, registration_start_date, meddra, who_drug_idf = NULL, date_ref_bounds = NULL) {
   own_alias_names <- data[["alias_name"]] %>% unique()
   linked_spec <- cdisc_variable_values %>%
     filter(prefix != exclude_prefix, alias_name %in% own_alias_names)
@@ -1580,10 +1618,11 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
         default_value = first(default_value),
         codes = list(unique(ifelse(is.na(code), default_value, code))),
         is_invisible_any = any(is_invisible, na.rm = TRUE),
+        is_required_any = any(is_required, na.rm = TRUE),
         .groups = "drop"
       ) %>%
-      mutate(codes = map2(codes, is_invisible_any, function(cs, inv) {
-        if (!(var_name %in% required_vars) && !inv) union(cs, "") else cs
+      mutate(codes = pmap(list(codes, is_invisible_any, is_required_any), function(cs, inv, req) {
+        if (!req && !inv) union(cs, "") else cs
       }))
 
     data <- data %>%
@@ -1643,7 +1682,7 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
         }
       }) %>%
       ungroup() %>%
-      select(-field_type, -default_value, -codes, -is_invisible_any)
+      select(-field_type, -default_value, -codes, -is_invisible_any, -is_required_any)
   }
 
   list(data = data, linked_spec = linked_spec)
@@ -1690,7 +1729,7 @@ has_repeated_labels <- function(spec) {
 # presence_conditions/field_ref_boundsがドメインをまたいで参照している場合(例: MHOCCURがRSORRESを参照)は、
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
-build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL,
+build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, numeric_bounds = NULL, field_ref_bounds = NULL,
                                  exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
@@ -1702,7 +1741,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
     spec <- cdisc_variable_values %>% filter(prefix == px)
     built_domains[[px]] <- if (px %in% repeated_prefixes || has_repeated_labels(spec)) {
       build_repeated_domain(
-        dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars,
+        dm, spec, px, registration_start_date, meddra, presence_conditions, required_var_instances,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
@@ -1710,7 +1749,7 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
       )
     } else {
       build_generic_domain(
-        dm, spec, px, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
+        dm, spec, px, registration_start_date, meddra, presence_conditions, required_var_instances, numeric_bounds, field_ref_bounds,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,

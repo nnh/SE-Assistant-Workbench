@@ -334,12 +334,11 @@ function applyMultiRecordSpid(data, spidVar, multiRecordAliasNames) {
 // radio_button/check_box型の項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる。
 // alias_name(どのブロックの行か)によって同じcdisc_variableでも選択肢が異なりうるため、
 // 行のalias_nameと一致するspecの選択肢だけから選ぶ(Rのpopulate_radio_button_fields()の
-// has_alias_name==TRUEの分岐に対応。requiredVars/numericBoundsの扱いはDM/AE/DSと同じ)
-function populateGenericChoiceFields(data, spec, requiredVars, numericBounds) {
+// has_alias_name==TRUEの分岐に対応。isRequired/numericBoundsの扱いはDM/AE/DSと同じ)
+function populateGenericChoiceFields(data, spec, numericBounds) {
   const existingColumns = new Set(Object.keys(data[0] || {}));
   const choiceSpec = spec.filter((r) => r.field_type === "radio_button" || r.field_type === "check_box");
   const targetVars = [...new Set(choiceSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
-  const requiredSet = new Set(requiredVars || []);
 
   targetVars.forEach((varName) => {
     data.forEach((row) => {
@@ -351,7 +350,8 @@ function populateGenericChoiceFields(data, spec, requiredVars, numericBounds) {
       const anRows = varRows.filter((r) => r.alias_name === an);
       let choices = [...new Set(anRows.map((r) => (r.code != null ? r.code : r.default_value)))];
       const isVisible = !anRows.some((r) => r.is_invisible);
-      if (!requiredSet.has(varName) && isVisible) {
+      const isRequired = anRows.some((r) => r.is_required);
+      if (!isRequired && isVisible) {
         choices = [...new Set([...choices, ""])];
       }
       const bounds = numericBounds && numericBounds[varName];
@@ -448,12 +448,11 @@ function populateGenericDummyFields(data, spec) {
 }
 
 // meddra型の項目にLLT名を格納する(Rのpopulate_meddra_fields()に対応。alias_nameによる絞り込みは
-// 行わない点はAE/DM/DSと同じ)
+// 行わない点はAE/DM/DSと同じ)。populateGenericDummyFields()が先に走り、meddra型の列にも
+// 一旦"DUMMY"を入れてしまうため、既存列かどうかで絞り込まず無条件に上書きする
+// (R版のpopulate_meddra_fields()も列の存在有無を見ずに常に上書きしている)
 function populateGenericMeddraFields(data, spec, meddraData, meddraSample) {
-  const existingColumns = new Set(Object.keys(data[0] || {}));
-  const meddraVars = [...new Set(spec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))].filter(
-    (v) => !existingColumns.has(v)
-  );
+  const meddraVars = [...new Set(spec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))];
   meddraVars.forEach((varName) => {
     const fixedCodes = [
       ...new Set(
@@ -699,7 +698,7 @@ function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, regis
 // (AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、被験者に対して
 // ランダムな件数(0件を含む)のレコードを作る(Rのbuild_generic_domain()に対応)。
 // options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
-function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
+function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
   const builtDomains = opts.builtDomains || {};
@@ -769,7 +768,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   });
   data = applyMultiRecordSpid(data, spidVar, multiRecordAliasNames);
 
-  data = populateGenericChoiceFields(data, spec, requiredVars, numericBounds);
+  data = populateGenericChoiceFields(data, spec, numericBounds);
   data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
   data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
@@ -805,7 +804,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
-  data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVars, prefix);
+  data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVarInstances, prefix);
   data = applyFieldRefBounds(data, spec, scopedFieldRefBounds);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
@@ -859,7 +858,7 @@ function hasRepeatedLabels(spec) {
 // 値を生成する(対応するlabelが無ければnullのまま)。radio_button/check_box/date/meddra/drug/dose/dummyに
 // 対応する(Rのbuild_repeated_domain()に対応)。
 // options: { addCodingBlock, builtDomains, cdiscVariableToPrefix, ageBounds, multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
-function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, options) {
+function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, options) {
   const opts = options || {};
   const addCodingBlock = !!opts.addCodingBlock;
   const builtDomains = opts.builtDomains || {};
@@ -872,7 +871,6 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const discontinuationDate = opts.discontinuationDate || null;
   const dateRefBoundsAll = opts.dateRefBounds || [];
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
-  const requiredSet = new Set(requiredVars || []);
 
   const ownVars = new Set(spec.map((r) => r.cdisc_variable));
   const scopedPresenceConditions = (presenceConditions || []).filter((pc) => ownVars.has(pc.cdisc_variable));
@@ -957,11 +955,12 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     varSpec.forEach((r) => {
       const key = `${r.alias_name}|${r.label}`;
       if (!specByGroup.has(key)) {
-        specByGroup.set(key, { fieldType: r.field_type, defaultValue: r.default_value, codes: new Set(), isInvisibleAny: false });
+        specByGroup.set(key, { fieldType: r.field_type, defaultValue: r.default_value, codes: new Set(), isInvisibleAny: false, isRequiredAny: false });
       }
       const g = specByGroup.get(key);
       g.codes.add(r.code != null ? r.code : r.default_value);
       if (r.is_invisible) g.isInvisibleAny = true;
+      if (r.is_required) g.isRequiredAny = true;
     });
 
     groups.forEach((rows, key) => {
@@ -982,7 +981,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
         return;
       }
       let codes = [...g.codes];
-      if (!requiredSet.has(varName) && !g.isInvisibleAny) {
+      if (!g.isRequiredAny && !g.isInvisibleAny) {
         codes = [...new Set([...codes, ""])];
       }
       if (g.fieldType === "radio_button" || g.fieldType === "check_box") {
@@ -1131,7 +1130,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions);
-  data = dropAllBlankRequiredRecords(data, targetVars, requiredVars, prefix);
+  data = dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, prefix);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {
     injected.injectedCols.forEach((c) => delete row[c]);
@@ -1174,7 +1173,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 // (Rのbuild_other_domains()に対応するが、AEリンクブロック・apply_orres_populatorsはまだ未対応)。
 // options: { excludePrefixes, codingBlockPrefixes, repeatedPrefixes, builtDomains, ageBounds,
 //            multiRecordAliasNames, activeSheetTable, whoDrugIdf, visitLookup, discontinuationDate }
-function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, options) {
+function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, options) {
   const opts = options || {};
   const excludePrefixes = new Set(opts.excludePrefixes || ["DM", "AE", "DS"]);
   const codingBlockPrefixes = new Set(opts.codingBlockPrefixes || ["MH"]);
@@ -1210,8 +1209,8 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
     };
     builtDomains[prefix] =
       forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)
-        ? buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, buildOptions)
-        : buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, buildOptions);
+        ? buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, buildOptions)
+        : buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, buildOptions);
   });
 
   const result = {};

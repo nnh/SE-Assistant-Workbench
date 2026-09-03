@@ -135,12 +135,12 @@ build_dm_domain <- function(sheets, sheet_groups, n = 100, age_bounds = NULL, st
   )
 }
 
-populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, age_bounds = NULL, date_ref_bounds = NULL) {
+populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, age_bounds = NULL, date_ref_bounds = NULL) {
   dm_spec <- cdisc_variable_values %>% filter(prefix == "DM")
   target_vars <- compute_target_vars(dm, dm_spec)
 
   dm <- dm %>%
-    populate_radio_button_fields(dm_spec, target_vars, required_vars, numeric_bounds) %>%
+    populate_radio_button_fields(dm_spec, target_vars, numeric_bounds) %>%
     populate_date_fields(dm_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     populate_dummy_fields(target_vars)
 

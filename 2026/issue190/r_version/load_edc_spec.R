@@ -45,10 +45,25 @@ load_edc_spec <- function(json_path) {
   constraints <- build_generation_constraints(validator_table, df_cdisc, field_reference_table)
   presence_conditions <- constraints[["presence_conditions"]]
   required_vars <- constraints[["required_vars"]]
+  required_var_instances <- constraints[["required_var_instances"]]
   numeric_bounds <- constraints[["numeric_bounds"]]
   field_ref_bounds <- constraints[["field_ref_bounds"]]
   date_ref_bounds <- constraints[["date_ref_bounds"]]
   age_bounds <- constraints[["age_bounds"]]
+
+  # cdisc_variable_values(各生成関数にspecとして渡されるテーブル)に、そのalias_name/label/
+  # cdisc_variableのインスタンスが実際にpresenceバリデータを持つかどうか(is_required)を付与する。
+  # required_vars(cdisc_variable名だけでunique化したフラット版)と違い、同じcdisc_variable名が
+  # 複数のalias_name/labelに定義されていても、インスタンスごとに正確に必須/非必須を判定できる。
+  # labelがNAの行同士はleft_joinでマッチしないため、joinキーとしては空文字列に揃えてから結合する
+  cdisc_variable_values <- cdisc_variable_values %>%
+    mutate(join_label = coalesce(label, "")) %>%
+    left_join(
+      required_var_instances %>% mutate(join_label = coalesce(label, ""), is_required = TRUE) %>% select(-label),
+      by = c("alias_name", "join_label", "cdisc_variable")
+    ) %>%
+    mutate(is_required = coalesce(is_required, FALSE)) %>%
+    select(-join_label)
 
   # MedDRA
   meddra <- build_meddra_hierarchy(meddra_version)
@@ -64,16 +79,16 @@ load_edc_spec <- function(json_path) {
   dm <- dm_result[["dm"]]
   active_sheet_table <- active_sheet_membership_table(dm_result[["active_sheets"]])
   visit_lookup <- build_visit_lookup(sheets, edc_spec[["visits"]])
-  dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, age_bounds, date_ref_bounds)
+  dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, age_bounds, date_ref_bounds)
   # AE
   ae <- dm %>% build_ae_domain()
-  ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf, active_sheet_table, date_ref_bounds)
+  ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf, active_sheet_table, date_ref_bounds)
   ae <- ae_result[["ae"]]
   ae_linked_domains <- ae_result[["linked"]]
   death_date <- build_death_date_table(ae)
   # DS
   ds <- build_ds_domain(dm, cdisc_variable_values)
-  ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds, date_ref_bounds)
+  ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, date_ref_bounds)
   ds <- finalize_ds_disposition(ds, death_date, cdisc_variable_values)
   discontinuation_date <- build_discontinuation_date_table(ds)
   ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
@@ -87,7 +102,7 @@ load_edc_spec <- function(json_path) {
   # 他ドメイン(DM/AE/DS含む)の変数を参照するpresence_conditions/field_ref_boundsがある場合は、
   # 依存順に生成し、built_domainsで既存のDM/AE/DSも参照できるようにする
   other_domains <- build_other_domains(
-    dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_vars, numeric_bounds, field_ref_bounds,
+    dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_var_instances, numeric_bounds, field_ref_bounds,
     built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf,
     active_sheet_table = active_sheet_table, visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds
   )

@@ -198,10 +198,12 @@ function populateDmMeddraFields(dm, dmSpec, meddraData, meddraSample) {
 }
 
 // radio_button/check_box型のDM項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる
-// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。requiredVarsに含まれず、かつ可視
-// (いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。numericBoundsに該当エントリが
-// あれば、数値として範囲外のcodeを選択肢から除く(Rのpopulate_radio_button_fields()の
-// has_alias_name==FALSEの分岐に対応)。
+// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。そのcdisc_variableを定義しているいずれの
+// 行もisRequiredでなく、かつ可視(いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。
+// isRequiredはcdisc_variable名単位ではなくalias_name/label単位の判定(attachIsRequired()由来)だが、
+// DMは単一labelのため実質cdisc_variable単位と同じ扱いになる(Rのpopulate_radio_button_fields()の
+// has_alias_name==FALSEの分岐に対応)。numericBoundsに該当エントリがあれば、数値として範囲外のcodeを
+// 選択肢から除く。
 // date型の項目(BRTHDTCは既にbuildDmDomain()で埋まっているため対象外)には、
 // registrationStartDate〜今日の間のランダムな日付を入れる(Rのpopulate_date_fields()に対応)。
 // その後、DUMMYフォールバック・meddra型項目・presence_conditionsゲーティング・field_ref_bounds・
@@ -212,7 +214,6 @@ function populateDmDomain(
   registrationStartDate,
   meddraData,
   presenceConditions,
-  requiredVars,
   numericBounds,
   fieldRefBounds,
   ageBounds,
@@ -220,7 +221,6 @@ function populateDmDomain(
 ) {
   const dmSpec = cdiscVariableValues.filter((r) => r.prefix === "DM");
   const existingColumns = new Set(Object.keys(dm[0] || {}));
-  const requiredSet = new Set(requiredVars || []);
 
   const choiceSpec = dmSpec.filter(
     (r) => (r.field_type === "radio_button" || r.field_type === "check_box") && !existingColumns.has(r.cdisc_variable)
@@ -228,17 +228,19 @@ function populateDmDomain(
   const choicesByVariable = {};
   const fieldTypeByVariable = {};
   const invisibleByVariable = {};
+  const requiredByVariable = {};
   choiceSpec.forEach((row) => {
     const code = row.code != null ? row.code : row.default_value;
     if (!choicesByVariable[row.cdisc_variable]) choicesByVariable[row.cdisc_variable] = [];
     choicesByVariable[row.cdisc_variable].push(code);
     if (row.field_type === "check_box") fieldTypeByVariable[row.cdisc_variable] = "check_box";
     if (row.is_invisible) invisibleByVariable[row.cdisc_variable] = true;
+    if (row.is_required) requiredByVariable[row.cdisc_variable] = true;
   });
   Object.keys(choicesByVariable).forEach((varName) => {
     let choices = [...new Set(choicesByVariable[varName])];
     const isVisible = !invisibleByVariable[varName];
-    if (!requiredSet.has(varName) && isVisible) {
+    if (!requiredByVariable[varName] && isVisible) {
       choices = [...new Set([...choices, ""])];
     }
     const bounds = numericBounds && numericBounds[varName];

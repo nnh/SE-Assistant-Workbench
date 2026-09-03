@@ -42,17 +42,18 @@ function assignAeAliasNames(ae, aeSpec, activeSheets) {
 }
 
 // radio_button/check_box型のAE項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる
-// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。requiredVarsに含まれず、かつそのalias_name内で
-// 可視(いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。numericBoundsに該当エントリが
+// (check_boxは複数選択がカンマ区切りで1つの文字列になる)。そのalias_nameのインスタンスがisRequiredでなく、
+// かつそのalias_name内で可視(いずれの行もis_invisibleでない)場合は、空欄("")も選択肢に加える。
+// isRequiredはcdisc_variable名単位ではなくalias_name/label単位の判定(attachIsRequired()由来)のため、
+// 同じcdisc_variable名でもalias_nameによって必須/非必須が異なりうる。numericBoundsに該当エントリが
 // あれば、数値として範囲外のcodeを選択肢から除く。
 // AEはalias_name(どのAE報告シートの行か)によって同じcdisc_variableでも選択肢が異なりうるため、
 // 行のalias_nameと一致するaliasSpecの選択肢だけから選ぶ(Rのpopulate_radio_button_fields()の
 // has_alias_name==TRUEの分岐に対応)
-function populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds) {
+function populateAeChoiceFields(ae, aeSpec, numericBounds) {
   const existingColumns = new Set(Object.keys(ae[0] || {}));
   const choiceSpec = aeSpec.filter((r) => r.field_type === "radio_button" || r.field_type === "check_box");
   const targetVars = [...new Set(choiceSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
-  const requiredSet = new Set(requiredVars || []);
 
   targetVars.forEach((varName) => {
     // Rの`data[[var_name]] <- NA_character_`に対応: このcdisc_variableを定義していないalias_nameの行にも
@@ -67,7 +68,8 @@ function populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds) {
       const anRows = varRows.filter((r) => r.alias_name === an);
       let choices = [...new Set(anRows.map((r) => (r.code != null ? r.code : r.default_value)))];
       const isVisible = !anRows.some((r) => r.is_invisible);
-      if (!requiredSet.has(varName) && isVisible) {
+      const isRequired = anRows.some((r) => r.is_required);
+      if (!isRequired && isVisible) {
         choices = [...new Set([...choices, ""])];
       }
       const bounds = numericBounds && numericBounds[varName];
@@ -268,7 +270,7 @@ function addAeMeddraCodingBlock(ae, meddraSample, prefix) {
 // 正しく判定できるようになる。戻り値のlinkedSpecは、実際に追加したprefix/alias_nameの一覧
 // (呼び出し側で、二重生成を避けるための除外や、後でsplitLinkedDomains()に分離する際に使う)
 // (Rのpopulate_linked_blocks()に対応)
-function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registrationStartDate, meddraData, requiredVars, whoDrugIdf, dateRefBoundsAll) {
+function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registrationStartDate, meddraData, whoDrugIdf, dateRefBoundsAll) {
   const ownAliasNames = new Set(data.map((r) => r.alias_name));
   const linkedSpec = cdiscVariableValues.filter((r) => r.prefix !== excludePrefix && ownAliasNames.has(r.alias_name));
 
@@ -277,7 +279,6 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
   }
 
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
-  const requiredSet = new Set(requiredVars || []);
   let linkedVars = [...new Set(linkedSpec.map((r) => r.cdisc_variable))];
   const doseChoices = ["50", "100", "150", "200", "250", "300", "400", "500"];
   const today = new Date().toISOString().slice(0, 10);
@@ -302,11 +303,12 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
     const specByAlias = new Map();
     varSpec.forEach((r) => {
       if (!specByAlias.has(r.alias_name)) {
-        specByAlias.set(r.alias_name, { fieldType: r.field_type, defaultValue: r.default_value, codes: new Set(), isInvisibleAny: false });
+        specByAlias.set(r.alias_name, { fieldType: r.field_type, defaultValue: r.default_value, codes: new Set(), isInvisibleAny: false, isRequiredAny: false });
       }
       const g = specByAlias.get(r.alias_name);
       g.codes.add(r.code != null ? r.code : r.default_value);
       if (r.is_invisible) g.isInvisibleAny = true;
+      if (r.is_required) g.isRequiredAny = true;
     });
 
     data.forEach((row) => {
@@ -318,7 +320,7 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
       if (rows.length === 0) return;
 
       let codes = [...g.codes];
-      if (!requiredSet.has(varName) && !g.isInvisibleAny) {
+      if (!g.isRequiredAny && !g.isInvisibleAny) {
         codes = [...new Set([...codes, ""])];
       }
 

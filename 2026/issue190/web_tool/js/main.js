@@ -9,6 +9,7 @@ let cdiscVariableValues = null;
 let presenceConditions = null;
 let ageBounds = null;
 let requiredVars = null;
+let requiredVarInstances = null;
 let numericBounds = null;
 let fieldRefBounds = null;
 let dateRefBounds = null;
@@ -168,6 +169,8 @@ function handleFile(file) {
       presenceConditions = constraints.presenceConditions;
       ageBounds = constraints.ageBounds;
       requiredVars = constraints.requiredVars;
+      requiredVarInstances = constraints.requiredVarInstances;
+      attachIsRequired(cdiscVariableValues, requiredVarInstances);
       numericBounds = constraints.numericBounds;
       fieldRefBounds = constraints.fieldRefBounds;
       dateRefBounds = constraints.dateRefBounds;
@@ -226,7 +229,6 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     registrationStartDate,
     meddraData,
     presenceConditions,
-    requiredVars,
     numericBounds,
     fieldRefBounds,
     ageBounds,
@@ -240,7 +242,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   const aeSpec = cdiscVariableValues.filter((r) => r.prefix === "AE");
   let ae = buildAeDomain(dm, aeN);
   ae = assignAeAliasNames(ae, aeSpec, dmResult.activeSheets);
-  ae = populateAeChoiceFields(ae, aeSpec, requiredVars, numericBounds);
+  ae = populateAeChoiceFields(ae, aeSpec, numericBounds);
   ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
   const meddraSample = sampleMeddraRows(meddraData, ae.length);
   const requiredLltCodes = deriveRequiredLltCodes(presenceConditions);
@@ -250,7 +252,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // "ae"シートのように、AE報告と同じフォーム上に他prefix(例: FA)のブロックがある場合、
   // そのフィールドも同じ行に追加する。presence_conditionsが同じ行内で完結するようにするため、
   // applyPresenceConditionsより前に行う
-  const linkedResult = populateLinkedBlocks(ae, cdiscVariableValues, "AE", registrationStartDate, meddraData, requiredVars, whoDrugIdf, dateRefBounds);
+  const linkedResult = populateLinkedBlocks(ae, cdiscVariableValues, "AE", registrationStartDate, meddraData, whoDrugIdf, dateRefBounds);
   ae = linkedResult.data;
   const linkedSpec = linkedResult.linkedSpec;
   ae = populateAeDummyFields(ae, aeSpec);
@@ -265,7 +267,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   renderPreview(ae, "ae-preview");
 
   let ds = buildDsDomain(dm, cdiscVariableValues);
-  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, dateRefBounds);
+  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds);
   const deathDate = buildDeathDateTable(ae);
   ds = finalizeDsDisposition(ds, deathDate, cdiscVariableValues);
   ds = addRandomizationDsRows(ds, dm, registrationStartDate);
@@ -284,7 +286,7 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // 既にpopulateLinkedBlocks側で(AE報告と同じ行として)生成済みのため、
   // buildOtherDomains側では二重生成しないよう該当のprefix/alias_nameを除外する
   const cdiscVariableValuesForOthers = excludeAeLinkedPrefixes(cdiscVariableValues, aeLinkedDomains);
-  const otherDomains = buildOtherDomains(dm, cdiscVariableValuesForOthers, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, {
+  const otherDomains = buildOtherDomains(dm, cdiscVariableValuesForOthers, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, {
     builtDomains: { DM: dm, AE: ae, DS: ds },
     ageBounds,
     multiRecordAliasNames,

@@ -503,20 +503,34 @@ function buildFieldReferenceCopyConditions(fieldReferenceTable, fieldLookup) {
   return rows;
 }
 
-// validator_type=="presence"を持つcdisc_variable(必須項目)一覧を抽出する
-function buildRequiredVars(validatorTable, fieldLookup) {
-  const set = new Set();
-  const seen = new Set();
+// validator_type=="presence"を持つ(alias_name, label, cdisc_variable)の一覧を抽出する。
+// 同じcdisc_variable名が複数のalias_name/labelに定義されている場合(例: MHTERMが"主診断"(必須)と
+// "再発診断"(非必須、複数label)の両方に使われる)があるため、cdisc_variable名だけでなく
+// alias_name・label単位で必須かどうかを判定できるようにする
+// (Rのbuild_generation_constraints.Rのrequired_var_instancesに対応)
+function buildRequiredVarInstances(validatorTable, fieldLookup) {
+  const seenField = new Set();
+  const seenInstance = new Set();
+  const instances = [];
   validatorTable.forEach((vr) => {
     if (vr.validator_type !== "presence") return;
-    const key = `${vr.alias_name}|${vr.field_name}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const fieldKey = `${vr.alias_name}|${vr.field_name}`;
+    if (seenField.has(fieldKey)) return;
+    seenField.add(fieldKey);
     lookupField(fieldLookup, vr.alias_name, vr.field_name).forEach((own) => {
-      if (own.cdisc_variable != null) set.add(own.cdisc_variable);
+      if (own.cdisc_variable == null) return;
+      const instanceKey = `${vr.alias_name}|${own.label}|${own.cdisc_variable}`;
+      if (seenInstance.has(instanceKey)) return;
+      seenInstance.add(instanceKey);
+      instances.push({ alias_name: vr.alias_name, label: own.label, cdisc_variable: own.cdisc_variable });
     });
   });
-  return [...set];
+  return instances;
+}
+
+// 後方互換用: cdisc_variable名だけでunique化したフラット版(段階的に置き換え中)
+function buildRequiredVars(requiredVarInstances) {
+  return [...new Set(requiredVarInstances.map((r) => r.cdisc_variable))];
 }
 
 // bound_type(min_value/max_value)を持つ行から、cdisc_variableごとの数値範囲(より厳しい方を採用)を作る
@@ -635,6 +649,20 @@ function buildAgeBounds(validatorTable, fieldLookup) {
   return rows;
 }
 
+// cdiscVariableValues(各生成関数にspecとして渡される配列)の各行に、そのalias_name/label/
+// cdisc_variableのインスタンスが実際にpresenceバリデータを持つかどうか(isRequired)を付与する。
+// requiredVars(cdisc_variable名だけでunique化したフラット版)と違い、同じcdisc_variable名が
+// 複数のalias_name/labelに定義されていても、インスタンスごとに正確に必須/非必須を判定できる。
+// labelがnull(そのfieldにlabelが無い)の行同士も一致させるため、joinキーは空文字列に揃える
+// (Rのload_edc_spec.Rのcdisc_variable_values %>% left_join(...)に対応)
+function attachIsRequired(cdiscVariableValues, requiredVarInstances) {
+  const requiredSet = new Set(requiredVarInstances.map((r) => `${r.alias_name}|${r.label != null ? r.label : ""}|${r.cdisc_variable}`));
+  cdiscVariableValues.forEach((row) => {
+    row.is_required = requiredSet.has(`${row.alias_name}|${row.label != null ? row.label : ""}|${row.cdisc_variable}`);
+  });
+  return cdiscVariableValues;
+}
+
 // validatorTable + dfCdisc(+fieldReferenceTable)から、presence_conditions/required_vars/numeric_bounds/
 // field_ref_bounds/age_boundsを組み立てて返す(Rのbuild_generation_constraints()に対応)
 function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable) {
@@ -648,9 +676,11 @@ function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable
   if (fieldReferenceTable && fieldReferenceTable.length > 0) {
     presenceConditions = presenceConditions.concat(buildFieldReferenceCopyConditions(fieldReferenceTable, fieldLookup));
   }
+  const requiredVarInstances = buildRequiredVarInstances(validatorTable, fieldLookup);
   return {
     presenceConditions,
-    requiredVars: buildRequiredVars(validatorTable, fieldLookup),
+    requiredVars: buildRequiredVars(requiredVarInstances),
+    requiredVarInstances,
     numericBounds: buildNumericBounds(validatorTable, fieldLookup),
     fieldRefBounds: buildFieldRefBounds(validatorTable, fieldLookup),
     dateRefBounds: buildDateRefBounds(validatorTable, fieldLookup),

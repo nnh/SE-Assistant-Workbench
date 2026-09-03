@@ -13,7 +13,7 @@ build_ae_domain <- function(dm, n = 100) {
   ae %>% select(STUDYID, DOMAIN, USUBJID)
 }
 
-populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL, active_sheet_table = NULL, date_ref_bounds = NULL) {
+populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL, active_sheet_table = NULL, date_ref_bounds = NULL) {
   ae_spec <- cdisc_variable_values %>% filter(prefix == "AE")
 
   # レコードごとにalias_nameを割り当てる。active_sheet_table(USUBJID, alias_name)が指定されている場合、
@@ -33,7 +33,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   }
 
   target_vars <- compute_target_vars(ae, ae_spec)
-  ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars, required_vars, numeric_bounds)
+  ae <- ae %>% populate_radio_button_fields(ae_spec, target_vars, numeric_bounds)
 
   # date: AESTDTC -> それ以外 -> AEENDTC(AESTDTC以降になるよう制御)の順に生成
   ae_date_vars <- ae_spec %>%
@@ -69,7 +69,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   # "ae"シートのように、AE報告と同じフォーム上に他prefix(例: FA)のブロックがある場合、
   # そのフィールドも同じ行に追加する。presence_conditionsが同じ行内で完結するようにするため、
   # apply_presence_conditionsの前に行う
-  linked <- populate_linked_blocks(ae, cdisc_variable_values, "AE", registration_start_date, meddra, required_vars, who_drug_idf, date_ref_bounds)
+  linked <- populate_linked_blocks(ae, cdisc_variable_values, "AE", registration_start_date, meddra, who_drug_idf, date_ref_bounds)
   ae <- linked[["data"]]
   linked_spec <- linked[["linked_spec"]]
 

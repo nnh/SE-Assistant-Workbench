@@ -31,7 +31,7 @@ build_ds_domain <- function(dm, cdisc_variable_values) {
   ds %>% select(STUDYID, DOMAIN, USUBJID, any_of(c("DSSPID", "EPOCH", "alias_name", "label")))
 }
 
-populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_vars = character(0), numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL) {
+populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL) {
   # DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   # spec上のcdisc_variable名のままtarget_varsに残ると別列として重複生成されてしまう。ここで除外する
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS", cdisc_variable != "DSEPOCH")
@@ -40,7 +40,7 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
   ds_date_vars <- ds_spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique()
 
   ds <- ds %>%
-    populate_radio_button_fields(ds_spec, target_vars, required_vars, numeric_bounds) %>%
+    populate_radio_button_fields(ds_spec, target_vars, numeric_bounds) %>%
     populate_date_fields(ds_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     # DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
     # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする

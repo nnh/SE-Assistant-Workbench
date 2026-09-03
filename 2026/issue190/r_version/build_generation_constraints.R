@@ -234,12 +234,21 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     presence_conditions <- bind_rows(presence_conditions, field_copy_conditions)
   }
 
-  # validator_type=="presence"のレコードを持つcdisc_variable(必須項目)の一覧。
-  # ここに含まれないradio_button項目は空白も選択肢として許容する
-  required_vars <- validator_table %>%
+  # validator_type=="presence"のレコードを持つ(alias_name, label, cdisc_variable)の一覧。
+  # 同じcdisc_variable名が複数のalias_name/labelに定義されている場合(例: MHTERMが
+  # "主診断"(必須)と"再発診断"(非必須、複数label)の両方に使われる)があるため、
+  # cdisc_variable名だけでなくalias_name・label単位で必須かどうかを判定できるようにする。
+  # ここに含まれないradio_button項目のインスタンスは空白も選択肢として許容する
+  required_var_instances <- validator_table %>%
     filter(validator_type == "presence") %>%
     distinct(alias_name, field_name) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
+    filter(!is.na(cdisc_variable)) %>%
+    distinct(alias_name, label, cdisc_variable)
+
+  # 後方互換用: cdisc_variable名だけでunique化したフラット版(段階的に置き換え中)
+  required_vars <- required_var_instances %>%
     pull(cdisc_variable) %>%
     unique() %>%
     na.omit()
@@ -326,6 +335,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
   list(
     presence_conditions = presence_conditions,
     required_vars = required_vars,
+    required_var_instances = required_var_instances,
     numeric_bounds = numeric_bounds,
     field_ref_bounds = field_ref_bounds,
     date_ref_bounds = date_ref_bounds,

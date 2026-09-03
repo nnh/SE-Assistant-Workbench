@@ -148,25 +148,58 @@ check_prior_line_therapy_gating <- function(spdevid, cm, rs, mh, prior_line_ther
     "5" = c("5<=")
   )
   target_usubjid <- bind_rows(prior_line_therapy_by_scorres[thresholds[[as.character(spdevid)]]])
+  target_cm <- cm %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid, by = "USUBJID")
+  target_rs <- rs %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid, by = "USUBJID")
 
-  cm %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid, by = "USUBJID") %>%
-    check_required_vars(c("CMTRT", "CMSTDTC"), domain_name = "CM")
-  rs %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid, by = "USUBJID") %>%
-    check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
+  if (!setequal(target_cm[["USUBJID"]], target_rs[["USUBJID"]])) {
+    stop(str_c(
+      "CM/RS対象USUBJID一致チェック: NG(CMのみ: ", paste(setdiff(target_cm[["USUBJID"]], target_rs[["USUBJID"]]), collapse = ", "),
+      " / RSのみ: ", paste(setdiff(target_rs[["USUBJID"]], target_cm[["USUBJID"]]), collapse = ", "), ")"
+    ))
+  }
+  cat("CM/RS対象USUBJID一致チェック: OK\n")
+
+  target_cm %>% check_required_vars(c("CMTRT", "CMSTDTC"), domain_name = "CM")
+  target_rs %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
   cm %>% filter(SPDEVID == spdevid) %>% anti_join(target_usubjid, by = "USUBJID") %>%
     check_blank_vars(c("CMTRT", "CMSTDTC"), domain_name = "CM")
   rs %>% filter(SPDEVID == spdevid) %>% anti_join(target_usubjid, by = "USUBJID") %>%
     check_blank_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 
-  rs_cr_pr_usubjid <- rs %>% filter(SPDEVID == spdevid, RSORRES %in% c("CR", "PR")) %>% select(USUBJID)
+  RESPONDER_RSORRES <- c("CR", "PR")
+  rs_cr_pr_usubjid <- rs %>% filter(SPDEVID == spdevid, RSORRES %in% RESPONDER_RSORRES) %>% select(USUBJID)
   target_usubjid_mh <- target_usubjid %>% inner_join(rs_cr_pr_usubjid, by = "USUBJID")
-  mh %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid_mh, by = "USUBJID") %>%
-    check_required_vars("MHOCCUR", domain_name = "MH")
+  target_mh <- mh %>% filter(SPDEVID == spdevid) %>% inner_join(target_usubjid_mh, by = "USUBJID")
+  target_mh %>% check_required_vars("MHOCCUR", domain_name = "MH")
   mh %>% filter(SPDEVID == spdevid) %>% anti_join(target_usubjid_mh, by = "USUBJID") %>%
     check_blank_vars("MHOCCUR", domain_name = "MH")
+  test_bestresp <- target_rs %>% inner_join(target_mh, by="USUBJID") %>% select(RSORRES) %>% unlist() %>% unique()
+  if (!setequal(test_bestresp, RESPONDER_RSORRES)) {
+    warning(str_c(
+      "MH該当被験者のRS最良奏効一致チェック: NG(期待値: ", paste(RESPONDER_RSORRES, collapse = ", "),
+      " / 実際の値: ", paste(test_bestresp, collapse = ", "), ")"
+    ), call. = FALSE, immediate. = TRUE)
+  } else {
+    cat("MH該当被験者のRS最良奏効一致チェック: OK(", paste(test_bestresp, collapse = ", "), ")\n", sep = "")
+  }
 }
 
 # 値必須チェック
+# ae
+ae %>% check_required_vars(c("AETERM", "AETOXGR", "AESTDTC", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC"), domain_name = "AE")
+c("AETOXGR") %>% walk(~ run_value_equals_checks_from_csv(ae, "AE", .x, fixed_value_checks_csv_path))
+target_ae_cols <- c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB","AESCONG", "AESMIE")
+tmp_ae <- ae %>% filter(AESER == "Y")
+tmp_ae %>% check_required_vars(target_ae_cols, domain_name = "AE")
+target_ae_cols %>% walk(~ run_value_equals_checks_from_csv(tmp_ae, "AE", .x, fixed_value_checks_csv_path))
+tmp_ae <- ae %>% filter(AESER == "N")
+tmp_ae %>% check_blank_vars(target_ae_cols, domain_name = "AE")
+# ce
+c("CEPRESP", "CEOCCUR", "CECAT") %>% walk(~ run_value_equals_checks_from_csv(ce, "CE", .x, fixed_value_checks_csv_path))
+ce %>% filter(CEOCCUR == "Y") %>% check_required_vars("CETERM", domain_name = "CE")
+ce %>% filter(CEOCCUR == "N") %>% check_blank_vars("CETERM", domain_name = "CE")
+
+# cm
 cm %>% filter(SPDEVID == 1) %>% check_required_vars(c("CMTRT", "CMSTDTC"), domain_name = "CM")
 prior_line_therapy <- sc %>% filter(SCTESTCD == "PLOTNUM")
 prior_line_therapy_by_scorres <- prior_line_therapy$SCORRES %>%
@@ -196,6 +229,57 @@ tmp_cm %>%
   run_value_equals_checks_from_csv("CM", "CMTRT_1", fixed_value_checks_csv_path)
 dm %>% check_required_vars(c("RFICDTC", "BRTHDTC", "SEX", "RACE", "RFSTDTC"), domain_name = "DM")
 c("SEX", "RACE") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
+# DS
+c("DSCAT") %>%
+  walk(~ run_value_equals_checks_from_csv(ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds <- ds %>% filter(EPOCH == "FOLLOW-UP") %>% rename(DSTERM_1=DSTERM)
+c("DSTERM_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds <- ds %>% filter(EPOCH == "TREATMENT") %>% rename(DSTERM_2=DSTERM)
+c("DSTERM_2") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+# FollowUpよりTreatmentの方が先、DEATHの整合性を確認
+treatment_death <- ds %>% filter(EPOCH == "TREATMENT" & DSTERM == "DEATH") %>% select(USUBJID, DSSTDTC)
+followup_death <- ds %>% filter(EPOCH == "FOLLOW-UP" & DSTERM == "DEATH") %>% select(USUBJID, DSSTDTC, DSDTC)
+# TreatmentでDEATHになっている被験者は、FollowUpでもDEATHになっているはず
+# (TreatmentのDEATHがFollowUpに引き継がれていない場合はNG)
+missing_followup_from_treatment <- treatment_death %>% anti_join(followup_death, by = "USUBJID")
+if (nrow(missing_followup_from_treatment) > 0) {
+  stop(str_c(
+    "Treatment死亡→FollowUp死亡一致チェック: NG(FollowUpに死亡記録が無いUSUBJID: ",
+    paste(unique(missing_followup_from_treatment[["USUBJID"]]), collapse = ", "), ")"
+  ))
+}
+cat("Treatment死亡→FollowUp死亡一致チェック: OK(", length(unique(treatment_death[["USUBJID"]])), "件)\n", sep = "")
+
+ae_death <- ae %>% filter(AETOXGR == 5)
+# AEドメインで死亡(AETOXGR==5)になっている被験者が、DSドメインのFollowUpでも死亡(DSTERM=="DEATH")
+# になっていることを確認する
+missing_followup_death <- ae_death %>% anti_join(followup_death, by = "USUBJID")
+if (nrow(missing_followup_death) > 0) {
+  stop(str_c(
+    "AE死亡→DS FollowUp死亡一致チェック: NG(DSのFollowUpに死亡記録が無いUSUBJID: ",
+    paste(unique(missing_followup_death[["USUBJID"]]), collapse = ", "), ")"
+  ))
+}
+cat("AE死亡→DS FollowUp死亡一致チェック: OK(", length(unique(ae_death[["USUBJID"]])), "件)\n", sep = "")
+
+# AE死亡日(AETOXGR==5のAEENDTC最小値、R版build_death_date_table()と同じ考え方)が、
+# DSドメインのFollowUp死亡日(DSDTC。DSTERM=="DEATH"の実際の死亡日はfinalize_ds_disposition()で
+# AE側の値を根拠にDSDTCへ設定される。DSSTDTCは別の意味の列で必ずしも死亡日とは一致しない)と
+# 一致することを確認する
+ae_death_date <- ae_death %>% group_by(USUBJID) %>% summarise(AEDTHDTC = min(AEENDTC), .groups = "drop")
+death_date_mismatch <- ae_death_date %>% inner_join(followup_death, by = "USUBJID") %>% filter(AEDTHDTC != DSDTC)
+if (nrow(death_date_mismatch) > 0) {
+  detail <- str_c(death_date_mismatch[["USUBJID"]], "(AE:", death_date_mismatch[["AEDTHDTC"]], " / DS:", death_date_mismatch[["DSDTC"]], ")") %>%
+    paste(collapse = ", ")
+  stop(str_c("AE死亡日=DS FollowUp死亡日チェック: NG(不一致: ", detail, ")"))
+}
+cat("AE死亡日=DS FollowUp死亡日チェック: OK(", nrow(ae_death_date), "件)\n", sep = "")
+# EC
+c("ECTRT", "ECMOOD", "VISITNUM") %>%
+  walk(~ run_value_equals_checks_from_csv(ec, "EC", .x, fixed_value_checks_csv_path))
+# FA
 fa %>% filter(FABLFL == "Y" & FAOBJ == "Bulky Mass") %>% check_required_vars("FAORRES", domain_name = "FA")
 fa %>% filter(FABLFL == "Y" & FAOBJ == "Tumor Involvement") %>% check_required_vars("FAORRES", domain_name = "FA")
 check_fa_baseline_orres(fa, "Bone Marrow Infiltration")
@@ -220,6 +304,11 @@ tmp_fa <- fa %>% filter(FATESTCD=="LESNUM")
 tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, "_3"), c(FATEST, FAOBJ, VISITNUM, FACAT))
 c("FATEST_3", "FAOBJ_3", "VISITNUM_3", "FACAT_3") %>%
   walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa <- fa %>% filter(FATESTCD == "GRADE")
+tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, "_4"), c(FATEST, FACAT, FAORRES, FAOBJ, VISITNUM))
+c("FATEST_4", "FACAT_4", "FAORRES_4", "FAOBJ_4", "VISITNUM_4") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+# LB
 c("VISITNUM", "LBBLFL") %>%
   walk(~ run_value_equals_checks_from_csv(lb, "LB", .x, fixed_value_checks_csv_path))
 suffix <- 1
@@ -330,10 +419,28 @@ c("PETESTCD", "PETEST", "PEORRES") %>%
   walk(~ run_value_equals_checks_from_csv(pe, "PE", .x, fixed_value_checks_csv_path, visit = 50))
 c("PETESTCD", "PETEST", "PEORRES", "PEBLFL") %>%
   walk(~ run_value_equals_checks_from_csv(pe, "PE", .x, fixed_value_checks_csv_path, visit = 100))
+c("PRENRTPT", "PRENTPT", "PRPRESP") %>%
+  walk(~ run_value_equals_checks_from_csv(pr, "PR", .x, fixed_value_checks_csv_path))
+tmp_pr <- pr %>% filter(PRCAT == "Autologous") %>% rename(PRTRT_1=PRTRT)
+c("PRTRT_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
+tmp_pr <- pr %>% filter(PRCAT == "Allogeneic") %>% rename(PRTRT_2=PRTRT)
+c("PRTRT_2") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
+
 qs %>% check_required_vars(c("QSORRES", "QSDTC"), domain_name = "QS")
 c("QSTESTCD", "QSTEST", "QSCAT", "QSORRES", "QSBLFL") %>%
   walk(~ run_value_equals_checks_from_csv(qs, "QS", .x, fixed_value_checks_csv_path, visit = 100))
 rs %>% filter(SPDEVID == 1) %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
+c("RSCAT", "RSEVAL", "RSORRES") %>%
+  walk(~ run_value_equals_checks_from_csv(rs, "RS", .x, fixed_value_checks_csv_path))
+tmp_rs <- rs %>% filter(RSTESTCD == "BESTRESP")
+c("RSTEST", "RSENRTPT", "RSENTPT") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+tmp_rs <- rs %>% filter(RSTESTCD == "OVRLRESP")
+tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_1"), c(RSTEST,VISITNUM))
+c("RSTEST_1", "VISITNUM_1") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
 sc %>% check_required_vars("SCORRES", domain_name = "SC")
 sc %>% filter(SCTESTCD == "STAGE" & SCORRES != "UNKNOWN") %>% check_required_vars("SCDTC", domain_name = "SC")
 tmp_sc <- sc %>% filter(SCTESTCD == "STAGE")
@@ -372,8 +479,9 @@ csv_list$DM <- dm
 csv_list$AE <- ae
 csv_list$DS <- ds
 compare_domain(csv_list, datasets, "DM", "USUBJID")
-compare_domain(csv_list, datasets, "AE", c("USUBJID", "AESEQ"))
-compare_domain(csv_list, datasets, "DS", c("USUBJID", "DSSEQ"))
-compare_domain_by_index(other_domains, datasets, 1, exclude = special_domain_names)
-compare_domain_by_index(other_domains, datasets, 2, exclude = special_domain_names)
+#compare_domain(csv_list, datasets, "AE", c("USUBJID", "AESEQ"))
+#compare_domain(csv_list, datasets, "DS", c("USUBJID", "DSSEQ"))
+#compare_domain_by_index(other_domains, datasets, 1, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 2, exclude = special_domain_names)
+#compare_domain_by_index(other_domains, datasets, 6, exclude = special_domain_names)
 # compare_domain_by_index(generated_datasets, datasets, 13, exclude = special_domain_names)

@@ -64,12 +64,11 @@ function buildDsDomain(dm, cdiscVariableValues) {
 // radio_button/check_box型のDS項目に、選択肢(code、無ければdefault_value)からランダムな値を入れる。
 // DSはalias_name(どのDSブロックの行か)によって同じcdisc_variableでも選択肢が異なりうるため、
 // 行のalias_nameと一致するspecの選択肢だけから選ぶ(Rのpopulate_radio_button_fields()の
-// has_alias_name==TRUEの分岐に対応。requiredVars/numericBoundsの扱いはDM/AEと同じ)
-function populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds) {
+// has_alias_name==TRUEの分岐に対応。isRequired/numericBoundsの扱いはDM/AEと同じ)
+function populateDsChoiceFields(ds, dsSpec, numericBounds) {
   const existingColumns = new Set(Object.keys(ds[0] || {}));
   const choiceSpec = dsSpec.filter((r) => r.field_type === "radio_button" || r.field_type === "check_box");
   const targetVars = [...new Set(choiceSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
-  const requiredSet = new Set(requiredVars || []);
 
   targetVars.forEach((varName) => {
     ds.forEach((row) => {
@@ -81,7 +80,8 @@ function populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds) {
       const anRows = varRows.filter((r) => r.alias_name === an);
       let choices = [...new Set(anRows.map((r) => (r.code != null ? r.code : r.default_value)))];
       const isVisible = !anRows.some((r) => r.is_invisible);
-      if (!requiredSet.has(varName) && isVisible) {
+      const isRequired = anRows.some((r) => r.is_required);
+      if (!isRequired && isVisible) {
         choices = [...new Set([...choices, ""])];
       }
       const bounds = numericBounds && numericBounds[varName];
@@ -207,14 +207,14 @@ function addDsSeq(ds) {
 // presence_conditionsゲーティング・field_ref_boundsを適用し、列順を整理する
 // (Rのpopulate_ds_domain()に対応)。alias_name/label列は残したまま返す(他ドメイン生成や
 // finalize_ds_disposition()で使う想定のため、最終出力からはfinalize時に取り除く)
-function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, requiredVars, numericBounds, fieldRefBounds, dateRefBounds) {
+function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds) {
   // DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   // spec上のcdisc_variable名のままだと重複生成されてしまう。ここで除外する
   const dsSpec = cdiscVariableValues.filter((r) => r.prefix === "DS" && r.cdisc_variable !== "DSEPOCH");
 
   const dsDateVars = [...new Set(dsSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
 
-  ds = populateDsChoiceFields(ds, dsSpec, requiredVars, numericBounds);
+  ds = populateDsChoiceFields(ds, dsSpec, numericBounds);
   ds = populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds);
   // DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
   // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
