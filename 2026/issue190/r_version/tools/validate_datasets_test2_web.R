@@ -30,7 +30,10 @@ other_domains <- load_csv_datasets(other_domains_web_csv_dir)
 # load_csv_datasets()はファイル名から拡張子を除いた名前をそのままキーにするため、
 # Webツールの出力ファイル名(例: CE_dummy.csv)の"_dummy"サフィックスを外してprefix名に揃える
 names(other_domains) <- str_remove(names(other_domains), "_dummy$")
-other_domains <- other_domains[setdiff(names(other_domains), c("DM", "AE", "DS"))]
+# facilities(施設一覧、code/ja/en列。SDTMドメインではないためother_domainsバリデーションの対象外にする)は
+# DM.SITEIDとの整合性チェック用に別途取り出しておく
+facilities <- other_domains[["facilities"]]
+other_domains <- other_domains[setdiff(names(other_domains), c("DM", "AE", "DS", "facilities"))]
 registration_n <- nrow(dm)
 # discontinuation_dateは被験者ごとの中止日という「その乱数シードでの生成結果」に依存する値のため、
 # Web版自身のdsから作り直す(R版のdiscontinuation_dateをそのまま使うと、対応するUSUBJIDの
@@ -39,13 +42,16 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "who_drug_idf", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "facilities", "cdisc_variable_values", "registration_n", "who_drug_idf", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
 
 source(here("tools/validate_common.R"))
 
 # ここから下はvalidate_datasets_test2.Rと共通の処理(CM/TR特別チェック・run_full_validation
 # 呼び出し・ドメイン名一覧の確認)。validate_test2_shared.Rにまとめてある
 source(here("tools/validate_test2_shared.R"))
+
+# DMのSITEIDが、facilities_dummy.csv(施設一覧)のcode列に含まれる値であることを確認する
+dm %>% check_values_subset_of("SITEID", facilities[["code"]], domain_name = "DM/facilities")
 
 # 固定値チェック(fixed_value_checks_csv_pathのdomain/var(/visit)行と一致するか確認)。
 # 例: qs %>% run_value_equals_checks_from_csv("QS", "QSORRES", fixed_value_checks_csv_path)

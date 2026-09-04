@@ -3,18 +3,18 @@
 // radio_button型・check_box型・date型項目の埋め込み、それ以外のDUMMYフォールバックまで対応する。
 // meddra/drug型項目(外部辞書が必要)、presence_conditionsによるゲーティングはまだ未移植
 
-// R版constant.Rのdummy_siteに対応。ダミー施設を10件生成する(SITEIDは9桁のランダムな数値文字列で重複無し、
-// SITENAMEは「ダミーNN病院」)。生成のたびに呼び、その回の生成セッション内で使い回す
-function generateDummySites() {
+// R版constant.Rのdummy_siteに対応。ダミー施設をn件生成する(codeは9桁のランダムな数値文字列で重複無し、
+// jaは「ダミーNN病院」、enは「dummyN」)。生成のたびに呼び、その回の生成セッション内で使い回す
+function generateDummySites(n = 10) {
   const usedIds = new Set();
   const sites = [];
-  for (let i = 1; i <= 10; i += 1) {
-    let siteId;
+  for (let i = 1; i <= n; i += 1) {
+    let code;
     do {
-      siteId = String(Math.floor(100000000 + Math.random() * 800000000));
-    } while (usedIds.has(siteId));
-    usedIds.add(siteId);
-    sites.push({ SITEID: siteId, SITENAME: `ダミー${String(i).padStart(2, "0")}病院` });
+      code = String(Math.floor(100000000 + Math.random() * 800000000));
+    } while (usedIds.has(code));
+    usedIds.add(code);
+    sites.push({ code, ja: `ダミー${String(i).padStart(2, "0")}病院`, en: `dummy${i}` });
   }
   return sites;
 }
@@ -128,11 +128,12 @@ function generateBrthdtc(n, refDate, minAge = 0, maxAge = 89) {
 // ARMは、defaultグループに属する割り付けシート(通常1つ)に割り当てられたcodeとする。
 // studyidは既定で"dummy-studyid"だが、呼び出し側からEDC仕様JSONのname(試験名)+"_dummy"を渡すことで、
 // 生成データを見ただけでどのJSONから生成したか分かるようにする
-// 戻り値: { dm: 行の配列, activeSheets: buildSubjectActiveSheets()の結果(他ドメイン生成時に使う) }
-function buildDmDomain(n, sheets, sheetGroups, ageBounds, studyid = "dummy-studyid") {
+// 戻り値: { dm: 行の配列, activeSheets: buildSubjectActiveSheets()の結果(他ドメイン生成時に使う),
+//          dummySites: 生成した施設一覧(SITEID/SITENAME) }
+function buildDmDomain(n, sheets, sheetGroups, ageBounds, studyid = "dummy-studyid", siteN = 10) {
   const birthAgeRange = computeBirthAgeRange(ageBounds);
   const brthdtc = generateBrthdtc(n, new Date(), birthAgeRange.minAge, birthAgeRange.maxAge);
-  const dummySites = generateDummySites();
+  const dummySites = generateDummySites(siteN);
   const usubjids = [];
   for (let i = 1; i <= n; i += 1) {
     usubjids.push(`${studyid}-${String(i).padStart(4, "0")}`);
@@ -159,13 +160,13 @@ function buildDmDomain(n, sheets, sheetGroups, ageBounds, studyid = "dummy-study
       DOMAIN: "DM",
       USUBJID: usubjid,
       SUBJID: String(i + 1).padStart(4, "0"),
-      SITEID: sampleOne(dummySites).SITEID,
+      SITEID: sampleOne(dummySites).code,
       BRTHDTC: brthdtc[i],
       ARM: arm,
     };
   });
 
-  return { dm: rows, activeSheets: activeResult.activeSheets };
+  return { dm: rows, activeSheets: activeResult.activeSheets, dummySites };
 }
 
 // meddra型のDM項目にLLT名を格納する。default_valueが8桁数字の場合はllt_codeとみなし、

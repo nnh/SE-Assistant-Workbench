@@ -34,7 +34,10 @@ other_domains <- load_csv_datasets(other_domains_web_csv_dir)
 # load_csv_datasets()はファイル名から拡張子を除いた名前をそのままキーにするため、
 # Webツールの出力ファイル名(例: CE_dummy.csv)の"_dummy"サフィックスを外してprefix名に揃える
 names(other_domains) <- str_remove(names(other_domains), "_dummy$")
-other_domains <- other_domains[setdiff(names(other_domains), c("DM", "AE", "DS"))]
+# facilities(施設一覧、code/ja/en列。SDTMドメインではないためother_domainsバリデーションの対象外にする)は
+# DM.SITEIDとの整合性チェック用に別途取り出しておく
+facilities <- other_domains[["facilities"]]
+other_domains <- other_domains[setdiff(names(other_domains), c("DM", "AE", "DS", "facilities"))]
 registration_n <- nrow(dm)
 # discontinuation_dateは被験者ごとの中止日という「その乱数シードでの生成結果」に依存する値のため、
 # Web版自身のdsから作り直す(R版のdiscontinuation_dateをそのまま使うと、対応するUSUBJIDの
@@ -43,7 +46,7 @@ discontinuation_date <- build_discontinuation_date_table(ds)
 
 # 比較に不要な中間オブジェクトが環境に残らないよう、それら以外は削除する
 # (source()より前に行うこと。後だと読み込んだ関数まで削除されてしまう)
-rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "cdisc_variable_values", "registration_n", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
+rm(list = setdiff(ls(), c("ae", "dm", "ds", "other_domains", "facilities", "cdisc_variable_values", "registration_n", "json_path", "discontinuation_date", "fixed_value_checks_csv_path")))
 
 source(here("tools/validate_common.R"))
 
@@ -101,6 +104,8 @@ tmp_cm_5 <- cm %>% filter(SPDEVID == 5) %>% select(USUBJID, CMSTDTC_5=CMSTDTC)
 tmp_cm_5 %>% inner_join(tmp_cm_4, by = "USUBJID") %>% check_date_after_var_before_today("CMSTDTC_5", "CMSTDTC_4", domain_name = "CM")
 tmp_rs_5 <- rs %>% filter(SPDEVID == 5) %>% select(USUBJID, RSDTC)
 tmp_cm_5 %>% inner_join(tmp_rs_5, by = "USUBJID") %>% check_date_after_var_before_today("RSDTC", "CMSTDTC_5", domain_name = "CM/RS")
+# DMのSITEIDが、facilities_dummy.csv(施設一覧)のcode列に含まれる値であることを確認する
+dm %>% check_values_subset_of("SITEID", facilities[["code"]], domain_name = "DM/facilities")
 # 数値上限下限
 fa %>% filter(FAOBJ == "Tumor Involvement") %>% check_numeric_range("FAORRES", min_value = 0, max_value = 99, domain_name = "FA")
 lb %>% filter(LBTESTCD == "PBTCCE") %>% check_numeric_range("LBORRES", min_value = 0, max_value = 100, domain_name = "LB")

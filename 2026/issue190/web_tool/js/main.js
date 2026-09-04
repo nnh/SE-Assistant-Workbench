@@ -17,6 +17,7 @@ let generatedDm = null;
 let generatedAe = null;
 let generatedDs = null;
 let generatedOtherDomains = null;
+let generatedDummySites = null;
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -200,6 +201,7 @@ fileInput.addEventListener("change", (e) => {
 
 document.getElementById("generate-btn").addEventListener("click", async () => {
   const n = parseInt(document.getElementById("registration-n").value, 10);
+  const siteN = parseInt(document.getElementById("site-n").value, 10);
   const registrationStartDate = document.getElementById("registration-start-date").value;
   const meddraVersion = document.getElementById("meddra-version").value;
   const whoDrugVersion = document.getElementById("who-drug-version").value;
@@ -222,7 +224,9 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // STUDYIDはEDC仕様JSONのname(試験名)に"_dummy"を付けたものにする。固定のダミー値だと
   // どのJSONから生成したデータか分からなくなるため、生成データを見ただけで試験を判別できるようにする
   const studyid = `${edcSpec.name}_dummy`;
-  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds, studyid);
+  const dmResult = buildDmDomain(n, edcSpec.sheets, edcSpec.sheet_groups, ageBounds, studyid, siteN);
+  generatedDummySites = dmResult.dummySites;
+  renderSitePreview(generatedDummySites);
   let dm = populateDmDomain(
     dmResult.dm,
     cdiscVariableValues,
@@ -346,6 +350,22 @@ function renderDomainSummary(dm, ae, ds, otherDomains) {
   container.innerHTML = html;
 }
 
+// 生成した施設一覧(code/ja/en)を全件表示する。件数が少ない(施設数入力欄と同数)ため、
+// 他ドメインのプレビュー(先頭1件のみ)と異なり全行表示する
+function renderSitePreview(sites) {
+  const container = document.getElementById("site-preview");
+  if (!sites || sites.length === 0) {
+    container.innerHTML = "<p>データがありません</p>";
+    return;
+  }
+  let html = "<table><thead><tr><th>code</th><th>ja</th><th>en</th></tr></thead><tbody>";
+  sites.forEach((s) => {
+    html += `<tr><td>${s.code}</td><td>${s.ja}</td><td>${s.en}</td></tr>`;
+  });
+  html += "</tbody></table>";
+  container.innerHTML = html;
+}
+
 function renderPreview(data, containerOrId) {
   const container = typeof containerOrId === "string" ? document.getElementById(containerOrId) : containerOrId;
   if (data.length === 0) {
@@ -390,6 +410,9 @@ document.getElementById("download-all-btn").addEventListener("click", () => {
     { name: "AE_dummy.csv", content: toCsv(generatedAe, Object.keys(generatedAe[0])) },
     { name: "DS_dummy.csv", content: toCsv(generatedDs, Object.keys(generatedDs[0])) },
   ];
+  if (generatedDummySites && generatedDummySites.length > 0) {
+    files.push({ name: "facilities_dummy.csv", content: toCsv(generatedDummySites, ["code", "ja", "en"]) });
+  }
   Object.keys(generatedOtherDomains || {})
     .sort()
     .forEach((prefix) => {

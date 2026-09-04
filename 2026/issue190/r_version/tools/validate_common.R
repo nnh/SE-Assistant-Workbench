@@ -309,6 +309,31 @@ check_date_after_var_before_today <- function(data, date_var, ref_date_var, doma
   )
 }
 
+# data(1ドメイン分。USUBJID列が必要)のvalue_var列の値が、全てallowed_values(例: 施設一覧CSVのcode列)に
+# 含まれているかを確認する(参照整合性チェック。例: DMのSITEIDがfacilities_dummy.csvのcodeの範囲内か)。
+# value_varが無い(NAまたは空文字列"")行は判定対象から除く。domain_nameを指定するとメッセージの先頭に付く。
+# allowed_valuesに含まれない値がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
+check_values_subset_of <- function(data, value_var, allowed_values, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  values <- data[[value_var]]
+  valid <- !is.na(values) & values != ""
+
+  invalid <- valid & !(values %in% allowed_values)
+  invalid_usubjid <- data[["USUBJID"]][invalid]
+
+  if (length(invalid_usubjid) > 0) {
+    stop(str_c(
+      label, value_var, "整合性チェック: ", length(invalid_usubjid), "件NG(想定される値一覧に含まれない値。USUBJID: ",
+      paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  cat(
+    label, value_var, "整合性チェック: OK(", value_var, "が想定される値一覧に含まれることを確認、",
+    sum(valid), "件)\n",
+    sep = ""
+  )
+}
+
 # 値のベクトルを、1つずつダブルクォートで囲んでからカンマ区切りで連結する。値そのものにカンマを
 # 含む文字列(例: "PTCL, NOS")がある場合に、メッセージ上で値の区切りのカンマなのか値の一部なのか
 # 区別できるようにするため(check_value_equals・run_value_equals_checks_from_csvのメッセージで使う)

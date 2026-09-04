@@ -59,6 +59,7 @@
 
   <section id="config-section" style="display:none;">
     <label>被験者数: <input type="number" id="registration-n" value="100" min="1"></label>
+    <label>施設数: <input type="number" id="site-n" value="10" min="1"></label>
     <label>AEレコード数(目安。有効な報告シートを持たない被験者分は除外されるため、実件数は前後します): <input type="number" id="ae-n" value="100" min="0"></label>
     <label>登録開始日: <input type="date" id="registration-start-date" value="2024-04-01"></label>
     <label>MedDRAバージョン: <select id="meddra-version"></select></label>
@@ -74,6 +75,11 @@
 
     <h2>生成ドメイン一覧</h2>
     <div id="domain-summary"></div>
+
+    <div style="display:none;">
+      <h2>施設一覧(code/ja/en)</h2>
+      <div id="site-preview"></div>
+    </div>
 
     <h2>DMドメイン プレビュー(先頭1件)</h2>
     <div id="dm-preview"></div>
