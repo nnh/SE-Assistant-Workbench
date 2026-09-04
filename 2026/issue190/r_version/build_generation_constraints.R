@@ -272,6 +272,28 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       max_value = if_else(is.infinite(max_value), NA_real_, max_value)
     )
 
+  # numeric_boundsはcdisc_variable単位に集約されるため、LBORRESのように同じcdisc_variable名を
+  # 多数のTESTCD別フィールドが共有するケースでは使えない(全フィールドのmin/maxが「厳しい方」で
+  # 一律にまとまってしまう)。date_ref_boundsと同じく(alias_name, label, cdisc_variable)単位で
+  # 集約せず個別に保持したバージョンを別途用意する(LB/TR/VSのORRES生成で使う)
+  field_numeric_bounds <- validator_table %>%
+    filter(!is.na(bound_type), !is.na(numeric_value), bound_type %in% c("min_value", "max_value")) %>%
+    distinct(alias_name, field_name, bound_type, numeric_value) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
+    filter(!is.na(cdisc_variable)) %>%
+    group_by(alias_name, label, cdisc_variable) %>%
+    summarise(
+      min_value = suppressWarnings(max(numeric_value[bound_type == "min_value"], na.rm = TRUE)),
+      max_value = suppressWarnings(min(numeric_value[bound_type == "max_value"], na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      min_value = if_else(is.infinite(min_value), NA_real_, min_value),
+      max_value = if_else(is.infinite(max_value), NA_real_, max_value)
+    ) %>%
+    filter(!is.na(min_value) | !is.na(max_value))
+
   # formulaでフィールド同士を比較している行(例: f350<=f59)を、field名からcdisc_variable名に変換し、
   # (cdisc_variable, ref_cdisc_variable, bound_type)のテーブルにする。
   # ref_field != field_nameで絞ることで、f18<=3のような自己参照(数値リテラル)行を除外する
@@ -337,6 +359,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
     required_vars = required_vars,
     required_var_instances = required_var_instances,
     numeric_bounds = numeric_bounds,
+    field_numeric_bounds = field_numeric_bounds,
     field_ref_bounds = field_ref_bounds,
     date_ref_bounds = date_ref_bounds,
     age_bounds = age_bounds

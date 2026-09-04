@@ -11,6 +11,7 @@ let ageBounds = null;
 let requiredVars = null;
 let requiredVarInstances = null;
 let numericBounds = null;
+let fieldNumericBounds = null;
 let fieldRefBounds = null;
 let dateRefBounds = null;
 let generatedDm = null;
@@ -173,6 +174,7 @@ function handleFile(file) {
       requiredVarInstances = constraints.requiredVarInstances;
       attachIsRequired(cdiscVariableValues, requiredVarInstances);
       numericBounds = constraints.numericBounds;
+      fieldNumericBounds = constraints.fieldNumericBounds;
       fieldRefBounds = constraints.fieldRefBounds;
       dateRefBounds = constraints.dateRefBounds;
       fileNameLabel.textContent = `読み込み済み: ${file.name}`;
@@ -310,7 +312,11 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
   mergeLinkedDomains(otherDomains, aeLinkedDomains);
   // LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
-  applyOrresPopulators(otherDomains, { LB: populateLbOrres, TR: populateTrOrres, VS: populateVsOrres });
+  applyOrresPopulators(otherDomains, {
+    LB: (d) => populateLbOrres(d, cdiscVariableValues, fieldNumericBounds),
+    TR: (d) => populateTrOrres(d, cdiscVariableValues, fieldNumericBounds),
+    VS: (d) => populateVsOrres(d, cdiscVariableValues, fieldNumericBounds),
+  });
   // prefixSEQ列を持つドメインは、その列で行を並べ替えておく(mergeやfilter等で崩れた行順を
   // 最終出力前に揃えるため)
   Object.keys(otherDomains).forEach((prefix) => {

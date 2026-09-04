@@ -504,6 +504,40 @@ build_cdisc_variable_to_prefix <- function(cdisc_variable_values) {
   bind_rows(base, coding_block) %>% distinct(cdisc_variable, prefix)
 }
 
+# field_numeric_bounds(alias_name, label単位のcdisc_variable別min/max。build_generation_constraints.R
+# 参照)を、testcd_var(例: LBTESTCD)の値をキーにした対応表に変換する。testcd_varは(alias_name, label)
+# ごとに1つの固定値(default_value)を持つradio_button項目であるため、これをブリッジとして使うことで、
+# alias_name/label情報が失われた最終出力後のデータ(populate_lb_orres等)からでもtestcd値だけで
+# 対応するmin/maxを引けるようにする(LB/TR/VSのORRES生成で共通して使う)
+build_testcd_numeric_bounds <- function(cdisc_variable_values, field_numeric_bounds, testcd_var, orres_var) {
+  testcd_map <- cdisc_variable_values %>%
+    filter(cdisc_variable == testcd_var, !is.na(default_value)) %>%
+    distinct(alias_name, label, testcd = default_value)
+  field_numeric_bounds %>%
+    filter(cdisc_variable == orres_var) %>%
+    inner_join(testcd_map, by = c("alias_name", "label")) %>%
+    distinct(testcd, min_value, max_value)
+}
+
+# testcdごとに、testcd_bounds(build_testcd_numeric_bounds()の結果)にある範囲内でランダムな数値を
+# 生成する。バリデーション(min/max)が定義されていないtestcd(testcd_boundsに無い)は0〜100の
+# ランダムな整数にする(未知のtestcd・バリデーション未定義の既知testcdの両方をこれでカバーする)。
+# 範囲の片方だけ定義されている場合、無い方はこのフォールバックと同じ0(下限)・100(上限)を使う
+generate_orres_value <- function(testcd, testcd_bounds) {
+  bound_idx <- match(testcd, testcd_bounds[["testcd"]])
+  has_bound <- !is.na(bound_idx)
+  value <- numeric(length(testcd))
+  if (any(has_bound)) {
+    min_v <- coalesce(testcd_bounds[["min_value"]][bound_idx[has_bound]], 0)
+    max_v <- coalesce(testcd_bounds[["max_value"]][bound_idx[has_bound]], 100)
+    value[has_bound] <- round(runif(sum(has_bound), min_v, max_v), 2)
+  }
+  if (any(!has_bound)) {
+    value[!has_bound] <- sample(0:100, sum(!has_bound), replace = TRUE)
+  }
+  value
+}
+
 # presence_conditions/field_ref_boundsのうち、cdisc_variableとref_cdisc_variableのprefixが異なる
 # (=ドメインをまたぐ参照)行から、(from, to)の依存エッジ一覧を作る。fromはtoに依存する(toを先に生成する必要がある)
 build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL) {

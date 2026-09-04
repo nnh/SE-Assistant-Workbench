@@ -561,6 +561,40 @@ function buildNumericBounds(validatorTable, fieldLookup) {
   return result;
 }
 
+// numericBoundsはcdisc_variable単位に集約されるため、LBORRESのように同じcdisc_variable名を
+// 多数のTESTCD別フィールドが共有するケースでは使えない(全フィールドのmin/maxが「厳しい方」で
+// 一律にまとまってしまう)。buildDateRefBoundsと同じく(alias_name, label, cdisc_variable)単位で
+// 集約せず個別に保持したバージョンを別途用意する(LB/TR/VSのORRES生成で使う)(Rのfield_numeric_boundsに対応)
+function buildFieldNumericBounds(validatorTable, fieldLookup) {
+  const perGroup = {};
+  const seen = new Set();
+  validatorTable.forEach((vr) => {
+    if (vr.bound_type == null || vr.numeric_value == null) return;
+    if (vr.bound_type !== "min_value" && vr.bound_type !== "max_value") return;
+    const key = `${vr.alias_name}|${vr.field_name}|${vr.bound_type}|${vr.numeric_value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    lookupField(fieldLookup, vr.alias_name, vr.field_name).forEach((own) => {
+      if (own.cdisc_variable == null) return;
+      const groupKey = `${vr.alias_name}|${own.label}|${own.cdisc_variable}`;
+      if (!perGroup[groupKey]) {
+        perGroup[groupKey] = { alias_name: vr.alias_name, label: own.label != null ? own.label : null, cdisc_variable: own.cdisc_variable, mins: [], maxs: [] };
+      }
+      if (vr.bound_type === "min_value") perGroup[groupKey].mins.push(vr.numeric_value);
+      else perGroup[groupKey].maxs.push(vr.numeric_value);
+    });
+  });
+  return Object.values(perGroup)
+    .map((g) => ({
+      alias_name: g.alias_name,
+      label: g.label,
+      cdisc_variable: g.cdisc_variable,
+      min_value: g.mins.length > 0 ? Math.max(...g.mins) : null,
+      max_value: g.maxs.length > 0 ? Math.min(...g.maxs) : null,
+    }))
+    .filter((r) => r.min_value != null || r.max_value != null);
+}
+
 // formulaでフィールド同士を比較している行(例: f350<=f59)から、(cdisc_variable, ref_cdisc_variable, bound_type)を作る
 function buildFieldRefBounds(validatorTable, fieldLookup) {
   const rows = [];
@@ -682,6 +716,7 @@ function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable
     requiredVars: buildRequiredVars(requiredVarInstances),
     requiredVarInstances,
     numericBounds: buildNumericBounds(validatorTable, fieldLookup),
+    fieldNumericBounds: buildFieldNumericBounds(validatorTable, fieldLookup),
     fieldRefBounds: buildFieldRefBounds(validatorTable, fieldLookup),
     dateRefBounds: buildDateRefBounds(validatorTable, fieldLookup),
     ageBounds: buildAgeBounds(validatorTable, fieldLookup),

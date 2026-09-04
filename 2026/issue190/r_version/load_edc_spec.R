@@ -47,6 +47,7 @@ load_edc_spec <- function(json_path) {
   required_vars <- constraints[["required_vars"]]
   required_var_instances <- constraints[["required_var_instances"]]
   numeric_bounds <- constraints[["numeric_bounds"]]
+  field_numeric_bounds <- constraints[["field_numeric_bounds"]]
   field_ref_bounds <- constraints[["field_ref_bounds"]]
   date_ref_bounds <- constraints[["date_ref_bounds"]]
   age_bounds <- constraints[["age_bounds"]]
@@ -114,12 +115,12 @@ load_edc_spec <- function(json_path) {
   # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
   other_domains <- merge_linked_domains(other_domains, ae_linked_domains)
 
-  # LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
+  # LB/TR/VSのORRESを、EDC仕様の数値バリデーション(min/max)に基づいたそれらしい数値に置き換える
   # (対応するドメインが存在しない、またはTESTCD/ORRES列が無い場合は何もしない)
   other_domains <- apply_orres_populators(other_domains, list(
-    LB = populate_lb_orres,
-    TR = populate_tr_orres,
-    VS = populate_vs_orres
+    LB = function(d) populate_lb_orres(d, cdisc_variable_values, field_numeric_bounds),
+    TR = function(d) populate_tr_orres(d, cdisc_variable_values, field_numeric_bounds),
+    VS = function(d) populate_vs_orres(d, cdisc_variable_values, field_numeric_bounds)
   ))
 
   # DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、

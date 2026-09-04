@@ -1,20 +1,16 @@
 library(tidyverse)
 
-# TRTESTCDごとの数値範囲(mm、概算値)。ダミーデータ生成用の目安
-tr_diameter_ranges <- tibble::tribble(
-  ~TRTESTCD, ~min_value, ~max_value,
-  "LDIAM",   10,         150,
-  "SAXIS",   10,         80
-)
-
-# TRTESTCDがLDIAM/SAXISの場合のみ、TRORRESをその範囲内のそれらしい数値(mm)に置き換える。
-# それ以外のTRTESTCDや、TRORRESが既にNA(presence_conditionsで空白化された)の行は変更しない
-populate_tr_orres <- function(tr, diameter_ranges = tr_diameter_ranges) {
+# TRTESTCD/TRORRESが両方ある場合のみ、EDC仕様の数値バリデーション(min/max)に基づいてTRORRESを
+# それらしい数値に置き換える。バリデーションが定義されていないTRTESTCD(未知のTESTCD含む)は
+# generate_orres_value()側で0〜100のランダムな整数になる。TRORRESが既にNA(presence_conditionsで
+# 空白化された)の行は上書きしない
+# (build_testcd_numeric_bounds()/generate_orres_value()はbuild_domain_common.R参照)
+populate_tr_orres <- function(tr, cdisc_variable_values, field_numeric_bounds) {
   if (!all(c("TRTESTCD", "TRORRES") %in% colnames(tr))) {
     return(tr)
   }
-  bounds <- diameter_ranges[match(tr[["TRTESTCD"]], diameter_ranges[["TRTESTCD"]]), ]
-  target <- !is.na(bounds[["TRTESTCD"]]) & !is.na(tr[["TRORRES"]])
-  tr[["TRORRES"]][target] <- as.character(round(runif(sum(target), bounds[["min_value"]][target], bounds[["max_value"]][target]), 1))
+  testcd_bounds <- build_testcd_numeric_bounds(cdisc_variable_values, field_numeric_bounds, "TRTESTCD", "TRORRES")
+  has_value <- !is.na(tr[["TRORRES"]])
+  tr[["TRORRES"]][has_value] <- as.character(generate_orres_value(tr[["TRTESTCD"]][has_value], testcd_bounds))
   tr
 }
