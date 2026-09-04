@@ -256,6 +256,17 @@ check_numeric_range <- function(data, var, min_value = NA, max_value = NA, domai
 # data(1ドメイン分。USUBJID列が必要)のdate_var列(日付の文字列)が今日以前かを確認する。
 # date_varが無い(NAまたは空文字列"")行は判定対象から除く(値の有無自体はcheck_required_vars等の
 # 別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
+# dataが0行の場合はstop()でエラーにする(絞り込み条件に該当する行が1件も無いことの検知用)。
+# 問題なければチェック内容とOKである旨をcatで表示する
+check_not_empty <- function(data, check_name, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+
+  if (nrow(data) == 0) {
+    stop(str_c(label, check_name, ": 該当する行が0件です"))
+  }
+  cat(label, check_name, ": OK(", nrow(data), "件)\n", sep = "")
+}
+
 # 今日より後の値がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
 check_date_before_today <- function(data, date_var, domain_name = NULL) {
   label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
@@ -332,6 +343,25 @@ check_values_subset_of <- function(data, value_var, allowed_values, domain_name 
     sum(valid), "件)\n",
     sep = ""
   )
+}
+
+# data(1ドメイン分)のSTUDYID列が、全行expected_studyidと一致するかを確認する。
+# expected_studyidはハードコードせず、正しいjson_pathから生成したR版データのSTUDYID
+# (例: dm[["STUDYID"]][1])を呼び出し元で渡す想定。json_pathの設定間違い(意図しない試験の
+# JSONを指している)を、比較対象のCSVの中身からも検知できるようにするためのチェック。
+# 不一致がある場合はstop()でエラーにする
+check_studyid_matches <- function(data, expected_studyid, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  observed <- unique(data[["STUDYID"]])
+  unexpected <- setdiff(observed, expected_studyid)
+
+  if (length(unexpected) > 0) {
+    stop(str_c(
+      label, "STUDYID整合性チェック: 期待値「", expected_studyid, "」に対し、実際の値に「",
+      paste(unexpected, collapse = ", "), "」が含まれています(json_pathの設定間違いの可能性があります)"
+    ))
+  }
+  cat(label, "STUDYID整合性チェック: OK(期待値「", expected_studyid, "」と一致)\n", sep = "")
 }
 
 # 値のベクトルを、1つずつダブルクォートで囲んでからカンマ区切りで連結する。値そのものにカンマを

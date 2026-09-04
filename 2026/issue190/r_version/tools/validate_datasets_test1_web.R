@@ -4,16 +4,24 @@ library(here)
 # run_full_validationの呼び出し方まで含め)を行うが、比較元(生成データ)をR版のその場生成ではなく、
 # Webツールが生成したCSV(dummy_data.zip展開後)に差し替えたもの。
 #
-# 事前準備: test_config.R の json_path をfortest1用に、dm_web_csv_path・ae_web_csv_path・
-# ds_web_csv_path・other_domains_web_csv_dirを、Webツールで同じJSONを読み込んで生成し
-# 「ZIPで一括ダウンロード」したdummy_data.zipの展開先に設定しておくこと
+# 事前準備: dm_web_csv_path・ae_web_csv_path・ds_web_csv_path・other_domains_web_csv_dir
+# (test_config.R)を、Webツールでfortest1用JSONを読み込んで生成し「ZIPで一括ダウンロード」した
+# dummy_data.zipの展開先に設定しておくこと。json_pathは下記でfortest1用に固定しているため、
+# test_config.R側の値(他テストと切り替えて使われる)を書き換える必要はない
 rm(list = ls())
+
+# このファイル固定のjson_path。test_config.R側のjson_pathは他テストとの切り替えで
+# 意図せず別のJSONを指したままになりうる(実際に誤検知の原因になったため)、ここで固定する
+json_path <- "/Users/mariko/Downloads/test20260826/fortest1_260826_1112.json"
 
 # check_value_equals(固定値チェック)用のCSV設定ファイルのパス。内容(チェックしたい固定値)は
 # 試験ごとに異なるため、test_config.R(共通)ではなくここで指定する。リポジトリ外の任意の場所でよい
 fixed_value_checks_csv_path <- "/Users/mariko/Library/CloudStorage/Box-Box/Datacenter/Users/ohtsuka/2026/20260826/test1/fixed_value_checks_test1.csv"
 
 source(here("test_config.R"))
+# test_config.Rはjson_path(他テストとの切り替え用)も定義するが、このファイルは上で固定した
+# json_pathを優先して使うため、test_config.R側の値で上書きしないよう再度設定し直す
+json_path <- "/Users/mariko/Downloads/test20260826/fortest1_260826_1112.json"
 source(here("tools/validate_common.R"))
 
 # cdisc_variable_values・registration_nはEDC仕様(JSON)由来で被験者データには依存しないため、
@@ -21,6 +29,10 @@ source(here("tools/validate_common.R"))
 # discontinuation_dateは、このあと全てWeb版CSVの内容で上書きするため使わない)
 source(here("load_edc_spec.R"))
 load_edc_spec(json_path)
+
+# R版(正しいjson_pathから生成)のSTUDYIDを、Web版CSVとの整合性チェックの期待値として控えておく。
+# STUDYID文字列をここに直接書きたくないため、json_pathから実際に生成した値を使う
+expected_studyid <- dm[["STUDYID"]][1]
 
 rm(dm)
 rm(ae)
@@ -38,6 +50,16 @@ names(other_domains) <- str_remove(names(other_domains), "_dummy$")
 # DM.SITEIDとの整合性チェック用に別途取り出しておく
 facilities <- other_domains[["facilities"]]
 other_domains <- other_domains[setdiff(names(other_domains), c("DM", "AE", "DS", "facilities"))]
+
+# json_pathの設定間違い(意図しない試験のJSONを指している)を、CSVの中身からも検知できるよう、
+# 全ドメインのSTUDYIDがR版(正しいjson_path)のものと一致することを確認する
+dm %>% check_studyid_matches(expected_studyid, domain_name = "DM")
+ae %>% check_studyid_matches(expected_studyid, domain_name = "AE")
+ds %>% check_studyid_matches(expected_studyid, domain_name = "DS")
+for (prefix in names(other_domains)) {
+  other_domains[[prefix]] %>% check_studyid_matches(expected_studyid, domain_name = prefix)
+}
+
 registration_n <- nrow(dm)
 # discontinuation_dateは被験者ごとの中止日という「その乱数シードでの生成結果」に依存する値のため、
 # Web版自身のdsから作り直す(R版のdiscontinuation_dateをそのまま使うと、対応するUSUBJIDの

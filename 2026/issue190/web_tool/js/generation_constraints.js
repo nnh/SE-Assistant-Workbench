@@ -247,11 +247,22 @@ function buildFieldReferenceTable(sheets) {
   (sheets || []).forEach((sheet) => {
     (sheet.field_items || []).forEach((item) => {
       if (item.type === "FieldItem::Reference") {
+        // reference_fieldは"field48"のような素の名前の場合と、"baseline1.field48"のように
+        // 自分自身のalias_name付きの場合がある(EDC仕様側の出力形式の違いによる)。reference_type=="sheet"
+        // (同じシート内参照)は必ず自分自身のalias_name内のフィールドを指すため、プレフィックスが
+        // 付いていれば取り除いて常に素のフィールド名に正規化する(付いていないと、このあとの
+        // buildFieldReferenceCopyConditions()側の突き合わせ(alias_name+素のfield名)が常に失敗し、
+        // このフィールドの値コピーが機能しなくなる)
+        const ownPrefix = `${sheet.alias_name}.`;
+        const referenceField =
+          item.reference_field != null && item.reference_field.startsWith(ownPrefix)
+            ? item.reference_field.slice(ownPrefix.length)
+            : item.reference_field;
         rows.push({
           alias_name: sheet.alias_name,
           field_name: item.name,
           reference_type: item.reference_type,
-          reference_field: item.reference_field,
+          reference_field: referenceField,
         });
       }
     });

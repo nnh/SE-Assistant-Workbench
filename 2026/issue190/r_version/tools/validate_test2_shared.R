@@ -3,6 +3,17 @@
 # 呼び出し元スクリプトが ae/dm/ds/other_domains/cdisc_variable_values/registration_n/who_drug_idf/
 # json_path/discontinuation_date を用意した上でこのファイルをsourceすること
 
+# IE: IETESTCDごとに、IETEST/IECAT/IEORRESをsuffix付き列名にリネームしたうえで
+# 固定値チェック(CSV)とIEDTCの要否(IEORRESが空でなければ必須、空なら空欄)を確認する
+run_ie_testcd_checks <- function(ie, ietestcd, suffix, fixed_value_checks_csv_path) {
+  target_ie <- c("IETEST", "IECAT", "IEORRES")
+  tmp_ie <- ie %>% filter(IETESTCD == ietestcd)
+  tmp_ie <- tmp_ie %>% rename_with(~ str_c(.x, suffix), all_of(target_ie))
+  str_c(target_ie, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ie, "IE", .x, fixed_value_checks_csv_path))
+  tmp_ie %>% filter(!!str_c("IEORRES", suffix) != "") %>% check_required_vars("IEDTC", domain_name = "IE")
+  tmp_ie %>% filter(!!str_c("IEORRES", suffix) == "") %>% check_blank_vars("IEDTC", domain_name = "IE")
+}
+
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
 # (1) CMOCCUR=="Y"ならCMENDTCに値がある
 # (2) CMOCCUR=="N"ならCMENDTCは空白
@@ -15,21 +26,21 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
 
   baseline1 <- data %>% filter(CMSPID == "baseline1")
 
-  missing_endtc_y <- baseline1 %>% filter(CMOCCUR == "Y", is.na(CMENDTC)) %>% pull(USUBJID)
+  missing_endtc_y <- baseline1 %>% filter(CMOCCUR == "Y", is.na(CMENDTC) | CMENDTC == "") %>% pull(USUBJID)
   add_check(
     "cmendtc_present_when_occur_Y",
     length(missing_endtc_y) == 0,
     str_c("CMENDTCが空: ", paste(missing_endtc_y, collapse = ", "))
   )
 
-  present_endtc_n <- baseline1 %>% filter(CMOCCUR == "N", !is.na(CMENDTC)) %>% pull(USUBJID)
+  present_endtc_n <- baseline1 %>% filter(CMOCCUR == "N", !is.na(CMENDTC) & CMENDTC != "") %>% pull(USUBJID)
   add_check(
     "cmendtc_blank_when_occur_N",
     length(present_endtc_n) == 0,
     str_c("CMENDTCに値あり: ", paste(present_endtc_n, collapse = ", "))
   )
 
-  present_stdtc <- baseline1 %>% filter(!is.na(CMSTDTC)) %>% pull(USUBJID)
+  present_stdtc <- baseline1 %>% filter(!is.na(CMSTDTC) & CMSTDTC != "") %>% pull(USUBJID)
   add_check(
     "cmstdtc_always_blank",
     length(present_stdtc) == 0,
@@ -39,7 +50,7 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
   # CMSPIDが"concomitant_drug_other"で始まる場合はCMDECODが空白、
   # "concomitant_drug"で始まり"other"を含まない場合はCMDECODが空白でないはず
   concomitant_drug_other <- data %>% filter(str_starts(CMSPID, "concomitant_drug_other"))
-  present_decod_other <- concomitant_drug_other %>% filter(!is.na(CMDECOD)) %>% pull(USUBJID)
+  present_decod_other <- concomitant_drug_other %>% filter(!is.na(CMDECOD) & CMDECOD != "") %>% pull(USUBJID)
   add_check(
     "cmdecod_blank_for_concomitant_drug_other",
     length(present_decod_other) == 0,
@@ -53,7 +64,7 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
 
   concomitant_drug_main <- data %>%
     filter(str_starts(CMSPID, "concomitant_drug"), !str_detect(CMSPID, "other"), CMTRT %in% has_generic_name)
-  missing_decod_main <- concomitant_drug_main %>% filter(is.na(CMDECOD)) %>% pull(USUBJID)
+  missing_decod_main <- concomitant_drug_main %>% filter(is.na(CMDECOD) | CMDECOD == "") %>% pull(USUBJID)
   add_check(
     "cmdecod_present_for_concomitant_drug",
     length(missing_decod_main) == 0,
