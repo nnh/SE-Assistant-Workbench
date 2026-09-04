@@ -25,6 +25,7 @@ source(here("read_who_drug_idf.R"))
 # 呼び出し元のグローバル環境に代入するため、呼んだ後はそれらをそのまま参照できる
 # (例: source(here("test_config.R")); source(here("load_edc_spec.R")); load_edc_spec(json_path))
 load_edc_spec <- function(json_path) {
+  if (!is.null(random_seed)) set.seed(random_seed)
   edc_spec <- jsonlite::read_json(json_path)
   sheets <- edc_spec[["sheets"]]
   sheet_groups <- edc_spec[["sheet_groups"]]

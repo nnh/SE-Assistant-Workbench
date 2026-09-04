@@ -3,7 +3,7 @@
 // build_domain_common.Rのapply_orres_populators()に対応する
 
 function randomUniform(min, max) {
-  return min + Math.random() * (max - min);
+  return min + rng() * (max - min);
 }
 
 // fieldNumericBounds(alias_name, label単位のcdisc_variable別min/max。generation_constraints.js参照)を、

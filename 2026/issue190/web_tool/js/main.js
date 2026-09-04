@@ -201,7 +201,24 @@ fileInput.addEventListener("change", (e) => {
   if (e.target.files.length) handleFile(e.target.files[0]);
 });
 
+// 生成開始時に前回の結果を画面から消す。辞書読み込み等に時間がかかり、クリックが反応しているのか
+// 分かりにくいという声を受けて、まず画面をクリアしてから生成処理に入るようにする
+function clearResults() {
+  generatedDm = null;
+  generatedAe = null;
+  generatedDs = null;
+  generatedOtherDomains = null;
+  generatedDummySites = null;
+  resultSection.style.display = "none";
+  ["dm-preview", "ae-preview", "ds-preview", "site-preview", "domain-summary", "other-domains-preview"].forEach((id) => {
+    document.getElementById(id).innerHTML = "";
+  });
+  dictionaryStatus.textContent = "";
+}
+
 document.getElementById("generate-btn").addEventListener("click", async () => {
+  clearResults();
+  setRandomSeed(document.getElementById("random-seed").value);
   const n = parseInt(document.getElementById("registration-n").value, 10);
   const siteN = parseInt(document.getElementById("site-n").value, 10);
   const registrationStartDate = document.getElementById("registration-start-date").value;

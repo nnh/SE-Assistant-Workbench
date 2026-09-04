@@ -870,7 +870,7 @@ function applyAgeDateBounds(data, ageBounds, registrationStartDate) {
       }
       upper = Math.max(upper, lower);
 
-      const randomDay = Math.floor(lower + Math.random() * (upper - lower + 1));
+      const randomDay = Math.floor(lower + rng() * (upper - lower + 1));
       row[varName] = dateFromDays(randomDay);
     });
   });

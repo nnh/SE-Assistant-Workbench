@@ -11,7 +11,7 @@ function generateDummySites(n = 10) {
   for (let i = 1; i <= n; i += 1) {
     let code;
     do {
-      code = String(Math.floor(100000000 + Math.random() * 800000000));
+      code = String(Math.floor(100000000 + rng() * 800000000));
     } while (usedIds.has(code));
     usedIds.add(code);
     sites.push({ code, ja: `ダミー${String(i).padStart(2, "0")}病院`, en: `dummy${i}` });
@@ -117,7 +117,7 @@ function generateBrthdtc(n, refDate, minAge = 0, maxAge = 89) {
 
   const brthdtc = [];
   for (let i = 0; i < n; i += 1) {
-    const ageDays = Math.round(minDays + Math.random() * (maxDays - minDays));
+    const ageDays = Math.round(minDays + rng() * (maxDays - minDays));
     const brthDate = new Date(ref.getTime() - ageDays * oneDay);
     brthdtc.push(brthDate.toISOString().slice(0, 10));
   }

@@ -33,6 +33,9 @@
   <p class="app-subtitle">Fabricated Offline Records Generation Engine</p>
   <p class="app-version" id="app-version"></p>
   <p class="app-description">EDC仕様ファイル (.json) を読み込み、SDTM形式のダミーデータを自動生成します。</p>
+  <p style="font-size:0.8rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:0.5rem 0.75rem;">
+    「生成する」ボタンが反応しない場合は、画面の再読み込みを行ってください。
+  </p>
 
   <section id="upload-section">
     <div id="drop-zone">
@@ -60,6 +63,7 @@
   <section id="config-section" style="display:none;">
     <label>被験者数: <input type="number" id="registration-n" value="100" min="1"></label>
     <label>施設数: <input type="number" id="site-n" value="10" min="1"></label>
+    <label>乱数シード: <input type="text" id="random-seed" value="42"></label>
     <label>AEレコード数(目安。有効な報告シートを持たない被験者分は除外されるため、実件数は前後します): <input type="number" id="ae-n" value="100" min="0"></label>
     <label>登録開始日: <input type="date" id="registration-start-date" value="2024-04-01"></label>
     <label>MedDRAバージョン: <select id="meddra-version"></select></label>

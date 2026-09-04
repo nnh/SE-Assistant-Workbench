@@ -1,8 +1,43 @@
 // 汎用ユーティリティ(CSV変換・ダウンロード・乱数系)
 
+// 乱数シード対応PRNG。setRandomSeed()でシードを設定するとmulberry32アルゴリズムによる
+// 決定的な値を返すようになる。シード未指定(null/空文字)の場合はDEFAULT_RANDOM_SEEDを使う
+// (「未入力=完全ランダム」ではなく「未入力=常に同じ既定シード」という仕様のため)。
+// 生成コード内のMath.random()呼び出しは全てrng()に置き換えてあるため、同じシードなら
+// 同じツール(JS)内では常に同じ生成結果になる(Rの乱数アルゴリズムとの一致は求めない)
+const DEFAULT_RANDOM_SEED = "42";
+let _rngState = null;
+
+// 文字列/数値のシードから32bit整数のRNG初期状態を作る(FNV-1aハッシュ)
+function hashStringToUint32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// シードを設定する。null/空文字ならDEFAULT_RANDOM_SEEDを使う
+function setRandomSeed(seed) {
+  const resolved = seed == null || seed === "" ? DEFAULT_RANDOM_SEED : String(seed);
+  _rngState = hashStringToUint32(resolved);
+}
+
+// Math.random()の代替。setRandomSeed()が一度も呼ばれていない場合のみMath.random()にフォールバックする
+// (通常はmain.jsの生成ボタン押下時に必ずsetRandomSeed()が呼ばれるため、この分岐には入らない)
+function rng() {
+  if (_rngState == null) return Math.random();
+  _rngState |= 0;
+  _rngState = (_rngState + 0x6d2b79f5) | 0;
+  let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 // 配列からランダムに1件選ぶ
 function sampleOne(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(rng() * arr.length)];
 }
 
 // check_box: radio_buttonと異なり複数選択が可能なため、実際の選択肢("" を除く)から1個以上を
@@ -17,12 +52,12 @@ function sampleCheckBoxValues(choices, n) {
   }
   const values = [];
   for (let i = 0; i < n; i += 1) {
-    if (hasBlank && Math.random() < 0.5) {
+    if (hasBlank && rng() < 0.5) {
       values.push("");
       continue;
     }
-    const k = 1 + Math.floor(Math.random() * realChoices.length);
-    const shuffled = [...realChoices].sort(() => Math.random() - 0.5);
+    const k = 1 + Math.floor(rng() * realChoices.length);
+    const shuffled = [...realChoices].sort(() => rng() - 0.5);
     values.push(shuffled.slice(0, k).join(","));
   }
   return values;
@@ -32,7 +67,7 @@ function sampleCheckBoxValues(choices, n) {
 function shuffledCopy(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -64,7 +99,7 @@ function sampleCheckBoxValuesWithCoverage(choices, n) {
   const missing = realChoices.filter((c) => !present.has(c));
   if (missing.length === 0) return values;
   missing.forEach((choice) => {
-    const rowIdx = Math.floor(Math.random() * n);
+    const rowIdx = Math.floor(rng() * n);
     const parts = values[rowIdx] ? values[rowIdx].split(",") : [];
     if (!parts.includes(choice)) parts.push(choice);
     values[rowIdx] = parts.join(",");
@@ -259,7 +294,7 @@ function randomDateBetween(startDateStr, endDateStr) {
   const end = new Date(endDateStr).getTime();
   const oneDay = 24 * 60 * 60 * 1000;
   // Rのgenerate_random_date()と同様、日未満の端数を持たせない(丸めてから日付化する)
-  const randomDay = Math.floor(start / oneDay + Math.random() * ((end - start) / oneDay + 1));
+  const randomDay = Math.floor(start / oneDay + rng() * ((end - start) / oneDay + 1));
   return new Date(randomDay * oneDay).toISOString().slice(0, 10);
 }
 

@@ -282,11 +282,11 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
 // その行のみを返す(R版pick_death_rows()に対応)
 function pickDeathIndices(candidates, earlyDeathProb) {
   const last = candidates[candidates.length - 1];
-  if (candidates.length <= 1 || Math.random() >= earlyDeathProb) {
+  if (candidates.length <= 1 || rng() >= earlyDeathProb) {
     return [last];
   }
   const nonLast = candidates.slice(0, -1);
-  const extra = nonLast[Math.floor(Math.random() * nonLast.length)];
+  const extra = nonLast[Math.floor(rng() * nonLast.length)];
   return [last, extra];
 }
 
@@ -386,7 +386,7 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
   const aliveLastIndices = Object.values(aliveLastIndexByUsubjid);
 
   const completedCount = Math.round(aliveLastIndices.length * completedRate);
-  const shuffled = [...aliveLastIndices].sort(() => Math.random() - 0.5);
+  const shuffled = [...aliveLastIndices].sort(() => rng() - 0.5);
   const completedUsubjidSet = new Set(shuffled.slice(0, completedCount).map((i) => ds[i].USUBJID));
 
   ds.forEach((row) => {
@@ -477,7 +477,7 @@ function addRandomizationDsRows(ds, dm, registrationStartDate) {
       if (dsColumns.has("DSTERM")) row.DSTERM = "RANDOMIZED";
       if (dsColumns.has("DSDTC")) {
         const baseDateStr = hasRficdtc && dmRow.RFICDTC ? dmRow.RFICDTC : registrationStartDate;
-        const offset = Math.floor(Math.random() * (maxOffset + 1));
+        const offset = Math.floor(rng() * (maxOffset + 1));
         // RFICDTCが今日に近い被験者だと、オフセットを足した結果が未来日になり得るため、今日でクランプする
         row.DSDTC = dateFromDays(Math.min(daysFromEpoch(baseDateStr) + offset, todayDays));
       }

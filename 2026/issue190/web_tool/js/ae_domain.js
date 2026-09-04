@@ -143,14 +143,14 @@ function sampleMeddraRows(meddraData, n, poolSize = 20) {
       distinctRows.push(row);
     }
   });
-  const shuffled = [...distinctRows].sort(() => Math.random() - 0.5);
+  const shuffled = [...distinctRows].sort(() => rng() - 0.5);
   const pool = shuffled.slice(0, Math.min(poolSize, distinctRows.length));
 
   const weights = pool.map((_, i) => 1 / (i + 1));
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   const result = [];
   for (let i = 0; i < n; i += 1) {
-    let r = Math.random() * totalWeight;
+    let r = rng() * totalWeight;
     let idx = 0;
     while (idx < weights.length - 1 && r > weights[idx]) {
       r -= weights[idx];
@@ -188,9 +188,9 @@ function injectRequiredLltCodes(meddraSample, meddraData, requiredLltCodes) {
   const withReplacement = codes.length > n;
   const targetRows = [];
   if (withReplacement) {
-    for (let i = 0; i < codes.length; i += 1) targetRows.push(Math.floor(Math.random() * n));
+    for (let i = 0; i < codes.length; i += 1) targetRows.push(Math.floor(rng() * n));
   } else {
-    const shuffled = [...Array(n).keys()].sort(() => Math.random() - 0.5);
+    const shuffled = [...Array(n).keys()].sort(() => rng() - 0.5);
     targetRows.push(...shuffled.slice(0, codes.length));
   }
 
