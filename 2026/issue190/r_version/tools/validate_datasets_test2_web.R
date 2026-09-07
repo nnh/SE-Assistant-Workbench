@@ -164,4 +164,80 @@ rs %>% check_date_before_today("RSDTC", domain_name = "RS")
 tmp_rs <- rs %>% filter(RSTESTCD =="STAGE")
 tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_1"), c(RSTEST, RSCAT, RSORRES, RSBLFL, RSEVAL, VISITNUM))
 c("RSTEST_1", "RSCAT_1", "RSORRES_1", "RSBLFL_1", "RSEVAL_1", "VISITNUM_1") %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
-# TU
+# TR: TRLNKID×TRLNKGRPごとの個別チェック。TRLNKGRP/TRORRESU/VISITNUMをsuffix付き列名にリネームして
+# 必須・固定値チェックを行ったうえで、TRTESTCD=="LDIAM"(長径)/"SAXIS"(短径)それぞれのTRTESTを
+# 別々のsuffix付き列名にリネームして固定値チェックする
+check_tr_lnkid <- function(tr, trlnkid, trlnkgrp, suffix, ldiam_suffix, saxis_suffix, fixed_value_checks_csv_path) {
+  target_tr_cols <- c("TRLNKGRP", "TRORRESU", "VISITNUM")
+  tmp_tr <- tr %>% filter(TRLNKID == trlnkid & TRLNKGRP == trlnkgrp)
+  tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
+  tmp_tr %>% check_required_vars(str_c(target_tr_cols, suffix), domain_name = "TR")
+  str_c(target_tr_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr, "TR", .x, fixed_value_checks_csv_path))
+
+  tmp_tr_l <- tmp_tr %>% filter(TRTESTCD == "LDIAM") %>% rename(!!str_c("TRTEST", ldiam_suffix) := TRTEST)
+  str_c("TRTEST", ldiam_suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr_l, "TR", .x, fixed_value_checks_csv_path))
+
+  tmp_tr_s <- tmp_tr %>% filter(TRTESTCD == "SAXIS") %>% rename(!!str_c("TRTEST", saxis_suffix) := TRTEST)
+  str_c("TRTEST", saxis_suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr_s, "TR", .x, fixed_value_checks_csv_path))
+}
+check_tr_lnkid(tr, "T01", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T02", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+# TU: TULNKIDごとの個別チェック。1番目の病変記録(is_first=TRUE)は位置/左右/測定方法/実測値/
+# ベースラインフラグ/訪問番号が全て必須かつ固定値と一致することを確認する。2番目以降(is_first=FALSE)は
+# 位置/左右/測定方法が空欄になりうるため値が入っている行のみ固定値チェックし、実測値/ベースライン
+# フラグ/訪問番号は引き続き全行チェックする
+check_tu_lnkid <- function(tu, tulnkid, suffix, fixed_value_checks_csv_path, is_first) {
+  target_tu_cols <- c("TULOC", "TULAT", "TUMETHOD", "TUORRES", "TUBLFL", "VISITNUM")
+  tmp_tu <- tu %>% filter(TULNKID == tulnkid)
+  tmp_tu <- tmp_tu %>% rename_with(~ str_c(.x, suffix), all_of(target_tu_cols))
+
+  if (is_first) {
+    tmp_tu %>% check_required_vars(str_c(target_tu_cols, suffix), domain_name = "TU")
+    str_c(target_tu_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tu, "TU", .x, fixed_value_checks_csv_path))
+  } else {
+    c("TULOC", "TULAT", "TUMETHOD") %>% walk(~ {
+      col <- str_c(.x, suffix)
+      run_value_equals_checks_from_csv(filter(tmp_tu, .data[[col]] != ""), "TU", col, fixed_value_checks_csv_path)
+    })
+    str_c(c("TUORRES", "TUBLFL", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tu, "TU", .x, fixed_value_checks_csv_path))
+  }
+}
+check_tu_lnkid(tu, "T01", "_1", fixed_value_checks_csv_path, is_first = TRUE)
+check_tu_lnkid(tu, "T02", "_2", fixed_value_checks_csv_path, is_first = FALSE)
+check_tu_lnkid(tu, "T03", "_2", fixed_value_checks_csv_path, is_first = FALSE)
+check_tu_lnkid(tu, "T04", "_2", fixed_value_checks_csv_path, is_first = FALSE)
+check_tu_lnkid(tu, "T05", "_2", fixed_value_checks_csv_path, is_first = FALSE)
+# TR/TU: 同一TULNKID(病変ID)について、TR短径(SAXIS)と長径(LDIAM)の記録が
+# 同一USUBJID・TRMETHOD・TRDTCで対になっていること、およびTR(LDIAM)とTU(病変同定)が
+# 同一USUBJID・METHOD・DTCで紐づいていることを確認する
+# T01-T05を対象とする
+check_tr_tu_link <- function(tu, tr, tulnkid, trlnkgrp = "A1") {
+  tmp_tu <- tu %>% filter(TULNKID == tulnkid)
+  tmp_tr_l <- tr %>% filter(TRLNKID == tulnkid & TRLNKGRP == trlnkgrp & TRTESTCD == "LDIAM")
+  tmp_tr_s <- tr %>% filter(TRLNKID == tulnkid & TRLNKGRP == trlnkgrp & TRTESTCD == "SAXIS")
+
+  tr_link_1 <- tmp_tr_l %>% anti_join(tmp_tr_s, by = c("USUBJID", "TRMETHOD", "TRDTC"))
+  tr_link_2 <- tmp_tr_s %>% anti_join(tmp_tr_l, by = c("USUBJID", "TRMETHOD", "TRDTC"))
+  if (nrow(tr_link_1) > 0 | nrow(tr_link_2) > 0) {
+    stop(str_c("TR短径と長径リンクエラー：", tulnkid))
+  }
+
+  tu_tr_link <- tmp_tr_l %>% anti_join(tmp_tu, by = c("USUBJID", "TRMETHOD" = "TUMETHOD", "TRDTC" = "TUDTC"))
+  if (nrow(tu_tr_link) > 0) {
+    stop(str_c("TRTUリンクエラー：", tulnkid))
+  }
+  cat("TR/TUリンクチェック: 問題なし(", tulnkid, ")\n", sep = "")
+}
+for (i in 1:5) {
+  lnkid <- str_c("T0", as.character(i))
+  is_first <- i == 1
+  tu_target <- ifelse(i == 1, "_1", "_2")
+  check_tu_lnkid(tu, lnkid, tu_target, fixed_value_checks_csv_path, is_first = is_first)
+  check_tr_tu_link(tu, tr, lnkid)
+}
+# TR,TU non-target
+tmp_tr <- tr %>% filter(TRLNKID == "NT01")
+suffix <- "_4"
+target_tr_cols <- c("TRGRPID", "TRTESTCD", "TRTEST", "TRORRES")
+tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
+str_c(target_tr_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr, "TR", .x, fixed_value_checks_csv_path))
