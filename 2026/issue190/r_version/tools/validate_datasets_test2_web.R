@@ -135,6 +135,22 @@ ie %>% run_ie_testcd_checks("EX15a", "_27", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX16", "_28", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX17", "_29", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX18", "_30", fixed_value_checks_csv_path)
+# LB
+lb %>% check_required_vars(c("LBTEST", "LBCAT", "LBDTC", "VISITNUM"), domain_name = "LB")
+lb %>% check_date_before_today(c("LBDTC"), domain_name = "LB")
+lb_done <- lb %>% filter(LBSTAT != "NOT DONE")
+lb_not_done <- lb %>% filter(LBSTAT == "NOT DONE")
+lb_done %>% check_required_vars(c("LBORRES", "LBSPEC"), domain_name="LB")
+lb_not_done %>% check_blank_vars(c("LBORRES"), domain_name="LB")
+target_lb_cols <- c("LBTEST", "LBCAT", "LBORRESU", "LBSPEC")
+suffix <- "_1"
+tmp_lb <- lb_done %>% filter(LBTESTCD == "CEA" & VISITNUM == 100)
+tmp_lb <- tmp_lb %>% rename_with(~ str_c(.x, suffix), all_of(c(target_lb_cols, "LBBLFL")))
+str_c(c(target_lb_cols, "LBBLFL"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, fixed_value_checks_csv_path, visit = 100))
+suffix <- "_2"
+tmp_lb <- lb_done %>% filter(LBTESTCD == "CA19_9AG" & VISITNUM == 100)
+tmp_lb <- tmp_lb %>% rename_with(~ str_c(.x, suffix), all_of(c(target_lb_cols, "LBBLFL")))
+str_c(c(target_lb_cols, "LBBLFL"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, fixed_value_checks_csv_path, visit = 100))
 # MH
 mh %>% check_required_vars(c("MHTERM"), domain_name = "MH")
 tmp_mh <- mh %>% filter(MHCAT == "GENERAL" & MHENRTPT == "BEFORE")
