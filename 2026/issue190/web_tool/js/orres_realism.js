@@ -27,6 +27,28 @@ function buildTestcdNumericBounds(cdiscVariableValues, fieldNumericBounds, testc
   return result;
 }
 
+// testcdVarごとに、対応するorresVar(例: TRORRES)がradio_button/check_box(選択式)で
+// 定義されているtestcdの集合を返す。これらのtestcdは元々コードリストから正しい値(例:
+// ABSENT/PRESENT)が生成されているため、generateOrresValue()による数値上書きの対象から除外する
+// (TR domainにLDIAM/SAXISのような数値項目とTUMSTATEのような選択式項目が混在しているため必要)
+// (Rのbuild_testcd_categorical_setに対応)
+function buildTestcdCategoricalSet(cdiscVariableValues, testcdVar, orresVar) {
+  const testcdMap = new Map();
+  cdiscVariableValues.forEach((r) => {
+    if (r.cdisc_variable !== testcdVar || r.default_value == null) return;
+    testcdMap.set(`${r.alias_name}|${r.label}`, r.default_value);
+  });
+  const result = new Set();
+  cdiscVariableValues.forEach((r) => {
+    if (r.cdisc_variable !== orresVar) return;
+    if (r.field_type !== "radio_button" && r.field_type !== "check_box") return;
+    const testcd = testcdMap.get(`${r.alias_name}|${r.label}`);
+    if (testcd == null) return;
+    result.add(testcd);
+  });
+  return result;
+}
+
 // testcdごとに、testcdBounds(buildTestcdNumericBounds()の結果)にある範囲内でランダムな数値を
 // 生成する。バリデーション(min/max)が定義されていないtestcd(testcdBoundsに無い)は0〜100の
 // ランダムな整数にする(未知のtestcd・バリデーション未定義の既知testcdの両方をこれでカバーする)。
@@ -45,12 +67,14 @@ function generateOrresValue(testcd, testcdBounds) {
 // LBTESTCD/LBORRESが両方ある場合のみ、EDC仕様の数値バリデーション(min/max)に基づいてLBORRESを
 // それらしい数値に置き換える。バリデーションが定義されていないLBTESTCD(未知のTESTCD含む)は
 // generateOrresValue()側で0〜100のランダムな整数になる。LBORRESが既にnull(NOT DONE等の
-// presence_conditionsで空白化された)の行は上書きしない(Rのpopulate_lb_orres()に対応)
+// presence_conditionsで空白化された)の行、およびradio_button/check_boxで定義された
+// (選択式の)TESTCDの行は上書きしない(Rのpopulate_lb_orres()に対応)
 function populateLbOrres(lb, cdiscVariableValues, fieldNumericBounds) {
   if (!lb[0] || !("LBTESTCD" in lb[0]) || !("LBORRES" in lb[0])) return lb;
   const testcdBounds = buildTestcdNumericBounds(cdiscVariableValues, fieldNumericBounds, "LBTESTCD", "LBORRES");
+  const categoricalTestcds = buildTestcdCategoricalSet(cdiscVariableValues, "LBTESTCD", "LBORRES");
   lb.forEach((row) => {
-    if (row.LBORRES == null) return;
+    if (row.LBORRES == null || categoricalTestcds.has(row.LBTESTCD)) return;
     row.LBORRES = String(generateOrresValue(row.LBTESTCD, testcdBounds));
   });
   return lb;
@@ -59,12 +83,14 @@ function populateLbOrres(lb, cdiscVariableValues, fieldNumericBounds) {
 // TRTESTCD/TRORRESが両方ある場合のみ、EDC仕様の数値バリデーション(min/max)に基づいてTRORRESを
 // それらしい数値に置き換える。バリデーションが定義されていないTRTESTCD(未知のTESTCD含む)は
 // generateOrresValue()側で0〜100のランダムな整数になる。TRORRESが既にnull(presence_conditionsで
-// 空白化された)の行は上書きしない(Rのpopulate_tr_orres()に対応)
+// 空白化された)の行、およびTUMSTATE(非標的病変の有無、ABSENT/PRESENTの選択式)のような
+// radio_button/check_boxで定義されたTESTCDの行は上書きしない(Rのpopulate_tr_orres()に対応)
 function populateTrOrres(tr, cdiscVariableValues, fieldNumericBounds) {
   if (!tr[0] || !("TRTESTCD" in tr[0]) || !("TRORRES" in tr[0])) return tr;
   const testcdBounds = buildTestcdNumericBounds(cdiscVariableValues, fieldNumericBounds, "TRTESTCD", "TRORRES");
+  const categoricalTestcds = buildTestcdCategoricalSet(cdiscVariableValues, "TRTESTCD", "TRORRES");
   tr.forEach((row) => {
-    if (row.TRORRES == null) return;
+    if (row.TRORRES == null || categoricalTestcds.has(row.TRTESTCD)) return;
     row.TRORRES = String(generateOrresValue(row.TRTESTCD, testcdBounds));
   });
   return tr;
@@ -73,12 +99,14 @@ function populateTrOrres(tr, cdiscVariableValues, fieldNumericBounds) {
 // VSTESTCD/VSORRESが両方ある場合のみ、EDC仕様の数値バリデーション(min/max)に基づいてVSORRESを
 // それらしい数値に置き換える。バリデーションが定義されていないVSTESTCD(未知のTESTCD含む)は
 // generateOrresValue()側で0〜100のランダムな整数になる。VSORRESが既にnull(presence_conditionsで
-// 空白化された)の行は上書きしない(Rのpopulate_vs_orres()に対応)
+// 空白化された)の行、およびradio_button/check_boxで定義された(選択式の)TESTCDの行は上書きしない
+// (Rのpopulate_vs_orres()に対応)
 function populateVsOrres(vs, cdiscVariableValues, fieldNumericBounds) {
   if (!vs[0] || !("VSTESTCD" in vs[0]) || !("VSORRES" in vs[0])) return vs;
   const testcdBounds = buildTestcdNumericBounds(cdiscVariableValues, fieldNumericBounds, "VSTESTCD", "VSORRES");
+  const categoricalTestcds = buildTestcdCategoricalSet(cdiscVariableValues, "VSTESTCD", "VSORRES");
   vs.forEach((row) => {
-    if (row.VSORRES == null) return;
+    if (row.VSORRES == null || categoricalTestcds.has(row.VSTESTCD)) return;
     row.VSORRES = String(generateOrresValue(row.VSTESTCD, testcdBounds));
   });
   return vs;

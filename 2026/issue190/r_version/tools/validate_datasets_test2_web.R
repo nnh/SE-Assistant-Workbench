@@ -241,3 +241,13 @@ suffix <- "_4"
 target_tr_cols <- c("TRGRPID", "TRTESTCD", "TRTEST", "TRORRES")
 tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
 str_c(target_tr_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr, "TR", .x, fixed_value_checks_csv_path))
+tmp_tu <- tu %>% filter(TULNKID == "NT01")
+target_tu_cols <- c("TUTESTCD", "TUTEST", "TUORRES", "TUBLFL", "VISITNUM")
+tmp_tu <- tmp_tu %>% rename_with(~ str_c(.x, suffix), all_of(target_tu_cols))
+str_c(target_tu_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tu, "TU", .x, fixed_value_checks_csv_path))
+tmp_tu %>% check_required_vars(c("TUMETHOD", "TUDTC"), domain_name = "TU")
+tmp_tu %>% check_date_before_today("TUDTC", domain_name = "TU")
+tmp_tr_tu <- tmp_tu %>% anti_join(tmp_tr, by=c("USUBJID", "TUMETHOD"="TRMETHOD", "TUDTC"="TRDTC"))
+if (nrow(tmp_tr_tu) > 0) {
+  stop("TR, TU non-target error")
+}

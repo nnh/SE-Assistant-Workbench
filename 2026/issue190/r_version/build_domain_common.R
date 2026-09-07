@@ -519,6 +519,22 @@ build_testcd_numeric_bounds <- function(cdisc_variable_values, field_numeric_bou
     distinct(testcd, min_value, max_value)
 }
 
+# testcd_varごとに、対応するorres_var(例: TRORRES)がradio_button/check_box(選択式)で
+# 定義されているtestcdの集合を返す。これらのtestcdは元々コードリストから正しい値(例:
+# ABSENT/PRESENT)が生成されているため、generate_orres_value()による数値上書きの対象から除外する
+# (TR domainにLDIAM/SAXISのような数値項目とTUMSTATEのような選択式項目が混在しているため必要)
+build_testcd_categorical_set <- function(cdisc_variable_values, testcd_var, orres_var) {
+  testcd_map <- cdisc_variable_values %>%
+    filter(cdisc_variable == testcd_var, !is.na(default_value)) %>%
+    distinct(alias_name, label, testcd = default_value)
+  cdisc_variable_values %>%
+    filter(cdisc_variable == orres_var, field_type %in% c("radio_button", "check_box")) %>%
+    distinct(alias_name, label) %>%
+    inner_join(testcd_map, by = c("alias_name", "label")) %>%
+    pull(testcd) %>%
+    unique()
+}
+
 # testcdごとに、testcd_bounds(build_testcd_numeric_bounds()の結果)にある範囲内でランダムな数値を
 # 生成する。バリデーション(min/max)が定義されていないtestcd(testcd_boundsに無い)は0〜100の
 # ランダムな整数にする(未知のtestcd・バリデーション未定義の既知testcdの両方をこれでカバーする)。
