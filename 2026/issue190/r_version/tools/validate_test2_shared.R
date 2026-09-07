@@ -14,6 +14,34 @@ run_ie_testcd_checks <- function(ie, ietestcd, suffix, fixed_value_checks_csv_pa
   tmp_ie %>% filter(!!str_c("IEORRES", suffix) == "") %>% check_blank_vars("IEDTC", domain_name = "IE")
 }
 
+# LB: LBTESTCDごとの個別チェック(妊娠検査(HCG)を除く通常パターン)。指定visitのレコードに絞り込み、
+# LBTEST/LBCAT/LBSPEC/LBBLFL(+単位があればLBORRESU)をsuffix付き列名にリネームしたうえで
+# 固定値と一致することを確認する。has_unit=FALSEを指定すると、単位を持たない項目(定性検査等)として
+# LBORRESUのチェックを除外する
+check_lb_testcd <- function(lb_done, lbtestcd, visit, suffix, fixed_value_checks_csv_path, has_unit = TRUE) {
+  target_lb_cols <- c("LBTEST", "LBCAT", "LBSPEC", "LBBLFL")
+  if (has_unit) {
+    target_lb_cols <- c(target_lb_cols, "LBORRESU")
+  }
+  tmp_lb <- lb_done %>% filter(LBTESTCD == lbtestcd & VISITNUM == visit)
+  tmp_lb <- tmp_lb %>% rename_with(~ str_c(.x, suffix), all_of(target_lb_cols))
+  str_c(target_lb_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, fixed_value_checks_csv_path, visit = visit))
+}
+
+# VS: VSTESTCD×VISITNUM×VSTPTNUMごとの個別チェック。指定visit/vstptnumのレコードに絞り込み、
+# VSTEST/VSORRESU(+has_blflならVSBLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを
+# 確認する。test2のVSTPTNUM==10のブロックはBaseline Flag(VSBLFL)が定義されているが、
+# VSTPTNUM==20のブロックには定義が無いため、has_blflで含める/除外するを切り替える
+check_vs_testcd <- function(vs_done, vstestcd, visit, vstptnum, suffix, fixed_value_checks_csv_path, has_blfl = TRUE) {
+  target_vs_cols <- c("VSTEST", "VSORRESU")
+  if (has_blfl) {
+    target_vs_cols <- c(target_vs_cols, "VSBLFL")
+  }
+  tmp_vs <- vs_done %>% filter(VSTESTCD == vstestcd & VISITNUM == visit & VSTPTNUM == vstptnum)
+  tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(target_vs_cols))
+  str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit))
+}
+
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
 # (1) CMOCCUR=="Y"ならCMENDTCに値がある
 # (2) CMOCCUR=="N"ならCMENDTCは空白
