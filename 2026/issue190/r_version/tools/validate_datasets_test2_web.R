@@ -110,32 +110,7 @@ ec %>% filter(ECOCCUR == "Y") %>% check_required_vars("ECSTDTC", domain_name = "
 ec %>% filter(ECOCCUR == "Y" & ECTRT == "5-FU" & ECROUTE == "INTRAVENOUS DRIP") %>% check_required_vars("ECENDTC", domain_name = "EC")
 ec %>% check_required_vars(c("ECOCCUR"), domain_name = "EC")
 c("ECOCCUR", "ECMOOD", "ECDOSFRM", "ECPRESP") %>% walk(~ run_value_equals_checks_from_csv(ec, "EC", .x, fixed_value_checks_csv_path))
-target_ec_cols <- c("ECDOSU", "ECROUTE", "ECADJ", "VISITNUM")
-tmp_ec <- ec %>% filter(ECTRT == "BEVACIZUMAB(GENETICAL RECOMBINATION)" & VISITNUM == 200)
-suffix <- "_1"
-tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
-str_c(c("ECDOSU", "ECROUTE", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR=="Y"), "EC", .x, fixed_value_checks_csv_path))
-tmp_ec <- ec %>% filter(ECTRT == "OXALIPLATIN" & VISITNUM == 200)
-suffix <- "_2"
-tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
-str_c(c("ECDOSU", "ECROUTE", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR=="Y"), "EC", .x, fixed_value_checks_csv_path))
-tmp_ec <- ec %>% filter(ECTRT == "LEVOFOLINATE CALCIUM" & VISITNUM == 200)
-suffix <- "_3"
-tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
-str_c(c("ECDOSU", "ECROUTE", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR=="Y"), "EC", .x, fixed_value_checks_csv_path))
-tmp_ec <- ec %>% filter(ECTRT == "5-FU" & ECROUTE == "INTRAVENOUS BOLUS" & VISITNUM == 200)
-suffix <- "_4"
-tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
-str_c(c("ECDOSU", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR=="Y"), "EC", .x, fixed_value_checks_csv_path))
-tmp_ec <- ec %>% filter(ECTRT == "5-FU" & ECROUTE == "INTRAVENOUS DRIP" & VISITNUM == 200)
-suffix <- "_5"
-tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
-str_c(c("ECDOSU", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR=="Y"), "EC", .x, fixed_value_checks_csv_path))
+run_ec_trt_checks(ec, 200, fixed_value_checks_csv_path)
 
 
 # EG

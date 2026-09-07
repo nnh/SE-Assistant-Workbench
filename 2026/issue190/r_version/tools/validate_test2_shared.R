@@ -42,6 +42,33 @@ check_vs_testcd <- function(vs_done, vstestcd, visit, vstptnum, suffix, fixed_va
   str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit))
 }
 
+# EC: ECTRT(×ECROUTE)×VISITNUMごとの個別チェック。指定条件で絞り込み、ECDOSU/ECROUTE/ECADJ/VISITNUMを
+# suffix付き列名にリネームしたうえで、ECDOSU/ECROUTE/VISITNUMは固定値チェック、ECADJはECOCCUR=="Y"の
+# 行に限定して固定値チェックする。ecrouteを指定した場合はその値でも絞り込み、ECROUTEは絞り込み条件
+# 自体で保証済みのため固定値チェックの対象から除く(test2専用)
+check_ec_trt <- function(ec, ectrt, visitnum, suffix, fixed_value_checks_csv_path, ecroute = NULL) {
+  target_ec_cols <- c("ECDOSU", "ECROUTE", "ECADJ", "VISITNUM")
+  tmp_ec <- ec %>% filter(ECTRT == ectrt & VISITNUM == visitnum)
+  if (!is.null(ecroute)) {
+    tmp_ec <- tmp_ec %>% filter(ECROUTE == ecroute)
+  }
+  tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
+
+  value_equals_cols <- if (is.null(ecroute)) c("ECDOSU", "ECROUTE", "VISITNUM") else c("ECDOSU", "VISITNUM")
+  str_c(value_equals_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+  str_c("ECADJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR == "Y"), "EC", .x, fixed_value_checks_csv_path))
+}
+
+# EC: 指定visitnum時点の5剤(ベバシズマブ/オキサリプラチン/レボホリナート/5-FU(急速静注)/
+# 5-FU(持続静注))分のcheck_ec_trt()呼び出しをまとめて実行する(test2専用)
+run_ec_trt_checks <- function(ec, visitnum, fixed_value_checks_csv_path) {
+  check_ec_trt(ec, "BEVACIZUMAB(GENETICAL RECOMBINATION)", visitnum, "_1", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "OXALIPLATIN", visitnum, "_2", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "LEVOFOLINATE CALCIUM", visitnum, "_3", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "5-FU", visitnum, "_4", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS BOLUS")
+  check_ec_trt(ec, "5-FU", visitnum, "_5", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS DRIP")
+}
+
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
 # (1) CMOCCUR=="Y"ならCMENDTCに値がある
 # (2) CMOCCUR=="N"ならCMENDTCは空白
