@@ -47,6 +47,54 @@ check_lb_testcd <- function(lb_done, lbtestcd, visit, suffix, fixed_value_checks
   str_c(target_lb_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, fixed_value_checks_csv_path, visit = visit))
 }
 
+# LB: cycle2以降(VISITNUM>=300)の1visitnum分の通常検査パネル(29項目)個別チェックをまとめて実行する。
+# GLUCは血液(LBCAT=="CHEMISTRY")と尿(LBCAT=="URINALYSIS")の2項目があり、同じTESTCDでも
+# カテゴリが異なるため、lb_doneをLBCATで絞り込んでから渡す(PROT/OCCBLDも尿検査のみ)(test2専用)
+run_lb_testcd_checks_cycle2_onward <- function(lb_done, visitnum, fixed_value_checks_csv_path) {
+  check_lb_testcd(lb_done, "RBC", visitnum, "_4", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "HGB", visitnum, "_5", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "HCT", visitnum, "_6", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "WBC", visitnum, "_7", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "NEUT", visitnum, "_8", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "PLAT", visitnum, "_9", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "ALB", visitnum, "_10", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "SODIUM", visitnum, "_11", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "K", visitnum, "_12", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "CL", visitnum, "_13", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "CA", visitnum, "_14", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "PHOS", visitnum, "_15", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(filter(lb_done, LBCAT == "CHEMISTRY"), "GLUC", visitnum, "_16", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "UREAN", visitnum, "_17", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "CYURIAC", visitnum, "_18", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "CREAT", visitnum, "_19", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "BILI", visitnum, "_20", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "AST", visitnum, "_21", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "ALT", visitnum, "_22", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "ALP", visitnum, "_23", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "LDH", visitnum, "_24", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "HBA1C", visitnum, "_25", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "CHOL", visitnum, "_26", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "TRIG", visitnum, "_27", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "INR", visitnum, "_28", fixed_value_checks_csv_path, has_unit = FALSE, has_blfl = FALSE)
+  check_lb_testcd(lb_done, "APTT", visitnum, "_29", fixed_value_checks_csv_path, has_blfl = FALSE)
+  check_lb_testcd(filter(lb_done, LBCAT == "URINALYSIS"), "PROT", visitnum, "_34", fixed_value_checks_csv_path, has_unit = FALSE, has_blfl = FALSE)
+  check_lb_testcd(filter(lb_done, LBCAT == "URINALYSIS"), "GLUC", visitnum, "_35", fixed_value_checks_csv_path, has_unit = FALSE, has_blfl = FALSE)
+  check_lb_testcd(filter(lb_done, LBCAT == "URINALYSIS"), "OCCBLD", visitnum, "_36", fixed_value_checks_csv_path, has_unit = FALSE, has_blfl = FALSE)
+}
+
+# LB: lab2〜lab65(通常検査パネルを持つ全シート)のVISITNUMについてrun_lb_testcd_checks_cycle2_onward()を
+# 実行する。各値はJSON(fortest2_260826_1501.json)のlab2〜lab65シートのVisit Numberフィールドの
+# default_valueを取得したもの(ec2〜ec65と同じ値、test2専用の固定リスト)
+run_lb_testcd_checks_all_cycles <- function(lb_done, fixed_value_checks_csv_path) {
+  lb_visitnums <- c(
+    300, 400, 500, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1700, 1800, 1900, 2000,
+    2200, 2300, 2400, 2500, 2700, 2800, 2900, 3000, 3200, 3300, 3400, 3500, 3700, 3800, 3900, 4000,
+    4200, 4300, 4400, 4500, 4700, 4800, 4900, 5000, 5200, 5300, 5400, 5500, 5700, 5800, 5900, 6000,
+    6200, 6300, 6400, 6500, 6700, 6800, 6900, 7000, 7200, 7300, 7400, 7500, 7700, 7800, 7900, 8000, 8200
+  )
+  walk(lb_visitnums, ~ run_lb_testcd_checks_cycle2_onward(lb_done, .x, fixed_value_checks_csv_path))
+}
+
 # VS: VSTESTCD×VISITNUM(×VSTPTNUM)ごとの個別チェック。指定visit(/vstptnum)のレコードに絞り込み、
 # VSTEST/VSORRESU(+has_blflならVSBLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを
 # 確認する。test2のVSTPTNUM==10のブロックはBaseline Flag(VSBLFL)が定義されているが、
