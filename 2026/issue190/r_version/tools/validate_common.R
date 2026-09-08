@@ -409,8 +409,10 @@ check_value_equals <- function(data, var, expected_value, domain_name = NULL) {
 # 絞り込んでからチェックする(dataにVISITNUM列が必要)。
 # CSVに該当する行が無い場合、またはvisit指定があるのにdataにVISITNUM列が無い場合はstop()でエラーにする。
 # また、CSVで許容値として登録したexpected_valueのうち、実際のdataのvar列に一度も出現しなかった
-# 値があれば、CSVの設定ミス・不要な行に気づけるようwarning()で知らせる(チェック自体はOKのまま)
-run_value_equals_checks_from_csv <- function(data, domain, var, csv_path, visit = NULL) {
+# 値があれば、CSVの設定ミス・不要な行に気づけるようwarning()で知らせる(チェック自体はOKのまま)。
+# extra_labelは、CSVの絞り込み(domain/var/visit一致)には使わず、結果メッセージの表示にのみ
+# 追加情報(例: VSTPTNUMの値)を含めたい場合に指定する
+run_value_equals_checks_from_csv <- function(data, domain, var, csv_path, visit = NULL, extra_label = NULL) {
   config <- read_csv(csv_path, col_types = cols(.default = "c"))
   missing_cols <- setdiff(c("domain", "var", "expected_value"), colnames(config))
   if (length(missing_cols) > 0) {
@@ -422,6 +424,9 @@ run_value_equals_checks_from_csv <- function(data, domain, var, csv_path, visit 
   config[["visit"]] <- na_if(config[["visit"]], "")
 
   label <- if (is.null(visit)) domain else str_c(domain, "(VISITNUM=", visit, ")")
+  if (!is.null(extra_label)) {
+    label <- str_c(label, "(", extra_label, ")")
+  }
 
   # visit未指定の呼び出しはvisit空欄の行(全visit共通の値)だけが対象。visit指定の呼び出しは、
   # そのvisit専用の行に加えて、visit空欄の行(どのvisitでも使える値)も許容値に含める

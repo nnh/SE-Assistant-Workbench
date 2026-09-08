@@ -10,16 +10,24 @@ run_ie_testcd_checks <- function(ie, ietestcd, suffix, fixed_value_checks_csv_pa
   tmp_ie <- ie %>% filter(IETESTCD == ietestcd)
   tmp_ie <- tmp_ie %>% rename_with(~ str_c(.x, suffix), all_of(target_ie))
   str_c(target_ie, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ie, "IE", .x, fixed_value_checks_csv_path))
-  tmp_ie %>% filter(!!str_c("IEORRES", suffix) != "") %>% check_required_vars("IEDTC", domain_name = "IE")
-  tmp_ie %>% filter(!!str_c("IEORRES", suffix) == "") %>% check_blank_vars("IEDTC", domain_name = "IE")
+  tmp_ie %>%
+    filter(!!str_c("IEORRES", suffix) != "") %>%
+    check_required_vars("IEDTC", domain_name = "IE")
+  tmp_ie %>%
+    filter(!!str_c("IEORRES", suffix) == "") %>%
+    check_blank_vars("IEDTC", domain_name = "IE")
 }
 
 # LB: LBTESTCDごとの個別チェック(妊娠検査(HCG)を除く通常パターン)。指定visitのレコードに絞り込み、
-# LBTEST/LBCAT/LBSPEC/LBBLFL(+単位があればLBORRESU)をsuffix付き列名にリネームしたうえで
-# 固定値と一致することを確認する。has_unit=FALSEを指定すると、単位を持たない項目(定性検査等)として
-# LBORRESUのチェックを除外する
-check_lb_testcd <- function(lb_done, lbtestcd, visit, suffix, fixed_value_checks_csv_path, has_unit = TRUE) {
-  target_lb_cols <- c("LBTEST", "LBCAT", "LBSPEC", "LBBLFL")
+# LBTEST/LBCAT/LBSPEC(+has_blflならLBBLFL、has_unitなら単位LBORRESU)をsuffix付き列名にリネームした
+# うえで固定値と一致することを確認する。has_unit=FALSEを指定すると、単位を持たない項目(定性検査等)
+# としてLBORRESUのチェックを除外する。has_blfl=FALSEを指定すると、Baseline Flagが定義されていない
+# visitの項目としてLBBLFLのチェックを除外する
+check_lb_testcd <- function(lb_done, lbtestcd, visit, suffix, fixed_value_checks_csv_path, has_unit = TRUE, has_blfl = TRUE) {
+  target_lb_cols <- c("LBTEST", "LBCAT", "LBSPEC")
+  if (has_blfl) {
+    target_lb_cols <- c(target_lb_cols, "LBBLFL")
+  }
   if (has_unit) {
     target_lb_cols <- c(target_lb_cols, "LBORRESU")
   }
@@ -39,34 +47,65 @@ check_vs_testcd <- function(vs_done, vstestcd, visit, vstptnum, suffix, fixed_va
   }
   tmp_vs <- vs_done %>% filter(VSTESTCD == vstestcd & VISITNUM == visit & VSTPTNUM == vstptnum)
   tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(target_vs_cols))
-  str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit))
+  str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit, extra_label = str_c("VSTPTNUM=", vstptnum)))
 }
 
-# EC: ECTRT(×ECROUTE)×VISITNUMごとの個別チェック。指定条件で絞り込み、ECDOSU/ECROUTE/ECADJ/VISITNUMを
-# suffix付き列名にリネームしたうえで、ECDOSU/ECROUTE/VISITNUMは固定値チェック、ECADJはECOCCUR=="Y"の
-# 行に限定して固定値チェックする。ecrouteを指定した場合はその値でも絞り込み、ECROUTEは絞り込み条件
-# 自体で保証済みのため固定値チェックの対象から除く(test2専用)
+# EC: ECTRT(×ECROUTE)×VISITNUMごとの個別チェック。指定条件で絞り込み、ECDOSU/ECROUTE/ECADJを
+# suffix付き列名にリネームしたうえで、ECDOSU/ECROUTEは固定値チェック、ECADJはECOCCUR=="Y"の
+# 行に限定して固定値チェックする。VISITNUMはfilter条件自体で保証済みのため固定値チェックの対象に
+# 含めない(サイクルごとにVISITNUMが変わるrun_ec_trt_checks_all_cycles()から呼ぶため)。
+# ecrouteを指定した場合はその値でも絞り込み、ECROUTEは絞り込み条件自体で保証済みのため
+# 固定値チェックの対象から除く(test2専用)
 check_ec_trt <- function(ec, ectrt, visitnum, suffix, fixed_value_checks_csv_path, ecroute = NULL) {
-  target_ec_cols <- c("ECDOSU", "ECROUTE", "ECADJ", "VISITNUM")
+  target_ec_cols <- c("ECDOSU", "ECROUTE", "ECADJ")
   tmp_ec <- ec %>% filter(ECTRT == ectrt & VISITNUM == visitnum)
   if (!is.null(ecroute)) {
     tmp_ec <- tmp_ec %>% filter(ECROUTE == ecroute)
   }
   tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(target_ec_cols))
 
-  value_equals_cols <- if (is.null(ecroute)) c("ECDOSU", "ECROUTE", "VISITNUM") else c("ECDOSU", "VISITNUM")
-  str_c(value_equals_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
-  str_c("ECADJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR == "Y"), "EC", .x, fixed_value_checks_csv_path))
+  extra_label <- if (is.null(ecroute)) ectrt else str_c(ectrt, "/", ecroute)
+  value_equals_cols <- if (is.null(ecroute)) c("ECDOSU", "ECROUTE") else c("ECDOSU")
+  str_c(value_equals_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path, extra_label = extra_label))
+  str_c("ECADJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(filter(tmp_ec, ECOCCUR == "Y"), "EC", .x, fixed_value_checks_csv_path, extra_label = extra_label))
 }
 
-# EC: 指定visitnum時点の5剤(ベバシズマブ/オキサリプラチン/レボホリナート/5-FU(急速静注)/
-# 5-FU(持続静注))分のcheck_ec_trt()呼び出しをまとめて実行する(test2専用)
-run_ec_trt_checks <- function(ec, visitnum, fixed_value_checks_csv_path) {
+# EC: cycle1(ec1、VISITNUM=200)時点の5剤(ベバシズマブ/オキサリプラチン/レボホリナート/
+# 5-FU(急速静注)/5-FU(持続静注))分のcheck_ec_trt()呼び出しをまとめて実行する。ECADJ(投与状況)の
+# 許容値がcycle2以降と異なる(cycle1はまだ減量していないためLevel1/Level2が無い)ため、
+# suffix(_1〜_5)をcycle2以降(run_ec_trt_checks_cycle2_onward、_6〜_10)と分けている(test2専用)
+run_ec_trt_checks_cycle1 <- function(ec, visitnum, fixed_value_checks_csv_path) {
   check_ec_trt(ec, "BEVACIZUMAB(GENETICAL RECOMBINATION)", visitnum, "_1", fixed_value_checks_csv_path)
   check_ec_trt(ec, "OXALIPLATIN", visitnum, "_2", fixed_value_checks_csv_path)
   check_ec_trt(ec, "LEVOFOLINATE CALCIUM", visitnum, "_3", fixed_value_checks_csv_path)
   check_ec_trt(ec, "5-FU", visitnum, "_4", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS BOLUS")
   check_ec_trt(ec, "5-FU", visitnum, "_5", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS DRIP")
+}
+
+# EC: cycle2以降(ec2〜ec65)時点の5剤分のcheck_ec_trt()呼び出しをまとめて実行する。
+# run_ec_trt_checks_cycle1()とはsuffix(_6〜_10)を分けており、fixed_value_checks_test2.csv側で
+# ECADJの許容値をcycle1と別に(Level1/Level2を含む形で)登録できるようにしている(test2専用)
+run_ec_trt_checks_cycle2_onward <- function(ec, visitnum, fixed_value_checks_csv_path) {
+  check_ec_trt(ec, "BEVACIZUMAB(GENETICAL RECOMBINATION)", visitnum, "_6", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "OXALIPLATIN", visitnum, "_7", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "LEVOFOLINATE CALCIUM", visitnum, "_8", fixed_value_checks_csv_path)
+  check_ec_trt(ec, "5-FU", visitnum, "_9", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS BOLUS")
+  check_ec_trt(ec, "5-FU", visitnum, "_10", fixed_value_checks_csv_path, ecroute = "INTRAVENOUS DRIP")
+}
+
+# EC: ec1〜ec65(サイクルごとの投与記録シート)全てのVISITNUMについて、cycle1はrun_ec_trt_checks_cycle1()、
+# cycle2以降はrun_ec_trt_checks_cycle2_onward()を実行する。各値はJSON(fortest2_260826_1501.json)の
+# ec1〜ec65シートのVisit Numberフィールドのdefault_valueを取得したもの(100刻みだが一部200飛びの
+# 箇所がある、test2専用の固定リスト)
+run_ec_trt_checks_all_cycles <- function(ec, fixed_value_checks_csv_path) {
+  ec_visitnums_cycle2_onward <- c(
+    300, 400, 500, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1700, 1800, 1900, 2000,
+    2200, 2300, 2400, 2500, 2700, 2800, 2900, 3000, 3200, 3300, 3400, 3500, 3700, 3800, 3900, 4000,
+    4200, 4300, 4400, 4500, 4700, 4800, 4900, 5000, 5200, 5300, 5400, 5500, 5700, 5800, 5900, 6000,
+    6200, 6300, 6400, 6500, 6700, 6800, 6900, 7000, 7200, 7300, 7400, 7500, 7700, 7800, 7900, 8000, 8200
+  )
+  run_ec_trt_checks_cycle1(ec, 200, fixed_value_checks_csv_path)
+  walk(ec_visitnums_cycle2_onward, ~ run_ec_trt_checks_cycle2_onward(ec, .x, fixed_value_checks_csv_path))
 }
 
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
@@ -81,21 +120,27 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
 
   baseline1 <- data %>% filter(CMSPID == "baseline1")
 
-  missing_endtc_y <- baseline1 %>% filter(CMOCCUR == "Y", is.na(CMENDTC) | CMENDTC == "") %>% pull(USUBJID)
+  missing_endtc_y <- baseline1 %>%
+    filter(CMOCCUR == "Y", is.na(CMENDTC) | CMENDTC == "") %>%
+    pull(USUBJID)
   add_check(
     "cmendtc_present_when_occur_Y",
     length(missing_endtc_y) == 0,
     str_c("CMENDTCが空: ", paste(missing_endtc_y, collapse = ", "))
   )
 
-  present_endtc_n <- baseline1 %>% filter(CMOCCUR == "N", !is.na(CMENDTC) & CMENDTC != "") %>% pull(USUBJID)
+  present_endtc_n <- baseline1 %>%
+    filter(CMOCCUR == "N", !is.na(CMENDTC) & CMENDTC != "") %>%
+    pull(USUBJID)
   add_check(
     "cmendtc_blank_when_occur_N",
     length(present_endtc_n) == 0,
     str_c("CMENDTCに値あり: ", paste(present_endtc_n, collapse = ", "))
   )
 
-  present_stdtc <- baseline1 %>% filter(!is.na(CMSTDTC) & CMSTDTC != "") %>% pull(USUBJID)
+  present_stdtc <- baseline1 %>%
+    filter(!is.na(CMSTDTC) & CMSTDTC != "") %>%
+    pull(USUBJID)
   add_check(
     "cmstdtc_always_blank",
     length(present_stdtc) == 0,
@@ -105,7 +150,9 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
   # CMSPIDが"concomitant_drug_other"で始まる場合はCMDECODが空白、
   # "concomitant_drug"で始まり"other"を含まない場合はCMDECODが空白でないはず
   concomitant_drug_other <- data %>% filter(str_starts(CMSPID, "concomitant_drug_other"))
-  present_decod_other <- concomitant_drug_other %>% filter(!is.na(CMDECOD) & CMDECOD != "") %>% pull(USUBJID)
+  present_decod_other <- concomitant_drug_other %>%
+    filter(!is.na(CMDECOD) & CMDECOD != "") %>%
+    pull(USUBJID)
   add_check(
     "cmdecod_blank_for_concomitant_drug_other",
     length(present_decod_other) == 0,
@@ -115,11 +162,16 @@ check_cm_baseline1 <- function(data, dm, cdisc_variable_values) {
   # WHO Drug/IDF側にgeneric_name_enが1件も無い薬剤(カテゴリ名など)は、CMDECODが空になるのが
   # 正しい挙動のため、判定対象から除く。who_drug_idfは呼び出し元スクリプトのトップレベルで
   # 定義済みの変数をそのまま参照する(クロージャ)
-  has_generic_name <- who_drug_idf %>% filter(!is.na(generic_name_en)) %>% pull(full_name_en) %>% unique()
+  has_generic_name <- who_drug_idf %>%
+    filter(!is.na(generic_name_en)) %>%
+    pull(full_name_en) %>%
+    unique()
 
   concomitant_drug_main <- data %>%
     filter(str_starts(CMSPID, "concomitant_drug"), !str_detect(CMSPID, "other"), CMTRT %in% has_generic_name)
-  missing_decod_main <- concomitant_drug_main %>% filter(is.na(CMDECOD) | CMDECOD == "") %>% pull(USUBJID)
+  missing_decod_main <- concomitant_drug_main %>%
+    filter(is.na(CMDECOD) | CMDECOD == "") %>%
+    pull(USUBJID)
   add_check(
     "cmdecod_present_for_concomitant_drug",
     length(missing_decod_main) == 0,
@@ -188,4 +240,4 @@ common_names %>% length()
 
 # ここから1行ずつ実行して、ドメインの中身を1つずつ目視確認する(View()が2枚(生成データ/CSV)開く)。
 # 必要な数だけ行をコピーしてindexを変えて追加していく
-#compare_domain_by_index(generated_datasets, datasets, 1, exclude = special_domain_names)
+# compare_domain_by_index(generated_datasets, datasets, 1, exclude = special_domain_names)
