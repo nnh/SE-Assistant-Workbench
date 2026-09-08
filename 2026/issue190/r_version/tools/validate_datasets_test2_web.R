@@ -255,6 +255,14 @@ check_tr_lnkid <- function(tr, trlnkid, trlnkgrp, suffix, ldiam_suffix, saxis_su
 }
 check_tr_lnkid(tr, "T01", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
 check_tr_lnkid(tr, "T02", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T03", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T04", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T05", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T01", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T02", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T03", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T04", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
+check_tr_lnkid(tr, "T05", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
 # TU: TULNKIDごとの個別チェック。1番目の病変記録(is_first=TRUE)は位置/左右/測定方法/実測値/
 # ベースラインフラグ/訪問番号が全て必須かつ固定値と一致することを確認する。2番目以降(is_first=FALSE)は
 # 位置/左右/測定方法が空欄になりうるため値が入っている行のみ固定値チェックし、実測値/ベースライン
