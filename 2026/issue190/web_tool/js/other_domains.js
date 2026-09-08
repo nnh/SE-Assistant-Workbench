@@ -821,7 +821,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // builtDomains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
   data = injected.data;
-  data = applyPresenceConditions(data, scopedPresenceConditions);
+  data = applyPresenceConditions(data, scopedPresenceConditions, cdiscVariableToPrefix);
   data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVarInstances, prefix);
   data = applyFieldRefBounds(data, spec, scopedFieldRefBounds);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
@@ -1172,7 +1172,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // 条件を適用し、結合用に追加した列は最後に外す(field_ref_boundsはRのbuild_repeated_domain()と同様に対象外)
   const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
   data = injected.data;
-  data = applyPresenceConditions(data, scopedPresenceConditions);
+  data = applyPresenceConditions(data, scopedPresenceConditions, cdiscVariableToPrefix);
   data = dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, prefix);
   data = applyAgeDateBounds(data, scopedAgeBounds, registrationStartDate);
   data.forEach((row) => {

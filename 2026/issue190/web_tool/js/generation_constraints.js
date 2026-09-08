@@ -748,7 +748,7 @@ function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable
 // dataがalias_name列を持つ場合、ref_alias_nameがdata自身のalias_nameのいずれかと一致する行だけに絞り込む
 // (一致しなければ真に外部の固定参照とみなし全行を対象にする)。dataがlabel列も持つ場合は、同様にlabelでも絞り込む
 // (現状DM/AEドメインはlabel列を持たないため、この絞り込みは実質alias_nameのみで機能する)
-function applyPresenceConditions(data, presenceConditions) {
+function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix) {
   if (!data || data.length === 0) return data;
   const columns = new Set(Object.keys(data[0]));
   const applicable = presenceConditions.filter((pc) => columns.has(pc.cdisc_variable) && columns.has(pc.ref_cdisc_variable));
@@ -784,11 +784,12 @@ function applyPresenceConditions(data, presenceConditions) {
 
   // copy: 先に適用する(同じcdisc_variableに他のゲーティング条件も併せて存在する場合、
   // 先にコピーしてから後段でNA化できるようにするため)
+  const hasUsubjid = columns.has("USUBJID");
   const copySeen = new Set();
   applicable
     .filter((pc) => pc.condition_type === "copy")
     .forEach((pc) => {
-      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.alias_name}|${pc.label}`;
+      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.alias_name}|${pc.label}|${pc.ref_alias_name}|${pc.ref_label}`;
       if (copySeen.has(key)) return;
       copySeen.add(key);
       const targetRows = data.map((r) => {
@@ -797,9 +798,42 @@ function applyPresenceConditions(data, presenceConditions) {
         if (hasLabel && pc.label != null) match = match && r.label === pc.label;
         return match;
       });
-      data.forEach((row, i) => {
-        if (targetRows[i]) row[pc.cdisc_variable] = row[pc.ref_cdisc_variable];
-      });
+
+      // 参照元がref_cdisc_variable(別prefixの変数、例: TU側のTUDTC)である場合、この関数が呼ばれる前の
+      // injectCrossDomainRefs()が既にUSUBJID単位で正しい値をref_cdisc_variable列としてdataに結合済みのため、
+      // targetRowsの位置でそのまま読めばよい(ここでさらにalias_name/labelで突き合わせようとすると、
+      // ref_label/ref_alias_nameは参照先(別prefix)自身のラベル空間の値であり、data(このprefix自身の行)の
+      // alias_name/labelとは無関係な値のため、誤って一致してしまう/一致せず空になるおそれがある)。
+      // 一方、参照元が自分自身と同じprefixの場合、同じcdisc_variable列を複数labelブロックが共有しているため、
+      // (alias_name, label)が自分自身と一致する場合(例: FAOBJがAETERMをコピーする、同じ行の別フィールドを
+      // 参照する)はtargetRowsの値をそのまま読めばよいが、別の(alias_name, label)ブロックを参照する場合
+      // (例: SAXISのTRDTCがLDIAMのTRDTCをコピーする)は、コピー元・コピー先が別々の行になるため、
+      // 同じ行のインデックスをそのまま使うと自分自身(まだ値が入っていない)を読んでしまう。USUBJIDで
+      // 対応付けてから値を引く
+      const ownPrefix = cdiscVariableToPrefix ? cdiscVariableToPrefix[pc.cdisc_variable] : null;
+      const refPrefix = cdiscVariableToPrefix ? cdiscVariableToPrefix[pc.ref_cdisc_variable] : null;
+      const isCrossPrefix = ownPrefix != null && refPrefix != null && ownPrefix !== refPrefix;
+
+      const sameAlias = pc.ref_alias_name == null || (pc.alias_name != null && pc.ref_alias_name === pc.alias_name);
+      const sameLabel = pc.ref_label == null || (pc.label != null && pc.ref_label === pc.label);
+      const isSameBlock = isCrossPrefix || (sameAlias && sameLabel);
+
+      if (isSameBlock || !hasUsubjid) {
+        data.forEach((row, i) => {
+          if (targetRows[i]) row[pc.cdisc_variable] = row[pc.ref_cdisc_variable];
+        });
+      } else {
+        const refLookup = new Map();
+        data.forEach((r) => {
+          let match = true;
+          if (hasAliasName && pc.ref_alias_name != null) match = match && r.alias_name === pc.ref_alias_name;
+          if (hasLabel && pc.ref_label != null) match = match && r.label === pc.ref_label;
+          if (match) refLookup.set(r.USUBJID, r[pc.ref_cdisc_variable]);
+        });
+        data.forEach((row, i) => {
+          if (targetRows[i]) row[pc.cdisc_variable] = refLookup.has(row.USUBJID) ? refLookup.get(row.USUBJID) : null;
+        });
+      }
     });
 
   // equals: (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label)でグループ化し、

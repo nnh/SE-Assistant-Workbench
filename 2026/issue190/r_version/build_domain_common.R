@@ -270,7 +270,7 @@ populate_dummy_fields <- function(data, target_vars) {
 # 同じcdisc_variable名が複数labelに繰り返し定義され、それぞれ別々の条件を持つ場合(例: CM/baselineの
 # 5つのCMTRTが、各々異なる閾値でゲーティングされているケース)、labelでも絞り込むことで
 # 他インスタンスの条件を巻き込まないようにする
-apply_presence_conditions <- function(data, presence_conditions) {
+apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_to_prefix = NULL) {
   applicable <- presence_conditions %>%
     filter(cdisc_variable %in% colnames(data), ref_cdisc_variable %in% colnames(data))
   if (!("ref_alias_name" %in% names(applicable))) {
@@ -326,12 +326,15 @@ apply_presence_conditions <- function(data, presence_conditions) {
   # 先にコピーしてから後段のゲーティングでNA化できるようにするため
   copy_conditions <- applicable %>%
     filter(condition_type == "copy") %>%
-    distinct(cdisc_variable, ref_cdisc_variable, alias_name, label)
+    distinct(cdisc_variable, ref_cdisc_variable, alias_name, label, ref_alias_name, ref_label)
   for (i in seq_len(nrow(copy_conditions))) {
     var_name <- copy_conditions[["cdisc_variable"]][i]
     ref_var <- copy_conditions[["ref_cdisc_variable"]][i]
     own_label <- copy_conditions[["label"]][i]
     own_alias_name <- copy_conditions[["alias_name"]][i]
+    ref_label_i <- copy_conditions[["ref_label"]][i]
+    ref_alias_name_i <- copy_conditions[["ref_alias_name"]][i]
+
     target_rows <- rep(TRUE, nrow(data))
     if (has_data_alias_name && !is.na(own_alias_name)) {
       target_rows <- target_rows & data[["alias_name"]] == own_alias_name
@@ -339,9 +342,49 @@ apply_presence_conditions <- function(data, presence_conditions) {
     if (has_data_alias && !is.na(own_label)) {
       target_rows <- target_rows & data[["label"]] == own_label
     }
+
+    # 参照元がref_var(別prefixの変数、例: TU側のTUDTC)である場合、この関数が呼ばれる前の
+    # inject_cross_domain_refs()が既にUSUBJID単位で正しい値をref_var列としてdataに結合済みのため、
+    # target_rowsの位置でそのまま読めばよい(ここでさらにalias_name/labelで突き合わせようとすると、
+    # ref_label/ref_alias_nameは参照先(別prefix)自身のラベル空間の値であり、data(このprefix自身の
+    # 行)のalias_name/labelとは無関係な値のため、誤って一致してしまう/一致せず空になるおそれがある)。
+    # 一方、参照元が自分自身と同じprefixの場合、同じcdisc_variable列を複数labelブロックが共有しているため、
+    # (alias_name, label)が自分自身と一致する場合(例: FAOBJがAETERMをコピーする、同じ行の別フィールドを
+    # 参照する)はtarget_rowsの値をそのまま読めばよいが、別の(alias_name, label)ブロックを参照する場合
+    # (例: SAXISのTRDTCがLDIAMのTRDTCをコピーする)は、コピー元・コピー先が別々の行になるため、
+    # 同じ行のインデックスをそのまま使うと自分自身(まだ値が入っていない)を読んでしまう。USUBJIDで
+    # 対応付けてから値を引く
+    own_prefix <- if (!is.null(cdisc_variable_to_prefix)) {
+      cdisc_variable_to_prefix %>% filter(cdisc_variable == var_name) %>% pull(prefix) %>% first()
+    } else {
+      NA_character_
+    }
+    ref_prefix <- if (!is.null(cdisc_variable_to_prefix)) {
+      cdisc_variable_to_prefix %>% filter(cdisc_variable == ref_var) %>% pull(prefix) %>% first()
+    } else {
+      NA_character_
+    }
+    is_cross_prefix <- !is.na(own_prefix) && !is.na(ref_prefix) && !identical(own_prefix, ref_prefix)
+
+    same_alias <- is.na(ref_alias_name_i) || (!is.na(own_alias_name) && identical(ref_alias_name_i, own_alias_name))
+    same_label <- is.na(ref_label_i) || (!is.na(own_label) && identical(ref_label_i, own_label))
+    is_same_block <- is_cross_prefix || (same_alias && same_label)
+
     # コピー元(ref_var)がDate型の場合、文字列型のvar_nameへインデックス代入すると内部の数値表現が
     # そのまま文字列化されてしまうため、as.character()で明示的に変換してから代入する
-    data[[var_name]][target_rows] <- as.character(data[[ref_var]][target_rows])
+    if (is_same_block || !("USUBJID" %in% colnames(data))) {
+      data[[var_name]][target_rows] <- as.character(data[[ref_var]][target_rows])
+    } else {
+      source_rows <- rep(TRUE, nrow(data))
+      if (has_data_alias_name && !is.na(ref_alias_name_i)) {
+        source_rows <- source_rows & data[["alias_name"]] == ref_alias_name_i
+      }
+      if (has_data_alias && !is.na(ref_label_i)) {
+        source_rows <- source_rows & data[["label"]] == ref_label_i
+      }
+      ref_lookup <- set_names(as.character(data[[ref_var]][source_rows]), data[["USUBJID"]][source_rows])
+      data[[var_name]][target_rows] <- unname(ref_lookup[data[["USUBJID"]][target_rows]])
+    }
   }
 
   equals_conditions <- applicable %>%
@@ -1428,7 +1471,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   # built_domains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
   injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
   data <- injected[["data"]] %>%
-    apply_presence_conditions(presence_conditions) %>%
+    apply_presence_conditions(presence_conditions, cdisc_variable_to_prefix) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_field_ref_bounds(spec, field_ref_bounds) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
@@ -1689,7 +1732,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # 結合用に追加した列は最後に外す(alias_name/labelが揃っている場合はそれも突き合わせキーに使う)
   injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
   data <- injected[["data"]] %>%
-    apply_presence_conditions(presence_conditions) %>%
+    apply_presence_conditions(presence_conditions, cdisc_variable_to_prefix) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
     apply_age_date_bounds(age_bounds, registration_start_date) %>%
     select(-any_of(c(injected[["injected_cols"]], date_injected_cols)))
