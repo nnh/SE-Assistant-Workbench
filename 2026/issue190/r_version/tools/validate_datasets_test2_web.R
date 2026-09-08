@@ -353,6 +353,7 @@ tmp_tr_tu <- tmp_tu %>% anti_join(tmp_tr, by=c("USUBJID", "TUMETHOD"="TRMETHOD",
 if (nrow(tmp_tr_tu) > 0) {
   stop("TR, TU non-target error")
 }
+
 # VS
 vs %>% check_date_before_today(c("VSDTC"), domain_name = "VS")
 vs_done <- vs %>% filter(VSSTAT != "NOT DONE")
@@ -364,32 +365,19 @@ suffix <- "_1"
 tmp_vs <- vs_done %>% filter(VSTESTCD=="HEIGHT")
 tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_vs_cols, "VSBLFL", "VISITNUM")))
 str_c(c(target_vs_cols, "VSBLFL", "VISITNUM"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path))
+target_visitnum <- 100
 suffix <- "_2"
 tmp_vs <- vs_done %>% filter(VSTESTCD=="WEIGHT")
 tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_vs_cols, "VSBLFL")))
-str_c(c(target_vs_cols, "VSBLFL"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = 100))
+str_c(c(target_vs_cols, "VSBLFL"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = target_visitnum))
 target_visitnum <- 200
-check_vs_testcd(vs_done, "TEMP", target_visitnum, 10, "_3", fixed_value_checks_csv_path)
-check_vs_testcd(vs_done, "TEMP", target_visitnum, 20, "_3", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "PULSE", target_visitnum, 10, "_4", fixed_value_checks_csv_path)
-check_vs_testcd(vs_done, "PULSE", target_visitnum, 20, "_4", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "SYSBP", target_visitnum, 10, "_5", fixed_value_checks_csv_path)
-check_vs_testcd(vs_done, "SYSBP", target_visitnum, 20, "_5", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "DIABP", target_visitnum, 10, "_6", fixed_value_checks_csv_path)
-check_vs_testcd(vs_done, "DIABP", target_visitnum, 20, "_6", fixed_value_checks_csv_path, has_blfl = FALSE)
-target_visitnum <- 300
-target_tptnum <- 10
-check_vs_testcd(vs_done, "TEMP", target_visitnum, target_tptnum, "_3", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "PULSE", target_visitnum, target_tptnum, "_4", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "SYSBP", target_visitnum, target_tptnum, "_5", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "DIABP", target_visitnum, target_tptnum, "_6", fixed_value_checks_csv_path, has_blfl = FALSE)
-target_tptnum <- 20
-check_vs_testcd(vs_done, "TEMP", target_visitnum, target_tptnum, "_3", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "PULSE", target_visitnum, target_tptnum, "_4", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "SYSBP", target_visitnum, target_tptnum, "_5", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_vs_testcd(vs_done, "DIABP", target_visitnum, target_tptnum, "_6", fixed_value_checks_csv_path, has_blfl = FALSE)
-suffix <- "_2"
-tmp_vs <- vs_done %>% filter(VSTESTCD=="WEIGHT")
-tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_vs_cols)))
-str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = target_visitnum))
+check_vs_testcd(vs_done, "TEMP", target_visitnum, "_3", fixed_value_checks_csv_path, vstptnum = 10)
+check_vs_testcd(vs_done, "PULSE", target_visitnum, "_4", fixed_value_checks_csv_path, vstptnum = 10)
+check_vs_testcd(vs_done, "SYSBP", target_visitnum, "_5", fixed_value_checks_csv_path, vstptnum = 10)
+check_vs_testcd(vs_done, "DIABP", target_visitnum, "_6", fixed_value_checks_csv_path, vstptnum = 10)
+check_vs_testcd(vs_done, "TEMP", target_visitnum, "_3", fixed_value_checks_csv_path, vstptnum = 20, has_blfl = FALSE)
+check_vs_testcd(vs_done, "PULSE", target_visitnum, "_4", fixed_value_checks_csv_path, vstptnum = 20, has_blfl = FALSE)
+check_vs_testcd(vs_done, "SYSBP", target_visitnum, "_5", fixed_value_checks_csv_path, vstptnum = 20, has_blfl = FALSE)
+check_vs_testcd(vs_done, "DIABP", target_visitnum, "_6", fixed_value_checks_csv_path, vstptnum = 20, has_blfl = FALSE)
+run_vs_testcd_checks_all_cycles(vs_done, fixed_value_checks_csv_path)
 

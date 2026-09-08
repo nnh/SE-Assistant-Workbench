@@ -3,6 +3,17 @@
 # 呼び出し元スクリプトが ae/dm/ds/other_domains/cdisc_variable_values/registration_n/who_drug_idf/
 # json_path/discontinuation_date を用意した上でこのファイルをsourceすること
 
+# cycle2以降(ec2〜ec65・lab2〜lab65)のVISITNUM一覧。両シートは1対1でサイクルに対応しており
+# VISITNUMも共通のため、EC・VSどちらのrun_..._checks_all_cycles()からも参照する。各値は
+# JSON(fortest2_260826_1501.json)のec1〜ec65/lab1〜lab65シートのVisit Numberフィールドの
+# default_valueから取得したもの(100刻みだが一部200飛びの箇所がある、test2専用の固定リスト)
+cycle2_onward_visitnums <- c(
+  300, 400, 500, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1700, 1800, 1900, 2000,
+  2200, 2300, 2400, 2500, 2700, 2800, 2900, 3000, 3200, 3300, 3400, 3500, 3700, 3800, 3900, 4000,
+  4200, 4300, 4400, 4500, 4700, 4800, 4900, 5000, 5200, 5300, 5400, 5500, 5700, 5800, 5900, 6000,
+  6200, 6300, 6400, 6500, 6700, 6800, 6900, 7000, 7200, 7300, 7400, 7500, 7700, 7800, 7900, 8000, 8200
+)
+
 # IE: IETESTCDごとに、IETEST/IECAT/IEORRESをsuffix付き列名にリネームしたうえで
 # 固定値チェック(CSV)とIEDTCの要否(IEORRESが空でなければ必須、空なら空欄)を確認する
 run_ie_testcd_checks <- function(ie, ietestcd, suffix, fixed_value_checks_csv_path) {
@@ -36,18 +47,43 @@ check_lb_testcd <- function(lb_done, lbtestcd, visit, suffix, fixed_value_checks
   str_c(target_lb_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb, "LB", .x, fixed_value_checks_csv_path, visit = visit))
 }
 
-# VS: VSTESTCD×VISITNUM×VSTPTNUMごとの個別チェック。指定visit/vstptnumのレコードに絞り込み、
+# VS: VSTESTCD×VISITNUM(×VSTPTNUM)ごとの個別チェック。指定visit(/vstptnum)のレコードに絞り込み、
 # VSTEST/VSORRESU(+has_blflならVSBLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを
 # 確認する。test2のVSTPTNUM==10のブロックはBaseline Flag(VSBLFL)が定義されているが、
-# VSTPTNUM==20のブロックには定義が無いため、has_blflで含める/除外するを切り替える
-check_vs_testcd <- function(vs_done, vstestcd, visit, vstptnum, suffix, fixed_value_checks_csv_path, has_blfl = TRUE) {
+# VSTPTNUM==20のブロックには定義が無いため、has_blflで含める/除外するを切り替える。
+# WEIGHTのようにVSTPTNUM自体が定義されていない項目ではvstptnum=NULL(既定値)を指定し、
+# VSTPTNUMによる絞り込み・メッセージ表示を行わない
+check_vs_testcd <- function(vs_done, vstestcd, visit, suffix, fixed_value_checks_csv_path, vstptnum = NULL, has_blfl = TRUE) {
   target_vs_cols <- c("VSTEST", "VSORRESU")
   if (has_blfl) {
     target_vs_cols <- c(target_vs_cols, "VSBLFL")
   }
-  tmp_vs <- vs_done %>% filter(VSTESTCD == vstestcd & VISITNUM == visit & VSTPTNUM == vstptnum)
+  tmp_vs <- vs_done %>% filter(VSTESTCD == vstestcd & VISITNUM == visit)
+  if (!is.null(vstptnum)) {
+    tmp_vs <- tmp_vs %>% filter(VSTPTNUM == vstptnum)
+  }
   tmp_vs <- tmp_vs %>% rename_with(~ str_c(.x, suffix), all_of(target_vs_cols))
-  str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit, extra_label = str_c("VSTPTNUM=", vstptnum)))
+  extra_label <- if (is.null(vstptnum)) NULL else str_c("VSTPTNUM=", vstptnum)
+  str_c(target_vs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_vs, "VS", .x, fixed_value_checks_csv_path, visit = visit, extra_label = extra_label))
+}
+
+# VS: cycle2以降(VISITNUM>=300)の1visitnum分の個別チェックをまとめて実行する。WEIGHT(VSTPTNUMが
+# 定義されていないためvstptnum省略)と、TEMP/PULSE/SYSBP/DIABP(VSTPTNUM=10・20の両方)分の
+# check_vs_testcd()呼び出しをまとめたもの(test2専用)
+run_vs_testcd_checks_cycle2_onward <- function(vs_done, visitnum, fixed_value_checks_csv_path) {
+  check_vs_testcd(vs_done, "WEIGHT", visitnum, "_2", fixed_value_checks_csv_path, has_blfl = FALSE)
+  for (vstptnum in c(10, 20)) {
+    check_vs_testcd(vs_done, "TEMP", visitnum, "_3", fixed_value_checks_csv_path, vstptnum = vstptnum, has_blfl = FALSE)
+    check_vs_testcd(vs_done, "PULSE", visitnum, "_4", fixed_value_checks_csv_path, vstptnum = vstptnum, has_blfl = FALSE)
+    check_vs_testcd(vs_done, "SYSBP", visitnum, "_5", fixed_value_checks_csv_path, vstptnum = vstptnum, has_blfl = FALSE)
+    check_vs_testcd(vs_done, "DIABP", visitnum, "_6", fixed_value_checks_csv_path, vstptnum = vstptnum, has_blfl = FALSE)
+  }
+}
+
+# VS: cycle2以降(lab2〜lab65)全てのVISITNUMについてrun_vs_testcd_checks_cycle2_onward()を実行する
+# (test2専用。VISITNUM一覧はcycle2_onward_visitnums参照。EC側のec1〜ec65と同じサイクル・VISITNUM対応)
+run_vs_testcd_checks_all_cycles <- function(vs_done, fixed_value_checks_csv_path) {
+  walk(cycle2_onward_visitnums, ~ run_vs_testcd_checks_cycle2_onward(vs_done, .x, fixed_value_checks_csv_path))
 }
 
 # EC: ECTRT(×ECROUTE)×VISITNUMごとの個別チェック。指定条件で絞り込み、ECDOSU/ECROUTE/ECADJを
@@ -94,18 +130,10 @@ run_ec_trt_checks_cycle2_onward <- function(ec, visitnum, fixed_value_checks_csv
 }
 
 # EC: ec1〜ec65(サイクルごとの投与記録シート)全てのVISITNUMについて、cycle1はrun_ec_trt_checks_cycle1()、
-# cycle2以降はrun_ec_trt_checks_cycle2_onward()を実行する。各値はJSON(fortest2_260826_1501.json)の
-# ec1〜ec65シートのVisit Numberフィールドのdefault_valueを取得したもの(100刻みだが一部200飛びの
-# 箇所がある、test2専用の固定リスト)
+# cycle2以降はrun_ec_trt_checks_cycle2_onward()を実行する(test2専用。VISITNUM一覧はcycle2_onward_visitnums参照)
 run_ec_trt_checks_all_cycles <- function(ec, fixed_value_checks_csv_path) {
-  ec_visitnums_cycle2_onward <- c(
-    300, 400, 500, 700, 800, 900, 1000, 1200, 1300, 1400, 1500, 1700, 1800, 1900, 2000,
-    2200, 2300, 2400, 2500, 2700, 2800, 2900, 3000, 3200, 3300, 3400, 3500, 3700, 3800, 3900, 4000,
-    4200, 4300, 4400, 4500, 4700, 4800, 4900, 5000, 5200, 5300, 5400, 5500, 5700, 5800, 5900, 6000,
-    6200, 6300, 6400, 6500, 6700, 6800, 6900, 7000, 7200, 7300, 7400, 7500, 7700, 7800, 7900, 8000, 8200
-  )
   run_ec_trt_checks_cycle1(ec, 200, fixed_value_checks_csv_path)
-  walk(ec_visitnums_cycle2_onward, ~ run_ec_trt_checks_cycle2_onward(ec, .x, fixed_value_checks_csv_path))
+  walk(cycle2_onward_visitnums, ~ run_ec_trt_checks_cycle2_onward(ec, .x, fixed_value_checks_csv_path))
 }
 
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
