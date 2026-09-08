@@ -48,7 +48,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
         ref_cdisc_variable
       )
     ) %>%
-    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
+    transmute(cdisc_variable, label, alias_name, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = presence_ref_value, condition_type = "equals") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     separate_rows(expected_value, sep = ",\\s*")
 
@@ -71,7 +71,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       condition_type = if_else(presence_predicate_type == "blank", "equals", "not_blank"),
       expected_value = if_else(presence_predicate_type == "blank", "", NA_character_)
     ) %>%
-    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name, ref_label, expected_value, condition_type) %>%
+    transmute(cdisc_variable, label, alias_name, ref_cdisc_variable, ref_alias_name, ref_label, expected_value, condition_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
@@ -132,6 +132,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             tibble(
               cdisc_variable = cdisc_variable,
               label = label,
+              alias_name = alias_name,
               ref_cdisc_variable = str_c(own_prefix[1], clause[["suffix"]]),
               ref_alias_name = alias_name,
               ref_label = NA_character_,
@@ -145,6 +146,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             tibble(
               cdisc_variable = cdisc_variable,
               label = label,
+              alias_name = alias_name,
               ref_cdisc_variable = ref_var[1],
               ref_alias_name = clause[["ref_alias_name"]],
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
@@ -158,6 +160,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             tibble(
               cdisc_variable = cdisc_variable,
               label = label,
+              alias_name = alias_name,
               ref_cdisc_variable = ref_var[1],
               ref_alias_name = alias_name,
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
@@ -174,6 +177,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
             tibble(
               cdisc_variable = cdisc_variable,
               label = label,
+              alias_name = alias_name,
               ref_cdisc_variable = ref_var[1],
               ref_alias_name = alias_name,
               ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
@@ -207,7 +211,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_label %>% rename(ref_label = label),
       by = c("alias_name", "copy_ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+    transmute(cdisc_variable, label, alias_name, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   presence_conditions <- bind_rows(presence_conditions, field_equality_copy_conditions)
@@ -228,7 +232,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
         field_to_label %>% rename(ref_label = label),
         by = c("alias_name", "reference_field" = "field")
       ) %>%
-      transmute(cdisc_variable, label, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
+      transmute(cdisc_variable, label, alias_name, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, expected_value = NA_character_, condition_type = "copy") %>%
       filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
     presence_conditions <- bind_rows(presence_conditions, field_copy_conditions)

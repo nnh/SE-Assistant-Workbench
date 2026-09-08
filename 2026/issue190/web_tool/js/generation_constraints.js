@@ -321,6 +321,7 @@ function buildEqualsPresenceConditions(validatorTable, fieldLookup) {
             rows.push({
               cdisc_variable: own.cdisc_variable,
               label: own.label,
+              alias_name: vr.alias_name,
               ref_cdisc_variable: refCdiscVariable,
               ref_alias_name: vr.alias_name,
               ref_label: ref.label != null ? ref.label : null,
@@ -349,6 +350,7 @@ function buildPredicatePresenceConditions(validatorTable, fieldLookup) {
       rows.push({
         cdisc_variable: own.cdisc_variable,
         label: own.label,
+        alias_name: vr.alias_name,
         ref_cdisc_variable: `${own.prefix}${vr.presence_predicate_suffix}`,
         ref_alias_name: vr.alias_name,
         ref_label: null,
@@ -391,6 +393,7 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
           rows.push({
             cdisc_variable: own.cdisc_variable,
             label: own.label,
+            alias_name: vr.alias_name,
             ref_cdisc_variable: `${own.prefix}${clause.suffix}`,
             ref_alias_name: vr.alias_name,
             ref_label: null,
@@ -408,6 +411,7 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
             rows.push({
               cdisc_variable: own.cdisc_variable,
               label: own.label,
+              alias_name: vr.alias_name,
               ref_cdisc_variable: refCdiscVariable,
               ref_alias_name: clause.refAliasName,
               ref_label: ref.label != null ? ref.label : null,
@@ -423,6 +427,7 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
             rows.push({
               cdisc_variable: own.cdisc_variable,
               label: own.label,
+              alias_name: vr.alias_name,
               ref_cdisc_variable: refCdiscVariable,
               ref_alias_name: vr.alias_name,
               ref_label: ref.label != null ? ref.label : null,
@@ -442,6 +447,7 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
               rows.push({
                 cdisc_variable: own.cdisc_variable,
                 label: own.label,
+                alias_name: vr.alias_name,
                 ref_cdisc_variable: refCdiscVariable,
                 ref_alias_name: vr.alias_name,
                 ref_label: ref.label != null ? ref.label : null,
@@ -477,6 +483,7 @@ function buildFieldEqualityCopyConditions(validatorTable, fieldLookup) {
         rows.push({
           cdisc_variable: own.cdisc_variable,
           label: own.label,
+          alias_name: vr.alias_name,
           ref_cdisc_variable: ref.cdisc_variable,
           ref_alias_name: vr.alias_name,
           ref_label: ref.label != null ? ref.label : null,
@@ -502,6 +509,7 @@ function buildFieldReferenceCopyConditions(fieldReferenceTable, fieldLookup) {
         rows.push({
           cdisc_variable: own.cdisc_variable,
           label: own.label,
+          alias_name: fr.alias_name,
           ref_cdisc_variable: ref.cdisc_variable,
           ref_alias_name: fr.alias_name,
           ref_label: ref.label != null ? ref.label : null,
@@ -749,7 +757,10 @@ function applyPresenceConditions(data, presenceConditions) {
   const hasLabel = hasAliasName && columns.has("label");
   const dataAliasNames = hasAliasName ? new Set(data.map((r) => r.alias_name)) : new Set();
 
-  function targetRowsFor(refAliasName, refLabel, ownLabel) {
+  // ownAliasName/ownLabelが指定されている場合、cdisc_variable自身のインスタンス(data自身のalias_name・label)
+  // でも絞り込む。labelはシートをまたいで重複しうる(例: 別々のシートがどちらも"006"というlabel番号を使う)ため、
+  // ownAliasNameも必ず合わせて絞り込むことで、同じlabel番号を使う無関係な別シートの行を誤って巻き込まないようにする
+  function targetRowsFor(refAliasName, refLabel, ownLabel, ownAliasName) {
     return data.map((row) => {
       let match;
       if (hasAliasName && refAliasName != null && dataAliasNames.has(refAliasName)) {
@@ -760,6 +771,9 @@ function applyPresenceConditions(data, presenceConditions) {
         }
       } else {
         match = true;
+      }
+      if (hasAliasName && ownAliasName != null) {
+        match = match && row.alias_name === ownAliasName;
       }
       if (hasLabel && ownLabel != null) {
         match = match && row.label === ownLabel;
@@ -774,28 +788,34 @@ function applyPresenceConditions(data, presenceConditions) {
   applicable
     .filter((pc) => pc.condition_type === "copy")
     .forEach((pc) => {
-      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.label}`;
+      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.alias_name}|${pc.label}`;
       if (copySeen.has(key)) return;
       copySeen.add(key);
-      const targetRows = hasLabel && pc.label != null ? data.map((r) => r.label === pc.label) : data.map(() => true);
+      const targetRows = data.map((r) => {
+        let match = true;
+        if (hasAliasName && pc.alias_name != null) match = match && r.alias_name === pc.alias_name;
+        if (hasLabel && pc.label != null) match = match && r.label === pc.label;
+        return match;
+      });
       data.forEach((row, i) => {
         if (targetRows[i]) row[pc.cdisc_variable] = row[pc.ref_cdisc_variable];
       });
     });
 
-  // equals: (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, label)でグループ化し、
+  // equals: (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label)でグループ化し、
   // 期待値集合のいずれにも一致しない行をnullにする
   const equalsGroups = new Map();
   applicable
     .filter((pc) => pc.condition_type === "equals")
     .forEach((pc) => {
-      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.ref_alias_name}|${pc.ref_label}|${pc.label}`;
+      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.ref_alias_name}|${pc.ref_label}|${pc.alias_name}|${pc.label}`;
       if (!equalsGroups.has(key)) {
         equalsGroups.set(key, {
           cdisc_variable: pc.cdisc_variable,
           ref_cdisc_variable: pc.ref_cdisc_variable,
           ref_alias_name: pc.ref_alias_name,
           ref_label: pc.ref_label,
+          alias_name: pc.alias_name,
           label: pc.label,
           expectedValues: new Set(),
         });
@@ -803,7 +823,7 @@ function applyPresenceConditions(data, presenceConditions) {
       equalsGroups.get(key).expectedValues.add(pc.expected_value);
     });
   equalsGroups.forEach((g) => {
-    const targetRows = targetRowsFor(g.ref_alias_name, g.ref_label, g.label);
+    const targetRows = targetRowsFor(g.ref_alias_name, g.ref_label, g.label, g.alias_name);
     data.forEach((row, i) => {
       if (targetRows[i] && !g.expectedValues.has(row[g.ref_cdisc_variable])) {
         row[g.cdisc_variable] = null;
@@ -816,10 +836,10 @@ function applyPresenceConditions(data, presenceConditions) {
   applicable
     .filter((pc) => pc.condition_type === "not_blank")
     .forEach((pc) => {
-      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.ref_alias_name}|${pc.ref_label}|${pc.label}`;
+      const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.ref_alias_name}|${pc.ref_label}|${pc.alias_name}|${pc.label}`;
       if (notBlankSeen.has(key)) return;
       notBlankSeen.add(key);
-      const targetRows = targetRowsFor(pc.ref_alias_name, pc.ref_label, pc.label);
+      const targetRows = targetRowsFor(pc.ref_alias_name, pc.ref_label, pc.label, pc.alias_name);
       data.forEach((row, i) => {
         const refVal = row[pc.ref_cdisc_variable];
         const isBlank = refVal == null || refVal === "";

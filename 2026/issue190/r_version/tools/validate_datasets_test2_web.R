@@ -231,12 +231,15 @@ c("MITESTCD", "MITEST", "MICAT", "MIORRES", "MIBLFL", "VISITNUM") %>% walk(~ run
 qs %>% check_required_vars(c("QSDTC"), domain_name = "QS")
 qs %>% check_date_before_today("QSDTC", domain_name = "QS")
 c("QSTESTCD", "QSTEST", "QSCAT", "QSORRES", "QSBLFL", "VISITNUM") %>% walk(~ run_value_equals_checks_from_csv(qs, "QS", .x, fixed_value_checks_csv_path))
+
 # RS
 rs %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 rs %>% check_date_before_today("RSDTC", domain_name = "RS")
 tmp_rs <- rs %>% filter(RSTESTCD =="STAGE")
 tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_1"), c(RSTEST, RSCAT, RSORRES, RSBLFL, RSEVAL, VISITNUM))
 c("RSTEST_1", "RSCAT_1", "RSORRES_1", "RSBLFL_1", "RSEVAL_1", "VISITNUM_1") %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+tmp_rs <- rs %>% filter(RSTESTCD =="TRGRESP")
+
 # TR: TRLNKID×TRLNKGRPごとの個別チェック。TRLNKGRP/TRORRESU/VISITNUMをsuffix付き列名にリネームして
 # 必須・固定値チェックを行ったうえで、TRTESTCD=="LDIAM"(長径)/"SAXIS"(短径)それぞれのTRTESTを
 # 別々のsuffix付き列名にリネームして固定値チェックする
