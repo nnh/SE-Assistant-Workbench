@@ -413,7 +413,9 @@ check_value_equals <- function(data, var, expected_value, domain_name = NULL) {
 # extra_labelは、CSVの絞り込み(domain/var/visit一致)には使わず、結果メッセージの表示にのみ
 # 追加情報(例: VSTPTNUMの値)を含めたい場合に指定する
 run_value_equals_checks_from_csv <- function(data, domain, var, csv_path, visit = NULL, extra_label = NULL) {
-  config <- read_csv(csv_path, col_types = cols(.default = "c"))
+  # na = character(0): expected_valueに選択肢コードとして文字列"NA"が使われているケースがあるため、
+  # readrのデフォルトのNA文字列判定("NA"等を欠測値として扱う)を無効にし、そのまま文字列として読む
+  config <- read_csv(csv_path, col_types = cols(.default = "c"), na = character(0))
   missing_cols <- setdiff(c("domain", "var", "expected_value"), colnames(config))
   if (length(missing_cols) > 0) {
     stop(str_c("固定値チェックCSV: 必要な列がありません(", paste(missing_cols, collapse = ", "), ")"))

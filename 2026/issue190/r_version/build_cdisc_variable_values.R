@@ -5,7 +5,13 @@ build_cdisc_sheet_config_table <- function(sheet) {
     tibble(field = character(), default_value = character(), is_invisible = logical(), field_type = character())
   } else {
     sheet$field_items %>%
-      map_dfr(~ tibble(field = .$name, default_value = .$default_value, is_invisible=.$is_invisible,field_type = .$field_type))
+      # field_type=="select"(EDC上のプルダウン)は、以降の選択肢処理(populate_radio_button_fields()等)で
+      # radio_buttonと同じ「単一選択のコードリスト」として扱う。ここで正規化しておくことで、
+      # 個々の判定箇所(field_type %in% c("radio_button", "check_box"))を毎回書き換えずに済む
+      map_dfr(~ tibble(
+        field = .$name, default_value = .$default_value, is_invisible = .$is_invisible,
+        field_type = if (identical(.$field_type, "select")) "radio_button" else .$field_type
+      ))
   }
 
   prefix_field_table <- if (length(sheet$cdisc_sheet_configs) == 0) {

@@ -27,7 +27,11 @@ function buildCdiscSheetConfigTable(sheet) {
         alias_name: sheet.alias_name,
         field: fieldName,
         label: config.label,
-        field_type: item.field_type,
+        // field_type=="select"(EDC上のプルダウン)は、以降の選択肢処理(populateGenericChoiceFields()等)で
+        // radioButtonと同じ「単一選択のコードリスト」として扱う。ここで正規化しておくことで、
+        // 個々の判定箇所(fieldType === "radio_button" || fieldType === "check_box")を毎回書き換えずに済む
+        // (Rのbuild_cdisc_variable_values.Rに対応)
+        field_type: item.field_type === "select" ? "radio_button" : item.field_type,
         default_value: item.default_value,
         is_invisible: !!item.is_invisible,
         option_name: item.option_name || null,
