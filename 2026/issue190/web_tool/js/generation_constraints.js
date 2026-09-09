@@ -51,6 +51,24 @@ function extractRefField(validatorType, value) {
   return null;
 }
 
+// valueが"ref('sheet_alias', N)"のような他シート参照の場合(date型バリデータの
+// validate_date_after_or_equal_to/validate_date_before_or_equal_toで使われる形。presence/formula側の
+// ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
+// (alias_name)とフィールド名を取り出す(Rのextract_date_cross_ref_alias/extract_date_cross_ref_fieldに対応)
+const DATE_CROSS_REF_PATTERN = /^ref\('([^']+)'\s*,\s*([0-9]+)\)$/;
+
+function extractDateCrossRefAlias(validatorType, value) {
+  if (validatorType !== "date" || value == null) return null;
+  const m = value.match(DATE_CROSS_REF_PATTERN);
+  return m ? m[1] : null;
+}
+
+function extractDateCrossRefField(validatorType, value) {
+  if (validatorType !== "date" || value == null) return null;
+  const m = value.match(DATE_CROSS_REF_PATTERN);
+  return m ? `field${m[2]}` : null;
+}
+
 // value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field6=="Y")を"||"で分割し、
 // 全断片が同一フィールドに対するfieldN==値(またはfN==値)の形であれば、フィールド名と値の一覧を返す。
 // 異なるフィールドが混ざる、またはパースできない断片があればnull(Rのparse_presence_or_conditions()に対応)
@@ -217,7 +235,8 @@ function buildValidatorTable(sheets) {
     const formulaSingle = computeFormulaSingleField(validatorType, validatorKey, value);
     const formulaFieldRef = computeFormulaFieldRef(validatorType, validatorKey, value);
     const boundType = classifyBoundType(validatorType, validatorKey) ?? formulaSingle.boundType ?? formulaFieldRef.boundType;
-    const refField = extractRefField(validatorType, value) ?? formulaSingle.refField ?? formulaFieldRef.refField;
+    const refField = extractRefField(validatorType, value) ?? extractDateCrossRefField(validatorType, value) ?? formulaSingle.refField ?? formulaFieldRef.refField;
+    const dateRefAliasName = extractDateCrossRefAlias(validatorType, value);
     const numericValue = extractNumericValue(validatorType, value) ?? formulaSingle.boundValue ?? null;
 
     const presence = computePresenceRefFieldAndValue(validatorType, validatorKey, value);
@@ -228,6 +247,7 @@ function buildValidatorTable(sheets) {
       ...row,
       bound_type: boundType,
       ref_field: refField,
+      date_ref_alias_name: dateRefAliasName,
       numeric_value: numericValue,
       presence_ref_field: presence.field,
       presence_ref_value: presence.value,
@@ -655,8 +675,11 @@ function buildDateRefBounds(validatorTable, fieldLookup) {
     const key = `${vr.alias_name}|${vr.field_name}|${vr.ref_field}|${vr.bound_type}`;
     if (seen.has(key)) return;
     seen.add(key);
+    // ref('sheet_alias', N)形式の他シート参照(dateRefAliasName)があればそちらを、無ければ
+    // 従来通り自分自身と同じalias_nameを参照先のlookupに使う(Rのref_lookup_alias_nameに対応)
+    const refLookupAliasName = vr.date_ref_alias_name != null ? vr.date_ref_alias_name : vr.alias_name;
     const ownMatches = lookupField(fieldLookup, vr.alias_name, vr.field_name);
-    const refMatches = lookupField(fieldLookup, vr.alias_name, vr.ref_field);
+    const refMatches = lookupField(fieldLookup, refLookupAliasName, vr.ref_field);
     ownMatches.forEach((own) => {
       refMatches.forEach((ref) => {
         if (own.cdisc_variable == null || ref.cdisc_variable == null) return;
@@ -664,6 +687,7 @@ function buildDateRefBounds(validatorTable, fieldLookup) {
           alias_name: vr.alias_name,
           label: own.label != null ? own.label : null,
           cdisc_variable: own.cdisc_variable,
+          ref_alias_name: refLookupAliasName,
           ref_label: ref.label != null ? ref.label : null,
           ref_cdisc_variable: ref.cdisc_variable,
           bound_type: vr.bound_type,

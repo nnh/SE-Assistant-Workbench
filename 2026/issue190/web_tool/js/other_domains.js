@@ -208,15 +208,14 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
   // 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
   // これを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
   // (fieldRefBoundsはlabelを持たないため、その場合はnullのままになる)。
-  // dateRefBoundsはref_alias_nameを持たないが、参照先は常に自分自身と同じalias_name内の
-  // フィールドとして解決されている(build_generation_constraints.jsのdate_ref_bounds構築時に、
-  // field_name/ref_fieldを同一alias_name内でlookupしているため)ので、alias_nameをそのまま
-  // ref_alias_nameとして補って良い
+  // dateRefBoundsのref_alias_nameは、ref('sheet_alias', N)形式の他シート参照があればその参照先
+  // シート、無ければ自分自身と同じalias_name(build_generation_constraints.jsのdate_ref_bounds
+  // 構築時に補われている)
   const refInstances = [
     ...(presenceConditions || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
     ...(fieldRefBounds || []).map((r) => ({ label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
     ...(ageBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
-    ...(dateRefBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.alias_name, ref_label: r.ref_label })),
+    ...(dateRefBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
   ].filter((r) => r.ref_cdisc_variable != null);
 
   const hasDataAliasName = "alias_name" in data[0];

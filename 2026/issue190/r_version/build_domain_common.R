@@ -688,16 +688,14 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
   # 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
   # このlabelを保持しておかないと、後段でどのpinをdataのどの行に適用すべきか判定できない
   # (field_ref_bounds/age_boundsはlabelを持たないため、その場合はNAのままになる)
-  # date_ref_boundsはref_alias_nameを持たないが、ref_field(参照先)は常に自分自身と同じ
-  # alias_name内のフィールドとして解決されている(build_generation_constraints.Rのdate_ref_bounds
-  # 構築時に、field_name/ref_fieldを同一alias_nameでlookupしているため)。よってalias_nameを
-  # そのままref_alias_nameとして補って良い
+  # date_ref_boundsのref_alias_nameは、ref('sheet_alias', N)形式の他シート参照があればその
+  # 参照先シート、無ければ自分自身と同じalias_name(build_generation_constraints.Rのdate_ref_bounds
+  # 構築時に補われている)
   ref_instances <- bind_rows(
     presence_conditions %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
     field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
     age_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
-    date_ref_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_label", "alias_name"))) %>%
-      rename(any_of(c(ref_alias_name = "alias_name")))
+    date_ref_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_label", "ref_alias_name")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
     distinct()

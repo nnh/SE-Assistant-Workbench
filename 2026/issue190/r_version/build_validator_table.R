@@ -67,6 +67,22 @@ extract_ref_field <- function(validator_type, value) {
   if_else(validator_type == "date" & str_detect(value, "^field[0-9]+$"), value, NA_character_)
 }
 
+# valueが"ref('sheet_alias', N)"のような他シート参照の場合(date型バリデータの
+# validate_date_after_or_equal_to/validate_date_before_or_equal_toで使われる形。presence/formula側の
+# ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
+# (alias_name)とフィールド名を取り出す
+date_cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)$"
+
+extract_date_cross_ref_alias <- function(validator_type, value) {
+  m <- str_match(value, date_cross_ref_pattern)
+  if_else(validator_type == "date" & !is.na(m[, 1]), m[, 2], NA_character_)
+}
+
+extract_date_cross_ref_field <- function(validator_type, value) {
+  m <- str_match(value, date_cross_ref_pattern)
+  if_else(validator_type == "date" & !is.na(m[, 1]), str_c("field", m[, 3]), NA_character_)
+}
+
 # value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field22==2 || field22=='5<='、field6=="Y")を
 # "||"で分割し、全断片が同一フィールドに対する fieldN==値(または fN==値) の形であれば、
 # フィールド名と値の一覧を返す。値は'X'/"X"のように引用符(シングル・ダブルどちらも)付きの場合と、
@@ -376,9 +392,11 @@ build_validator_table <- function(sheets) {
       ),
       ref_field = coalesce(
         extract_ref_field(validator_type, value),
+        extract_date_cross_ref_field(validator_type, value),
         extract_formula_ref_field(validator_type, validator_key, value),
         extract_formula_field_ref(validator_type, validator_key, value)
       ),
+      date_ref_alias_name = extract_date_cross_ref_alias(validator_type, value),
       numeric_value = coalesce(
         extract_numeric_value(validator_type, value),
         extract_formula_bound_value(validator_type, validator_key, value)

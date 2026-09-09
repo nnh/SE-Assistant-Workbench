@@ -325,18 +325,21 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
   # build_repeated_domain側でlabel/ref_labelを見てlabelを跨ぐ参照かどうかを判定できるようにする
   date_ref_bounds <- validator_table %>%
     filter(validator_type == "date", !is.na(bound_type), !is.na(ref_field), ref_field != field_name) %>%
-    distinct(alias_name, field_name, ref_field, bound_type) %>%
+    distinct(alias_name, field_name, ref_field, bound_type, date_ref_alias_name) %>%
+    # ref('sheet_alias', N)形式の他シート参照(date_ref_alias_name)があればそちらを、無ければ
+    # 従来通り自分自身と同じalias_nameを参照先のlookupに使う
+    mutate(ref_lookup_alias_name = coalesce(date_ref_alias_name, alias_name)) %>%
     left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
     left_join(
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
-      by = c("alias_name", "ref_field" = "field")
+      by = c("ref_lookup_alias_name" = "alias_name", "ref_field" = "field")
     ) %>%
     left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
     left_join(
       field_to_label %>% rename(ref_label = label),
-      by = c("alias_name", "ref_field" = "field")
+      by = c("ref_lookup_alias_name" = "alias_name", "ref_field" = "field")
     ) %>%
-    transmute(alias_name, label, cdisc_variable, ref_label, ref_cdisc_variable, bound_type) %>%
+    transmute(alias_name, label, cdisc_variable, ref_alias_name = ref_lookup_alias_name, ref_label, ref_cdisc_variable, bound_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     distinct()
 
