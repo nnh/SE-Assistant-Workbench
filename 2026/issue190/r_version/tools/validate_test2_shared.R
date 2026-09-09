@@ -184,6 +184,25 @@ run_ec_trt_checks_all_cycles <- function(ec, fixed_value_checks_csv_path) {
   walk(cycle2_onward_visitnums, ~ run_ec_trt_checks_cycle2_onward(ec, .x, fixed_value_checks_csv_path))
 }
 
+# RS: 指定visitnum時点のRSTESTCD=="TRGRESP"(_2)/"NTRGRESP"(_3)/"OVRLRESP"(_4)の3種類について、
+# RSTEST/RSCAT/RSORRES/RSEVALをsuffix付き列名にリネームしたうえで固定値と一致することを確認する。
+# RSLNKGRPは別途VISITNUM×RSLNKGRP対応チェックで確認するため、ここでは対象に含めない(test2専用)
+run_rs_testcd_checks <- function(rs, visitnum, fixed_value_checks_csv_path) {
+  target_rs_cols <- c("RSTEST", "RSCAT", "RSORRES", "RSEVAL")
+
+  tmp_rs <- rs %>% filter(RSTESTCD == "TRGRESP" & VISITNUM == visitnum)
+  tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_2"), all_of(target_rs_cols))
+  str_c(target_rs_cols, "_2") %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+
+  tmp_rs <- rs %>% filter(RSTESTCD == "NTRGRESP" & VISITNUM == visitnum)
+  tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_3"), all_of(target_rs_cols))
+  str_c(target_rs_cols, "_3") %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+
+  tmp_rs <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == visitnum)
+  tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, "_4"), all_of(target_rs_cols))
+  str_c(target_rs_cols, "_4") %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+}
+
 # CM: CMSPID=="baseline1"のブロックについて、CMOCCURとCMENDTC/CMSTDTCの関係を確認する
 # (1) CMOCCUR=="Y"ならCMENDTCに値がある
 # (2) CMOCCUR=="N"ならCMENDTCは空白

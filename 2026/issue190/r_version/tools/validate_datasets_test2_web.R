@@ -86,22 +86,81 @@ names(other_domains) <- tolower(names(other_domains))
 list2env(other_domains, envir = .GlobalEnv)
 
 # test2個別チェック
+
+# AE
+target_ae_cols <- c("AELLT", "AELLTCD", "AEDECOD", "AEPTCD", "AEHLT", "AEHLTCD", "AEHLGT", "AEHLGTCD", "AEBODSYS", "AEBDSYCD", "AESOC", "AESOCCD")
+ae %>% check_required_vars(target_ae_cols, domain_name = "AE")
+target_ae_cols <- c("AETERM", "AESER", "AETOXGR", "AESTDTC", "AEACN", "AEREL", "AEOUT", "AEENDTC")
+ae %>% check_required_vars(target_ae_cols, domain_name = "AE")
+ae %>% check_date_before_today("AESTDTC", domain_name = "AE")
+ae %>% check_date_after_var_before_today("AEENDTC", "AESTDTC", domain_name = "AE")
+c("AESER", "AETOXGR", "AEACN", "AEREL", "AEOUT") %>% walk(~ run_value_equals_checks_from_csv(ae, "AE", .x, fixed_value_checks_csv_path))
+target_ae_cols <- c("AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE")
+tmp_ae <- ae %>% filter(AESER == "Y")
+target_ae_cols %>% walk(~ run_value_equals_checks_from_csv(tmp_ae, "AE", .x, fixed_value_checks_csv_path))
+tmp_ae %>% check_required_vars(target_ae_cols, domain_name = "AE")
+tmp_ae <- ae %>% filter(AESER != "Y")
+tmp_ae %>% check_blank_vars(target_ae_cols, domain_name = "AE")
+
+# CE
+target_ce_cols <- c("CETERM", "CEPRESP", "CEOCCUR")
+ce %>% check_required_vars(target_ce_cols, domain_name = "CE")
+target_pr_cols %>% walk(~ run_value_equals_checks_from_csv(pr, "PR", .x, fixed_value_checks_csv_path))
+tmp_ce <- ce %>% filter(CEOCCUR == "Y")
+tmp_ce %>% check_required_vars("CEDTC", domain_name = "CE")
+tmp_ce %>% check_date_before_today("CEDTC", domain_name = "CE")
+tmp_ce <- ce %>% filter(CEOCCUR != "Y")
+tmp_ce %>% check_blank_vars("CEDTC", domain_name = "CE")
+
 # CM
-cm %>% check_date_before_today("CMENDTC", domain_name = "CM")
+cm %>% check_date_before_today("CMSTDTC", domain_name = "CM")
+cm %>% check_date_after_var_before_today("CMENDTC","CMSTDTC", domain_name = "CM")
 tmp_cm <- cm %>% filter(CMENTPT == "BASELINE")
 tmp_cm %>% check_required_vars(c("CMOCCUR"), domain_name = "CM")
 target_cm_cols <- c("CMTRT", "CMCAT", "CMPRESP", "CMOCCUR", "CMENRTPT")
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, "_1"), all_of(target_cm_cols))
 suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(target_cm_cols))
 str_c(target_cm_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
 tmp_cm %>% filter(CMOCCUR_1 == "Y") %>% check_required_vars("CMENDTC")
 tmp_cm %>% filter(CMOCCUR_1 != "Y") %>% check_blank_vars("CMENDTC")
+
+tmp_cm <- cm %>% filter(str_detect(CMSPID, "concomitant_drug_other"))
+tmp_cm %>% check_required_vars(c("CMTRT", "CMSTDTC", "CMENDTC", "CMCAT"), domain_name = "CM")
+suffix <- "_2"
+target_cm_cols <- c("CMTRT", "CMCAT")
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(target_cm_cols))
+str_c(target_cm_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(!str_detect(CMSPID, "concomitant_drug_other")) %>% filter(CMCAT == "CONCOMITANT DRUG")
+tmp_cm %>% check_required_vars(c("CMTRT", "CMSTDTC", "CMCAT"), domain_name = "CM")
+tmp_cm %>% filter(CMENRF == "") %>% check_required_vars(c("CMENDTC"), domain_name = "CM")
+tmp_cm %>% filter(CMENRF != "") %>% check_blank_vars(c("CMENDTC"), domain_name = "CM")
+suffix <- "_3"
+target_cm_cols <- c("CMCAT", "CMENRF")
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(target_cm_cols))
+str_c("CMCAT", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+str_c("CMENRF", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm %>% filter(CMENDTC == ""), "CM", .x, fixed_value_checks_csv_path))
 
 # DM
 dm %>% check_date_before_today("BRTHDTC", domain_name = "DM")
 dm %>% check_date_after_var_before_today("RFICDTC", "BRTHDTC", domain_name = "DM")
 dm %>% check_required_vars(c("RFICDTC", "BRTHDTC", "SEX", "RACE", "ETHNIC", "COUNTRY"), domain_name = "DM")
 c("SEX", "RACE", "ETHNIC", "COUNTRY") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
+
+# DS
+ds %>% check_date_before_today("DSSTDTC", domain_name = "DS")
+ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
+ds %>% check_required_vars(c("DSTERM"), domain_name = "DS")
+target_ds_cols <- c("DSTERM", "DSCAT")
+suffix <- "_1"
+tmp_ds <- ds %>% filter(EPOCH == "TREATMENT" & DSSPID == "discon")
+tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
+str_c(target_ds_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds %>% check_required_vars(c("DSDTC", "DSSTDTC"), domain_name = "DS")
+suffix <- "_2"
+tmp_ds <- ds %>% filter(EPOCH == "TREATMENT" & DSSPID == "discon_ind")
+tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
+str_c(target_ds_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
 
 # EC
 ec %>% check_date_before_today("ECSTDTC", domain_name = "EC")
@@ -150,6 +209,30 @@ ie %>% run_ie_testcd_checks("EX15a", "_27", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX16", "_28", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX17", "_29", fixed_value_checks_csv_path)
 ie %>% run_ie_testcd_checks("EX18", "_30", fixed_value_checks_csv_path)
+
+trlnkgrp_by_visitnum <- tibble::tribble(
+  ~VISITNUM, ~TRLNKGRP,
+  "100",     "A1",
+  "600",     "A2",
+  "1100",    "A3",
+  "1600",    "A4",
+  "2100",    "A5",
+  "2600",    "A6",
+  "3100",    "A7",
+  "3600",    "A8",
+  "4100",    "A9",
+  "4600",    "A10",
+  "5100",    "A11",
+  "5600",    "A12",
+  "6100",    "A13",
+  "6600",    "A14",
+  "7100",    "A15",
+  "7600",    "A16",
+  "8100",    "A17",
+  "8600",    "A18"
+)
+
+
 # LB
 lb %>% check_required_vars(c("LBTEST", "LBCAT", "LBDTC", "VISITNUM"), domain_name = "LB")
 lb %>% check_date_before_today(c("LBDTC"), domain_name = "LB")
@@ -159,10 +242,13 @@ lb_done %>% check_required_vars(c("LBORRES", "LBSPEC"), domain_name="LB")
 lb_not_done %>% check_blank_vars(c("LBORRES"), domain_name="LB")
 # 腫瘍マーカー
 target_lb_cols <- c("LBTEST", "LBCAT", "LBSPEC")
-check_lb_testcd(lb_done, "CEA", 100, "_1", fixed_value_checks_csv_path)
-check_lb_testcd(lb_done, "CA19_9AG", 100, "_2", fixed_value_checks_csv_path)
-check_lb_testcd(lb_done, "CEA", 600, "_1", fixed_value_checks_csv_path, has_blfl = FALSE)
-check_lb_testcd(lb_done, "CA19_9AG", 600, "_2", fixed_value_checks_csv_path, has_blfl = FALSE)
+for (i in 1:nrow(trlnkgrp_by_visitnum)) {
+  visitnum <- trlnkgrp_by_visitnum[i, "VISITNUM"] %>% as.numeric()
+  has_blfl <- visitnum == 100
+  check_lb_testcd(lb_done, "CEA", visitnum, "_1", fixed_value_checks_csv_path, has_blfl = has_blfl)
+  check_lb_testcd(lb_done, "CA19_9AG", visitnum, "_2", fixed_value_checks_csv_path, has_blfl = has_blfl)
+}
+
 # 妊娠検査
 suffix <- "_3"
 tmp_lb <- lb_done %>% filter(LBTESTCD == "HCG")
@@ -211,6 +297,7 @@ check_lb_testcd(filter(lb_done,LBCAT=="URINALYSIS"), "PROT", target_visitnum, "_
 check_lb_testcd(filter(lb_done,LBCAT=="URINALYSIS"), "GLUC", target_visitnum, "_35", fixed_value_checks_csv_path, has_unit = FALSE)
 check_lb_testcd(filter(lb_done,LBCAT=="URINALYSIS"), "OCCBLD", target_visitnum, "_36", fixed_value_checks_csv_path, has_unit = FALSE)
 run_lb_testcd_checks_all_cycles(lb_done, fixed_value_checks_csv_path)
+
 # MH
 mh %>% check_required_vars(c("MHTERM"), domain_name = "MH")
 tmp_mh <- mh %>% filter(MHCAT == "GENERAL" & MHENRTPT == "BEFORE")
@@ -226,10 +313,22 @@ tmp_mh <- mh %>% filter(MHCAT == "GENERAL" & MHENRTPT == "ONGOING" & MHENTPT == 
 tmp_mh %>% check_required_vars(c("MHOCCUR"), domain_name = "MH")
 tmp_mh <- tmp_mh %>% rename_with(~ str_c(.x, "_3"), c(MHTERM, MHPRESP, MHOCCUR))
 c("MHTERM_3", "MHPRESP_3", "MHOCCUR_3") %>% walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path))
+
 # MI
 mi %>% check_required_vars(c("MIORRES", "MIDTC"), domain_name = "MI")
 mi %>% check_date_before_today("MIDTC", domain_name = "MI")
 c("MITESTCD", "MITEST", "MICAT", "MIORRES", "MIBLFL", "VISITNUM") %>% walk(~ run_value_equals_checks_from_csv(mi, "MI", .x, fixed_value_checks_csv_path))
+
+# PR
+target_pr_cols <- c("PRTRT", "PRPRESP", "PROCCUR")
+pr %>% check_required_vars(target_pr_cols, domain_name = "PR")
+target_pr_cols %>% walk(~ run_value_equals_checks_from_csv(pr, "PR", .x, fixed_value_checks_csv_path))
+tmp_pr <- pr %>% filter(PROCCUR == "Y")
+tmp_pr %>% check_required_vars("PRSTDTC", domain_name = "PR")
+tmp_pr %>% check_date_before_today("PRSTDTC", domain_name = "PR")
+tmp_pr <- pr %>% filter(PROCCUR != "Y")
+tmp_pr %>% check_blank_vars("PRSTDTC", domain_name = "PR")
+
 # QS
 qs %>% check_required_vars(c("QSDTC"), domain_name = "QS")
 qs %>% check_date_before_today("QSDTC", domain_name = "QS")
@@ -238,29 +337,85 @@ c("QSTESTCD", "QSTEST", "QSCAT", "QSORRES", "QSBLFL", "VISITNUM") %>% walk(~ run
 # RS
 rs %>% check_required_vars(c("RSORRES", "RSDTC"), domain_name = "RS")
 rs %>% check_date_before_today("RSDTC", domain_name = "RS")
+# RS: RSLNKGRPは腫瘍評価訪問(VISITNUM)ごとに固定の値を持つ(evaluation8=600→A2、
+# evaluation16=1100→A3、...というように、JSON上でVISITNUMとRSLNKGRPが1対1に対応している)。
+# その対応関係が生成データでも崩れていないかを確認する
+rslnkgrp_by_visitnum <- tibble::tribble(
+  ~VISITNUM, ~RSLNKGRP,
+  "600",     "A2",
+  "1100",    "A3",
+  "1600",    "A4",
+  "2100",    "A5",
+  "2600",    "A6",
+  "3100",    "A7",
+  "3600",    "A8",
+  "4100",    "A9",
+  "4600",    "A10",
+  "5100",    "A11",
+  "5600",    "A12",
+  "6100",    "A13",
+  "6600",    "A14",
+  "7100",    "A15",
+  "7600",    "A16",
+  "8100",    "A17",
+  "8600",    "A18"
+)
+
+# rs側の実際の(VISITNUM, RSLNKGRP)の組み合わせを、上記の期待値と突き合わせる。
+# 一致しない行があればstop()でエラーにする
+rs_lnkgrp_check <- rs %>%
+  distinct(VISITNUM, RSLNKGRP) %>%
+  filter(VISITNUM %in% rslnkgrp_by_visitnum$VISITNUM) %>%
+  left_join(rslnkgrp_by_visitnum, by = "VISITNUM", suffix = c("_actual", "_expected"))
+rs_lnkgrp_mismatch <- rs_lnkgrp_check %>% filter(RSLNKGRP_actual != RSLNKGRP_expected)
+if (nrow(rs_lnkgrp_mismatch) > 0) {
+  stop(str_c(
+    "RS: VISITNUM×RSLNKGRP対応チェック: ", nrow(rs_lnkgrp_mismatch), "件NG(",
+    paste(str_c("VISITNUM=", rs_lnkgrp_mismatch$VISITNUM, "(実際:", rs_lnkgrp_mismatch$RSLNKGRP_actual, "/期待値:", rs_lnkgrp_mismatch$RSLNKGRP_expected, ")"), collapse = ", "),
+    ")"
+  ))
+}
+cat("RS: VISITNUM×RSLNKGRP対応チェック: OK(", nrow(rs_lnkgrp_check), "件)\n", sep = "")
+
 target_rs_cols <-c("RSTEST", "RSCAT", "RSORRES", "RSEVAL")
 tmp_rs <- rs %>% filter(RSTESTCD =="STAGE" & VISITNUM == 100)
 suffix <- "_1"
 tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_rs_cols, "RSBLFL")))
 str_c(c(target_rs_cols, "RSBLFL"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
-suffix <- "_2"
-tmp_rs <- rs %>% filter(RSTESTCD =="TRGRESP" & VISITNUM == 600)
-tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_rs_cols, "RSLNKGRP")))
-str_c(c(target_rs_cols, "RSLNKGRP"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
-suffix <- "_3"
-tmp_rs <- rs %>% filter(RSTESTCD =="NTRGRESP" & VISITNUM == 600)
-tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_rs_cols, "RSLNKGRP")))
-str_c(c(target_rs_cols, "RSLNKGRP"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
-suffix <- "_4"
-tmp_rs <- rs %>% filter(RSTESTCD =="OVRLRESP" & VISITNUM == 600)
-tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(c(target_rs_cols, "RSLNKGRP")))
-str_c(c(target_rs_cols, "RSLNKGRP"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+for (i in 1:nrow(rslnkgrp_by_visitnum)) {
+  visitnum <- rslnkgrp_by_visitnum[i, "VISITNUM"] %>% as.numeric()
+  print(str_c("check RS, VISITNUM: ", visitnum))
+  run_rs_testcd_checks(rs, visitnum, fixed_value_checks_csv_path)
+}
+
+# TR: TRLNKGRPも腫瘍評価訪問(VISITNUM)ごとに固定の値を持つ(RSと同じ対応関係に、baseline1の
+# VISITNUM=100→A1が加わったもの)。その対応関係が生成データでも崩れていないかを確認する
+
+# tr側の実際の(VISITNUM, TRLNKGRP)の組み合わせを、上記の期待値と突き合わせる。
+# 一致しない行があればstop()でエラーにする
+tr_lnkgrp_check <- tr %>%
+  distinct(VISITNUM, TRLNKGRP) %>%
+  filter(VISITNUM %in% trlnkgrp_by_visitnum$VISITNUM) %>%
+  left_join(trlnkgrp_by_visitnum, by = "VISITNUM", suffix = c("_actual", "_expected"))
+tr_lnkgrp_mismatch <- tr_lnkgrp_check %>% filter(TRLNKGRP_actual != TRLNKGRP_expected)
+if (nrow(tr_lnkgrp_mismatch) > 0) {
+  stop(str_c(
+    "TR: VISITNUM×TRLNKGRP対応チェック: ", nrow(tr_lnkgrp_mismatch), "件NG(",
+    paste(str_c("VISITNUM=", tr_lnkgrp_mismatch$VISITNUM, "(実際:", tr_lnkgrp_mismatch$TRLNKGRP_actual, "/期待値:", tr_lnkgrp_mismatch$TRLNKGRP_expected, ")"), collapse = ", "),
+    ")"
+  ))
+}
+cat("TR: VISITNUM×TRLNKGRP対応チェック: OK(", nrow(tr_lnkgrp_check), "件)\n", sep = "")
 
 # TR: TRLNKID×TRLNKGRPごとの個別チェック。TRLNKGRP/TRORRESU/VISITNUMをsuffix付き列名にリネームして
 # 必須・固定値チェックを行ったうえで、TRTESTCD=="LDIAM"(長径)/"SAXIS"(短径)それぞれのTRTESTを
 # 別々のsuffix付き列名にリネームして固定値チェックする
-check_tr_lnkid <- function(tr, trlnkid, trlnkgrp, suffix, ldiam_suffix, saxis_suffix, fixed_value_checks_csv_path) {
-  target_tr_cols <- c("TRLNKGRP", "TRORRESU", "VISITNUM")
+check_tr_lnkid <- function(tr, suffix, ldiam_suffix, saxis_suffix, fixed_value_checks_csv_path) {
+  visitnum <- tr$VISITNUM %>% unlist() %>% unique()
+  trlnkid <- tr$TRLNKID %>% unlist() %>% unique()
+  print(str_c("check TRTEST VISITNUM:", visitnum, ", TRLNKID:", trlnkid))
+  trlnkgrp <- tr$TRLNKGRP %>% unlist() %>% unique()
+  target_tr_cols <- c("TRORRESU")
   tmp_tr <- tr %>% filter(TRLNKID == trlnkid & TRLNKGRP == trlnkgrp)
   tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
   tmp_tr %>% check_required_vars(str_c(target_tr_cols, suffix), domain_name = "TR")
@@ -272,21 +427,15 @@ check_tr_lnkid <- function(tr, trlnkid, trlnkgrp, suffix, ldiam_suffix, saxis_su
   tmp_tr_s <- tmp_tr %>% filter(TRTESTCD == "SAXIS") %>% rename(!!str_c("TRTEST", saxis_suffix) := TRTEST)
   str_c("TRTEST", saxis_suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr_s, "TR", .x, fixed_value_checks_csv_path))
 }
-check_tr_lnkid(tr, "T01", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T02", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T03", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T04", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T05", "A1", "_1", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T01", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T02", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T03", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T04", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T05", "A2", "_5", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T01", "A3", "_7", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T02", "A3", "_7", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T03", "A3", "_7", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T04", "A3", "_7", "_2", "_3", fixed_value_checks_csv_path)
-check_tr_lnkid(tr, "T05", "A3", "_7", "_2", "_3", fixed_value_checks_csv_path)
+for (i in 1:nrow(trlnkgrp_by_visitnum)) {
+  visitnum <- trlnkgrp_by_visitnum[i, "VISITNUM"] %>% as.numeric()
+  for (trlnkid in c("T01", "T02", "T03", "T04", "T05")) {
+    trlnkgrp <- trlnkgrp_by_visitnum %>% filter(VISITNUM == visitnum) %>% select(TRLNKGRP) %>% unlist()
+      tmp_tr <- tr %>% filter(VISITNUM == visitnum & TRLNKID == trlnkid & TRLNKGRP == trlnkgrp)
+      check_tr_lnkid(tmp_tr, "_1", "_2", "_3", fixed_value_checks_csv_path)
+  }
+}
+
 # TU: TULNKIDごとの個別チェック。1番目の病変記録(is_first=TRUE)は位置/左右/測定方法/実測値/
 # ベースラインフラグ/訪問番号が全て必須かつ固定値と一致することを確認する。2番目以降(is_first=FALSE)は
 # 位置/左右/測定方法が空欄になりうるため値が入っている行のみ固定値チェックし、実測値/ベースライン
@@ -340,6 +489,7 @@ for (i in 1:5) {
   check_tu_lnkid(tu, lnkid, tu_target, fixed_value_checks_csv_path, is_first = is_first)
   check_tr_tu_link(tu, tr, lnkid)
 }
+
 # TR,TU non-target
 tmp_tr <- tr %>% filter(TRLNKID == "NT01")
 suffix <- "_4"
@@ -359,13 +509,16 @@ if (nrow(tmp_tr_tu) > 0) {
 
 # TR
 # 効果判定NEWは単独
-target_tr_cols <- c("TRLNKID", "TRLNKGRP", "TRTESTCD", "TRTEST", "TRORRES", "TRMETHOD")
+target_tr_cols <- c("TRLNKID", "TRTESTCD", "TRTEST", "TRORRES", "TRMETHOD")
 suffix <- "_6"
-tmp_tr <- tr %>% filter(TRGRPID == "NEW" & TRSTAT != "NOT DONE" & VISITNUM == 600)
-tmp_tr %>% check_required_vars(c("TRORRES", "TRMETHOD"), domain_name = "TU")
-tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
-str_c(target_tr_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr, "TR", .x, fixed_value_checks_csv_path))
-
+for (i in 2:nrow(trlnkgrp_by_visitnum)) {
+  visitnum <- trlnkgrp_by_visitnum[i, "VISITNUM"] %>% as.numeric()
+  print(visitnum)
+  tmp_tr <- tr %>% filter(TRGRPID == "NEW" & TRSTAT != "NOT DONE" & VISITNUM == visitnum)
+  tmp_tr %>% check_required_vars(c("TRORRES", "TRMETHOD"), domain_name = "TU")
+  tmp_tr <- tmp_tr %>% rename_with(~ str_c(.x, suffix), all_of(target_tr_cols))
+  str_c(target_tr_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_tr, "TR", .x, fixed_value_checks_csv_path))
+}
 
 # VS
 vs %>% check_date_before_today(c("VSDTC"), domain_name = "VS")
