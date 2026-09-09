@@ -76,6 +76,114 @@ dm %>% check_date_before_today(c("RFSTDTC"), domain_name = "DM")
 dm %>% check_date_after_var_before_today("RFICDTC", "BRTHDTC", domain_name = "DM")
 c("SEX", "RACE", "ETHNIC", "COUNTRY") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
 
+# FA: FATESTCDごとの個別チェック(test3用)。指定visitnum・faobj・falocのレコードに絞り込み、FATEST
+# (+has_blflならFABLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを確認する
+# (FAOBJ/FALOCはfilter条件として使うため、チェック対象には含めない)。
+# has_not_done_split=TRUEの場合、FASTAT=="NOT DONE"で分岐し、FAORRESの要否(NOT DONEなら空欄、
+# それ以外なら必須)を確認する。has_orres_in_targetならFAORRESもsuffix付き列名にリネームして
+# 固定値チェック対象に含める(NOT DONE行を含む全行が対象のときのみ使える)。
+# has_not_done_split=TRUEでFAORRESにも固定値があるときは、check_orres_value_when_done=TRUEを
+# 指定するとDONE行に絞ったうえでFAORRESの固定値チェックも行う(LBのcheck_lb_testcd_at_visit()に対応)
+check_fa_testcd_at_visit <- function(fa, fatestcd, faobj, faloc, visitnum, suffix, fixed_value_checks_csv_path,
+                                      has_blfl = TRUE, has_not_done_split = FALSE,
+                                      has_orres_in_target = FALSE, check_orres_value_when_done = FALSE) {
+  fa_target_cols <- c("FATEST", "VISITNUM")
+  if (has_blfl) fa_target_cols <- c(fa_target_cols, "FABLFL")
+  if (has_orres_in_target) fa_target_cols <- c(fa_target_cols, "FAORRES")
+
+  tmp_fa <- fa %>% filter(FATESTCD == fatestcd & FAOBJ == faobj & FALOC == faloc & VISITNUM == visitnum)
+  tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(fa_target_cols))
+  str_c(fa_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+
+  orres_col <- if (has_orres_in_target) str_c("FAORRES", suffix) else "FAORRES"
+
+  if (has_not_done_split) {
+    tmp_fa_done <- tmp_fa %>% filter(FASTAT != "NOT DONE")
+    tmp_fa_not_done <- tmp_fa %>% filter(FASTAT == "NOT DONE")
+    orres_col %>% check_required_vars(tmp_fa_done, ., domain_name = "FA")
+    orres_col %>% check_blank_vars(tmp_fa_not_done, ., domain_name = "FA")
+    if (check_orres_value_when_done) {
+      tmp_fa_done <- tmp_fa_done %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
+      str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_done, "FA", .x, fixed_value_checks_csv_path))
+    }
+  } else {
+    orres_col %>% check_required_vars(tmp_fa, ., domain_name = "FA")
+  }
+}
+
+fa <- fa %>% inner_join(dm %>% select(USUBJID, BRTHDTC, SEX), by="USUBJID")
+fa %>% check_date_after_var_before_today("FADTC", "BRTHDTC", domain_name = "FA")
+
+check_fa_testcd_at_visit(fa,
+                         "STATUS", "Tumor Involvement", "CENTRAL NERVOUS SYSTEM",
+                         100, "_1",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+
+# 女性被験者はTESTIS(精巣)自体が無いため、FASTATは全て"NOT DONE"・FAORRESは全て空欄であることを確認する
+# (USUBJID列はcheck_value_equals/check_blank_varsのエラー表示に必要なので、selectで落とさない)
+tmp_fa_f <- fa %>% filter(SEX == "F" & FALOC=="TESTIS")
+tmp_fa_f %>% check_value_equals("FASTAT", "NOT DONE", domain_name = "FA")
+tmp_fa_f %>% check_blank_vars("FAORRES", domain_name = "FA")
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "TESTIS",
+                         100, "_2",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Enlargement", "MEDIASTINUM",
+                         100, "_3",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "SKIN",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "BONE",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "LIVER",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "SPLEEN",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "LYMPH NODE",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+check_fa_testcd_at_visit(fa,
+                         "OCCUR", "Tumor Involvement", "KIDNEY",
+                         100, "_4",
+                         fixed_value_checks_csv_path,
+                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
+
+# OCCUR/Tumor InvolvementのうちFALOCが固定サイトでないブロック(label 020/026/027/028/029、
+# field212等)は、FALOCが800件以上の選択肢から自由に選ばれる「その他部位」枠が5つ繰り返されたもの。
+# 生成後のCSVではalias_name/labelが残らずこの5ブロックを個別に区別できないため、まとめて集約検証する。
+# FALOCの値そのもの(選択肢通りであること)はpopulate_radio_button_fields()側の仕組みで構造的に
+# 保証されるため確認せず、FAORRES=='Y'のときだけFALOCが埋まっている(presence)ことだけを確認する
+fa_fixed_locs <- c("CENTRAL NERVOUS SYSTEM", "TESTIS", "SKIN", "LIVER", "SPLEEN", "LYMPH NODE", "KIDNEY", "BONE")
+tmp_fa_other <- fa %>% filter(FATESTCD == "OCCUR" & FAOBJ == "Tumor Involvement" & VISITNUM == "100" & !(FALOC %in% fa_fixed_locs))
+tmp_fa_other %>% filter(FAORRES == "Y") %>% check_required_vars("FALOC", domain_name = "FA")
+tmp_fa_other %>% filter(FAORRES != "Y") %>% check_blank_vars("FALOC", domain_name = "FA")
+
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と
 # 一致することを確認する。has_not_done_split=TRUEの場合、LBSTAT=="NOT DONE"で分岐し、
@@ -120,6 +228,9 @@ check_lb_testcd_at_visit(lb, "NUMCROSM", 100, "_4", c("LBMETHOD"), fixed_value_c
 check_lb_testcd_at_visit(lb, "DNAINDEX", 100, "_5", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE)
 check_lb_testcd_at_visit(lb, "MOLRGN", 100, "_6", c("LBMETHOD"), fixed_value_checks_csv_path, has_orres_in_target = TRUE)
 check_lb_testcd_at_visit(lb, "IKZF1ALT", 100, "_7", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+check_lb_testcd_at_visit(lb, "TP53MUT", 100, "_8", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+check_lb_testcd_at_visit(lb, "IAMP21", 100, "_9", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+check_lb_testcd_at_visit(lb, "CD19", 100, "_10", c("LBMETHOD", "LBSPEC"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
 
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
@@ -129,3 +240,24 @@ mh_target_cols <- c("MHTERM", "MHPRESP", "MHOCCUR")
 suffix <- "_1"
 tmp_mh <- tmp_mh %>% rename_with(~ str_c(.x, suffix), all_of(mh_target_cols))
 str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path))
+
+mh_target_cols <- c("MHPRESP", "MHOCCUR", "MHENRTPT", "MHENTPT")
+tmp_mh <- mh %>% filter(MHCAT == "GENERAL" & MHTERM == "Antithrombin III deficiency" & MHSTAT != "NOT DONE")
+suffix <- "_2"
+tmp_mh <- tmp_mh %>% rename_with(~ str_c(.x, suffix), all_of(mh_target_cols))
+str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path))
+
+tmp_mh <- mh %>% filter(MHCAT == "GENERAL" &
+                        (MHTERM == "Protein C deficiency" | MHTERM == "Protein S deficiency" | MHTERM == "Plasminogen decreased" | MHTERM == "Hypofibrinogenaemia" | MHTERM == "Homocystinuria") &
+                        MHSTAT != "NOT DONE")
+suffix <- "_3"
+tmp_mh <- tmp_mh %>% rename_with(~ str_c(.x, suffix), all_of(mh_target_cols))
+str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path))
+
+"MHTERM" %>% check_required_vars(filter(mh, MHOCCUR=="Y"), ., domain_name="MH")
+
+# SV
+tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
+sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
+sv %>% check_date_after_var_before_today("SVSTDTC", "MHSTDTC", domain_name = "SV")
+tmp_sv <- sv %>% filter(SVSPID == "prephase")
