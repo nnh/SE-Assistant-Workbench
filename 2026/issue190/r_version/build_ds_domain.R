@@ -186,6 +186,20 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
     }
   }
 
+  # DSTERMの選択肢に"COMPLETED"を持たないalias_name(例: discon_ind)を判別する。
+  # そのブロックはCOMPLETED状態を表現できないため、対象USUBJIDについてはCOMPLETEDを書き込まず、
+  # 後段でブロックのレコード自体を除外する
+  no_completed_alias_names <- character(0)
+  if (!is.null(cdisc_variable_values) && "alias_name" %in% colnames(ds)) {
+    no_completed_alias_names <- cdisc_variable_values %>%
+      filter(prefix == "DS", cdisc_variable == "DSTERM") %>%
+      mutate(code = if_else(is.na(code), default_value, code)) %>%
+      group_by(alias_name) %>%
+      summarise(has_completed = "COMPLETED" %in% code, .groups = "drop") %>%
+      filter(!has_completed) %>%
+      pull(alias_name)
+  }
+
   # 死亡していない被験者は、最後のレコードの約completed_rateをCOMPLETEDにする
   alive_last_row_ids <- ds_with_row_id %>%
     filter(!(USUBJID %in% died_usubjid)) %>%
@@ -196,8 +210,10 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
 
   completed_row_ids <- sample(alive_last_row_ids, size = round(length(alive_last_row_ids) * completed_rate))
   completed_usubjid <- ds$USUBJID[completed_row_ids]
+  no_completed_mask <- if ("alias_name" %in% colnames(ds)) ds$alias_name %in% no_completed_alias_names else rep(FALSE, nrow(ds))
   # 最終的にCOMPLETEDとなった被験者は、途中経過のレコードもすべてCOMPLETEDにする
-  ds$DSTERM[ds$USUBJID %in% completed_usubjid] <- "COMPLETED"
+  # (選択肢に"COMPLETED"を持たないブロックは除く。そのブロックのレコードは後段で除外する)
+  ds$DSTERM[ds$USUBJID %in% completed_usubjid & !no_completed_mask] <- "COMPLETED"
 
   # ここまででDEATH/COMPLETEDに確定した行を除いた「自由な」行(まだランダムな理由が入りうる行)について、
   # DEATH/COMPLETED以外の選択肢が一度も出現していなければ、可能な範囲でランダムな自由行に反映させる
@@ -231,6 +247,12 @@ finalize_ds_disposition <- function(ds, death_date, cdisc_variable_values = NULL
         ds[["DSTERM"]][target] <- missing[seq_along(target)]
       }
     }
+  }
+
+  # COMPLETEDの選択肢を持たないブロック(例: discon_ind)は、実質COMPLETEDとなった被験者について
+  # 選択肢にない値を書き込むことになるため、レコード自体を出力しない
+  if (length(no_completed_alias_names) > 0) {
+    ds <- ds %>% filter(!(USUBJID %in% completed_usubjid & alias_name %in% no_completed_alias_names))
   }
 
   # DEATH確定行のDSSTDTCを死亡日に合わせてクランプした影響で、populate_ds_domain()側で

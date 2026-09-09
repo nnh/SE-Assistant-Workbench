@@ -105,7 +105,7 @@ tmp_ae %>% check_blank_vars(target_ae_cols, domain_name = "AE")
 # CE
 target_ce_cols <- c("CETERM", "CEPRESP", "CEOCCUR")
 ce %>% check_required_vars(target_ce_cols, domain_name = "CE")
-target_pr_cols %>% walk(~ run_value_equals_checks_from_csv(pr, "PR", .x, fixed_value_checks_csv_path))
+target_ce_cols %>% walk(~ run_value_equals_checks_from_csv(ce, "CE", .x, fixed_value_checks_csv_path))
 tmp_ce <- ce %>% filter(CEOCCUR == "Y")
 tmp_ce %>% check_required_vars("CEDTC", domain_name = "CE")
 tmp_ce %>% check_date_before_today("CEDTC", domain_name = "CE")
@@ -152,6 +152,11 @@ ds %>% check_date_before_today("DSSTDTC", domain_name = "DS")
 ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
 ds %>% check_required_vars(c("DSTERM"), domain_name = "DS")
 target_ds_cols <- c("DSTERM", "DSCAT")
+suffix <- "_0"
+tmp_ds <- ds %>% filter(DSSPID == "allocation")
+tmp_ds %>% check_blank_vars("EPOCH", domain_name = "DS")
+tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
+str_c(target_ds_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
 suffix <- "_1"
 tmp_ds <- ds %>% filter(EPOCH == "TREATMENT" & DSSPID == "discon")
 tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
@@ -161,6 +166,12 @@ suffix <- "_2"
 tmp_ds <- ds %>% filter(EPOCH == "TREATMENT" & DSSPID == "discon_ind")
 tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
 str_c(target_ds_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds %>% check_required_vars(c("DSDTC", "DSSTDTC"), domain_name = "DS")
+suffix <- "_3"
+tmp_ds <- ds %>% filter(EPOCH == "FOLLOW-UP" & DSSPID == "withdrawal")
+tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(target_ds_cols))
+str_c(target_ds_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds %>% check_required_vars(c("DSDTC", "DSSTDTC", "EPOCH"), domain_name = "DS")
 
 # EC
 ec %>% check_date_before_today("ECSTDTC", domain_name = "EC")

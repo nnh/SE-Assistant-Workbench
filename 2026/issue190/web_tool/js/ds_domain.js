@@ -376,8 +376,27 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     });
   }
 
+  // DSTERMの選択肢に"COMPLETED"を持たないalias_name(例: discon_ind)を判別する。
+  // そのブロックはCOMPLETED状態を表現できないため、対象USUBJIDについてはCOMPLETEDを書き込まず、
+  // 後段でブロックのレコード自体を除外する
+  const noCompletedAliasNames = new Set();
+  if (cdiscVariableValues && hasAliasName) {
+    const hasCompletedByAlias = {};
+    cdiscVariableValues
+      .filter((r) => r.prefix === "DS" && r.cdisc_variable === "DSTERM")
+      .forEach((r) => {
+        const code = r.code != null ? r.code : r.default_value;
+        if (!(r.alias_name in hasCompletedByAlias)) hasCompletedByAlias[r.alias_name] = false;
+        if (code === "COMPLETED") hasCompletedByAlias[r.alias_name] = true;
+      });
+    Object.keys(hasCompletedByAlias).forEach((an) => {
+      if (!hasCompletedByAlias[an]) noCompletedAliasNames.add(an);
+    });
+  }
+
   // 死亡していない被験者は、最後のレコードの約completedRateをCOMPLETEDにする。
   // 最終的にCOMPLETEDとなった被験者は、途中経過のレコードもすべてCOMPLETEDにする
+  // (選択肢に"COMPLETED"を持たないブロックは除く。そのブロックのレコードは後段で除外する)
   const aliveLastIndexByUsubjid = {};
   ds.forEach((row, i) => {
     if (diedUsubjidSet.has(row.USUBJID)) return;
@@ -390,7 +409,7 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
   const completedUsubjidSet = new Set(shuffled.slice(0, completedCount).map((i) => ds[i].USUBJID));
 
   ds.forEach((row) => {
-    if (completedUsubjidSet.has(row.USUBJID)) row.DSTERM = "COMPLETED";
+    if (completedUsubjidSet.has(row.USUBJID) && !noCompletedAliasNames.has(row.alias_name)) row.DSTERM = "COMPLETED";
   });
 
   // ここまででDEATH/COMPLETEDに確定した行を除いた「自由な」行(まだランダムな理由が入りうる行)について、
@@ -441,10 +460,17 @@ function finalizeDsDisposition(ds, deathDate, cdiscVariableValues, completedRate
     });
   }
 
+  // COMPLETEDの選択肢を持たないブロック(例: discon_ind)は、実質COMPLETEDとなった被験者について
+  // 選択肢にない値を書き込むことになるため、レコード自体を出力しない
+  let filteredDs = ds;
+  if (noCompletedAliasNames.size > 0) {
+    filteredDs = ds.filter((row) => !(completedUsubjidSet.has(row.USUBJID) && noCompletedAliasNames.has(row.alias_name)));
+  }
+
   // DEATH確定行のDSSTDTCを死亡日に合わせてクランプした影響で、populateDsDomain()側で
   // 既に確定していたDSSEQ(USUBJID・DSSTDTC・sheet_seq昇順)の並びが崩れることがあるため、
   // ここで振り直す
-  let result = sortDsForSeq(ds);
+  let result = sortDsForSeq(filteredDs);
   if (result[0] && "DSSEQ" in result[0]) {
     result = addDsSeq(result);
   }
