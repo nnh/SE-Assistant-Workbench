@@ -55,7 +55,7 @@ function extractRefField(validatorType, value) {
 // validate_date_after_or_equal_to/validate_date_before_or_equal_toで使われる形。presence/formula側の
 // ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
 // (alias_name)とフィールド名を取り出す(Rのextract_date_cross_ref_alias/extract_date_cross_ref_fieldに対応)
-const DATE_CROSS_REF_PATTERN = /^ref\('([^']+)'\s*,\s*([0-9]+)\)$/;
+const DATE_CROSS_REF_PATTERN = /^\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*$/;
 
 function extractDateCrossRefAlias(validatorType, value) {
   if (validatorType !== "date" || value == null) return null;

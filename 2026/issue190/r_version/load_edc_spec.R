@@ -89,10 +89,33 @@ load_edc_spec <- function(json_path) {
   ae_linked_domains <- ae_result[["linked"]]
   death_date <- build_death_date_table(ae)
   # DS
+  # discon/withdrawalシートのDSSTDTC(field6)はDM.RFSTDTCを参照する下限バリデータ(ref('registration',12))を
+  # 持つため、built_domains/cdisc_variable_to_prefixを渡してDM側の値を結合できるようにする
+  # (結合しないと下限が適用されず、DISCONDTCがRFSTDTCより前になり得る)
+  cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
   ds <- build_ds_domain(dm, cdisc_variable_values)
-  ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, date_ref_bounds)
+  ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, date_ref_bounds, built_domains = list(DM = dm), cdisc_variable_to_prefix = cdisc_variable_to_prefix)
   ds <- finalize_ds_disposition(ds, death_date, cdisc_variable_values)
   discontinuation_date <- build_discontinuation_date_table(ds)
+
+  # discon/withdrawalシートのDTC(中止日)はDM.RFSTDTC/RFICDTCを一切参照せずに独立生成されるため、
+  # 稀に中止日がRFSTDTC(症例登録日)より前になる、という時系列上ありえない矛盾が生じることがある
+  # (RFSTDTCを参照する他ドメイン(例: CEのCEDTC)で「中止日超過」として検出される)。
+  # DSが確定した後のこの時点で、RFSTDTC(・その前提であるべきRFICDTC)が中止日を超えている被験者だけ、
+  # 中止日以前になるよう遡って補正する
+  if (all(c("USUBJID", "RFSTDTC") %in% colnames(dm))) {
+    discon_lookup <- discontinuation_date %>% filter(!is.na(DISCONDTC)) %>% distinct(USUBJID, .keep_all = TRUE)
+    discon_map <- set_names(discon_lookup[["DISCONDTC"]], discon_lookup[["USUBJID"]])
+    discon_for_dm <- discon_map[dm[["USUBJID"]]]
+    rfstdtc_over <- !is.na(discon_for_dm) & as.Date(dm[["RFSTDTC"]]) > discon_for_dm
+    dm[["RFSTDTC"]][rfstdtc_over] <- as.character(discon_for_dm[rfstdtc_over])
+    if ("RFICDTC" %in% colnames(dm)) {
+      rficdtc_over <- as.Date(dm[["RFICDTC"]]) > as.Date(dm[["RFSTDTC"]])
+      rficdtc_over[is.na(rficdtc_over)] <- FALSE
+      dm[["RFICDTC"]][rficdtc_over] <- dm[["RFSTDTC"]][rficdtc_over]
+    }
+  }
+
   ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 
   # ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、

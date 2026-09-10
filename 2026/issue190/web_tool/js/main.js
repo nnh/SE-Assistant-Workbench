@@ -290,14 +290,45 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   generatedAe = ae;
   renderPreview(ae, "ae-preview");
 
+  // discon/withdrawalシートのDSSTDTC(field6)はDM.RFSTDTCを参照する下限バリデータ(ref('registration',12))を
+  // 持つため、builtDomains/cdiscVariableToPrefixを渡してDM側の値を結合できるようにする
+  // (結合しないと下限が適用されず、DISCONDTCがRFSTDTCより前になり得る)
+  const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
   let ds = buildDsDomain(dm, cdiscVariableValues);
-  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds);
+  ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds, {
+    builtDomains: { DM: dm },
+    cdiscVariableToPrefix,
+  });
   const deathDate = buildDeathDateTable(ae);
   ds = finalizeDsDisposition(ds, deathDate, cdiscVariableValues);
   ds = addRandomizationDsRows(ds, dm, registrationStartDate);
   // 中止日判定は、直前に追加したRANDOMIZED行(中止ではない)が混ざらないよう、
   // add_randomization_ds_rows()より後に呼び出す
   const discontinuationDate = buildDiscontinuationDateTable(ds);
+
+  // discon/withdrawalシートのDTC(中止日)はdm.RFSTDTC/RFICDTCを一切参照せずに独立生成されるため、
+  // 稀に中止日がRFSTDTC(症例登録日)より前になる、という時系列上ありえない矛盾が生じることがある
+  // (RFSTDTCを参照する他ドメイン(例: CEのCEDTC)で「中止日超過」として検出される)。
+  // ここで、RFSTDTC(・その前提であるべきRFICDTC)が中止日を超えている被験者だけ、
+  // 中止日以前になるよう遡って補正する(Rのload_edc_spec.Rの同様の対応に対応)
+  if (dm[0] && "RFSTDTC" in dm[0]) {
+    const disconByUsubjid = {};
+    discontinuationDate.forEach((r) => {
+      if (r.DISCONDTC != null && !(r.USUBJID in disconByUsubjid)) {
+        disconByUsubjid[r.USUBJID] = r.DISCONDTC;
+      }
+    });
+    const hasRficdtc = "RFICDTC" in dm[0];
+    dm.forEach((row) => {
+      const discon = disconByUsubjid[row.USUBJID];
+      if (discon != null && row.RFSTDTC > discon) {
+        row.RFSTDTC = discon;
+      }
+      if (hasRficdtc && row.RFICDTC != null && row.RFICDTC > row.RFSTDTC) {
+        row.RFICDTC = row.RFSTDTC;
+      }
+    });
+  }
 
   // DM/AE/DS以外のドメイン(CM/MH/EG等)。dsのalias_name/labelは、DDがDSの特定ブロック(例: discon)を
   // 参照する際の突き合わせキーとして使うため、ここではまだ取り除かない

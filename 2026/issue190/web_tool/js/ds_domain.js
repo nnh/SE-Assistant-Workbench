@@ -227,12 +227,22 @@ function addDsSeq(ds) {
 // presence_conditionsゲーティング・field_ref_boundsを適用し、列順を整理する
 // (Rのpopulate_ds_domain()に対応)。alias_name/label列は残したまま返す(他ドメイン生成や
 // finalize_ds_disposition()で使う想定のため、最終出力からはfinalize時に取り除く)
-function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds) {
+function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds, opts = {}) {
   // DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   // spec上のcdisc_variable名のままだと重複生成されてしまう。ここで除外する
   const dsSpec = cdiscVariableValues.filter((r) => r.prefix === "DS" && r.cdisc_variable !== "DSEPOCH");
 
   const dsDateVars = [...new Set(dsSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
+
+  // discon/withdrawalシートのfield6(DSSTDTC)は"ref('registration',12)"(DM.RFSTDTC)以降という
+  // 他ドメイン参照の下限バリデータを持つが、dateRefBoundsのref_cdisc_variable(RFSTDTC)は
+  // ds自身の行には存在しないため、これを結合しておかないとpopulateDsDateFields()で
+  // 下限が適用されないまま(=RFSTDTCより前の日付も)生成されてしまう
+  const builtDomains = opts.builtDomains || {};
+  const cdiscVariableToPrefix = opts.cdiscVariableToPrefix || {};
+  const dsDateRefBounds = (dateRefBounds || []).filter((r) => dsSpec.some((s) => s.cdisc_variable === r.cdisc_variable));
+  const dateInjected = injectCrossDomainRefs(ds, null, null, builtDomains, cdiscVariableToPrefix, null, dsDateRefBounds);
+  ds = dateInjected.data;
 
   ds = populateDsChoiceFields(ds, dsSpec, numericBounds);
   ds = populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds);
@@ -240,6 +250,11 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
   // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
   ds = reorderDatesBySheetSeq(ds, dsDateVars, dsSpec, registrationStartDate);
   ds = populateDsDummyFields(ds, dsSpec);
+  if (dateInjected.injectedCols.length > 0) {
+    ds.forEach((row) => {
+      dateInjected.injectedCols.forEach((c) => delete row[c]);
+    });
+  }
   // DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る
   ds = sortDsForSeq(ds);
   ds = addDsSeq(ds);

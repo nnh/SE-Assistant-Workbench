@@ -59,7 +59,7 @@ sort_ds_for_seq <- function(ds) {
   sorted %>% select(-any_of(c(".sort_dsstdtc", ".sort_sheet_seq")))
 }
 
-populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL) {
+populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, date_ref_bounds = NULL, built_domains = list(), cdisc_variable_to_prefix = NULL) {
   # DSEPOCHはbuild_ds_domain()側でEPOCHという列名として既に生成済みのため、
   # spec上のcdisc_variable名のままtarget_varsに残ると別列として重複生成されてしまう。ここで除外する
   ds_spec <- cdisc_variable_values %>% filter(prefix == "DS", cdisc_variable != "DSEPOCH")
@@ -67,13 +67,22 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
 
   ds_date_vars <- ds_spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique()
 
+  # discon/withdrawalシートのfield6(DSSTDTC)は"ref('registration',12)"(DM.RFSTDTC)以降という
+  # 他ドメイン参照の下限バリデータを持つが、date_ref_boundsのref_cdisc_variable(RFSTDTC)は
+  # このds自身の列には存在しないため、これを結合しておかないとpopulate_date_fields()で
+  # 下限が適用されないまま(=RFSTDTCより前の日付も)生成されてしまう
+  ds_date_ref_bounds <- if (!is.null(date_ref_bounds)) date_ref_bounds %>% filter(cdisc_variable %in% ds_spec[["cdisc_variable"]]) else NULL
+  date_injected <- inject_cross_domain_refs(ds, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, ds_date_ref_bounds)
+  ds <- date_injected[["data"]]
+
   ds <- ds %>%
     populate_radio_button_fields(ds_spec, target_vars, numeric_bounds) %>%
     populate_date_fields(ds_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     # DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
     # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
     reorder_dates_by_sheet_seq(ds_date_vars, ds_spec, registration_start_date) %>%
-    populate_dummy_fields(target_vars)
+    populate_dummy_fields(target_vars) %>%
+    select(-any_of(date_injected[["injected_cols"]]))
 
   # DSSEQはUSUBJID・DSSTDTC・sheet_seq(シートの本来の並び順)の昇順で振る
   ds <- ds %>% sort_ds_for_seq() %>% add_seq("DSSEQ")

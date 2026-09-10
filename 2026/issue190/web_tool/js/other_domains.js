@@ -393,6 +393,63 @@ function populateGenericChoiceFields(data, spec, numericBounds) {
 // 値を入れる(Rのpopulate_date_fields()のhas_alias_name==TRUEの分岐に対応)。
 // dateRefBoundsが渡された場合、validate_date_after_or_equal_to/validate_date_before_or_equal_to
 // (他フィールド参照)による下限/上限(参照先フィールドの値、同じ行)を一律の範囲より優先する
+// dateRefBounds(cdisc_variable, alias_name, label, ref_cdisc_variable, ref_alias_name, ref_label,
+// bound_type)のうちvarName/boundTypeValに該当する行から、dataの各行に対応する参照先の値の配列を返す
+// (該当行が無ければnull)。
+// 通常のケース(参照先が別のcdisc_variable。同じ行(同じUSUBJID・同じブロック)から直接参照できる、
+// 例: ECENDTC>=ECSTDTC)は、単純にrow[refVar]を使う。
+// 参照先がvarName自身(同じcdisc_variable名を、別のalias_nameが参照している。例: inductionのSVSTDTCが
+// prephaseのSVSTDTCを参照する、ref('prephase', 825)のようなケース)の場合は、単純な同じ行からの参照が
+// できない(自分自身を参照することになってしまう)ため、USUBJID単位で参照先ブロック(refAlias/refLabel)の
+// 値を引く。
+// 同じvarNameに対して複数の行(alias_nameごとに異なる参照先を持つ)がある場合は、それぞれ自分の
+// alias_nameの行だけに適用し、boundTypeValに応じて(min_dateは大きい方、max_dateは小さい方を)組み合わせる
+// (Rのresolve_date_ref_bound_vals()に対応)
+function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal) {
+  const hasAliasName = !!data[0] && "alias_name" in data[0];
+  const hasLabel = hasAliasName && "label" in data[0];
+  const boundRows = (dateRefBounds || []).filter(
+    (r) => r.cdisc_variable === varName && r.bound_type === boundTypeVal && data[0] && r.ref_cdisc_variable in data[0]
+  );
+  if (boundRows.length === 0) return null;
+
+  const result = new Array(data.length).fill(null);
+  boundRows.forEach((br) => {
+    const refVar = br.ref_cdisc_variable;
+    const ownAlias = br.alias_name != null ? br.alias_name : null;
+    const refAlias = br.ref_alias_name != null ? br.ref_alias_name : null;
+    const refLabel = br.ref_label != null ? br.ref_label : null;
+    const isCrossAliasSelfRef = refVar === varName && hasAliasName && ownAlias != null && refAlias != null && ownAlias !== refAlias;
+
+    let values;
+    if (isCrossAliasSelfRef) {
+      const refMap = {};
+      data.forEach((row) => {
+        if (row.alias_name === refAlias && (refLabel == null || !hasLabel || row.label === refLabel)) {
+          if (!(row.USUBJID in refMap)) refMap[row.USUBJID] = row[refVar];
+        }
+      });
+      values = data.map((row) => (row.USUBJID in refMap ? refMap[row.USUBJID] : null));
+    } else {
+      values = data.map((row) => row[refVar]);
+    }
+
+    data.forEach((row, i) => {
+      if (hasAliasName && ownAlias != null && row.alias_name !== ownAlias) return;
+      const v = values[i];
+      if (v == null) return;
+      if (result[i] == null) {
+        result[i] = v;
+      } else if (boundTypeVal === "min_date") {
+        if (v > result[i]) result[i] = v;
+      } else if (v < result[i]) {
+        result[i] = v;
+      }
+    });
+  });
+  return result.every((v) => v == null) ? null : result;
+}
+
 function populateGenericDateFields(data, spec, registrationStartDate, dateRefBounds) {
   const existingColumns = new Set(Object.keys(data[0] || {}));
   let dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
@@ -403,21 +460,21 @@ function populateGenericDateFields(data, spec, registrationStartDate, dateRefBou
 
   dateVars.forEach((varName) => {
     const dateAliasNames = new Set(spec.filter((r) => r.field_type === "date" && r.cdisc_variable === varName).map((r) => r.alias_name));
-    const minRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "min_date");
-    const maxRow = (dateRefBounds || []).find((r) => r.cdisc_variable === varName && r.bound_type === "max_date");
-    data.forEach((row) => {
+    const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date");
+    const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date");
+    data.forEach((row, i) => {
       if (!dateAliasNames.has(row.alias_name)) {
         row[varName] = null;
         return;
       }
       let lower = registrationStartDate;
-      if (minRow != null && row[minRow.ref_cdisc_variable] != null) {
-        const refVal = row[minRow.ref_cdisc_variable];
+      if (minRefVals != null && minRefVals[i] != null) {
+        const refVal = minRefVals[i];
         if (new Date(refVal).getTime() > new Date(lower).getTime()) lower = refVal;
       }
       let upper = today;
-      if (maxRow != null && row[maxRow.ref_cdisc_variable] != null) {
-        const refVal = row[maxRow.ref_cdisc_variable];
+      if (maxRefVals != null && maxRefVals[i] != null) {
+        const refVal = maxRefVals[i];
         if (new Date(refVal).getTime() < new Date(upper).getTime()) upper = refVal;
       }
       if (new Date(upper).getTime() < new Date(lower).getTime()) upper = lower;
@@ -588,30 +645,81 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
     }
   });
 
-  targetVars.forEach((varName) => {
-    const minRow = (dateRefBounds || []).find(
-      (r) => r.cdisc_variable === varName && r.bound_type === "min_date" && r.ref_cdisc_variable in data[0]
-    );
-    const maxRow = (dateRefBounds || []).find(
-      (r) => r.cdisc_variable === varName && r.bound_type === "max_date" && r.ref_cdisc_variable in data[0]
-    );
-    data.forEach((row) => {
-      const discon = disconByUsubjid[row.USUBJID];
-      const current = row[varName];
-      if (current == null) return;
-      const disconOver = discon != null && current > discon;
-      const minVal = minRow != null ? row[minRow.ref_cdisc_variable] : null;
-      const maxVal = maxRow != null ? row[maxRow.ref_cdisc_variable] : null;
-      const refViolation = (minVal != null && current < minVal) || (maxVal != null && current > maxVal);
-      if (!disconOver && !refViolation) return;
+  const hasAliasName = "alias_name" in data[0];
 
-      let lower = registrationStartDate;
-      if (minVal != null && minVal > lower) lower = minVal;
-      let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
-      if (maxVal != null && maxVal < upper) upper = maxVal;
-      if (upper < lower) upper = lower;
-      row[varName] = randomDateBetween(lower, upper);
-    });
+  targetVars.forEach((varName) => {
+    // targetRowsについて、discon超過・参照関係違反(min/max_ref。参照先の値はdataの"現在の"状態から
+    // 都度計算するため、先に確定した値を反映できる)を判定し、該当行だけ新しい日付を再生成する
+    const clampRows = (targetRows) => {
+      if (!targetRows.some((v) => v)) return;
+      const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date");
+      const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date");
+      data.forEach((row, i) => {
+        if (!targetRows[i]) return;
+        const discon = disconByUsubjid[row.USUBJID];
+        const current = row[varName];
+        if (current == null) return;
+        const disconOver = discon != null && current > discon;
+        const minVal = minRefVals != null ? minRefVals[i] : null;
+        const maxVal = maxRefVals != null ? maxRefVals[i] : null;
+        const refViolation = (minVal != null && current < minVal) || (maxVal != null && current > maxVal);
+        if (!disconOver && !refViolation) return;
+
+        let lower = registrationStartDate;
+        if (minVal != null && minVal > lower) lower = minVal;
+        let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
+        if (maxVal != null && maxVal < upper) upper = maxVal;
+        if (upper < lower) upper = lower;
+        row[varName] = randomDateBetween(lower, upper);
+      });
+    };
+
+    // 同じcdisc_variable名を、別のalias_nameが参照している場合(例: inductionのSVSTDTCがprephaseの
+    // SVSTDTCを参照する)、参照先(prephase)を先に確定させてから参照元(induction)を判定しないと、
+    // 同じ呼び出しの中で参照先だけが後から再生成されて関係が崩れてしまう。そのため、そのような
+    // alias_name間の依存がある場合だけ、依存関係順(参照されている側が先)にalias_nameごとに処理する。
+    // 依存が無ければ従来通り全行まとめて処理する
+    const selfRefEdges = hasAliasName
+      ? (dateRefBounds || [])
+          .filter(
+            (r) =>
+              r.cdisc_variable === varName &&
+              r.ref_cdisc_variable === varName &&
+              r.alias_name != null &&
+              r.ref_alias_name != null &&
+              r.alias_name !== r.ref_alias_name
+          )
+          .reduce((acc, r) => {
+            if (!acc.some((e) => e.aliasName === r.alias_name && e.refAliasName === r.ref_alias_name)) {
+              acc.push({ aliasName: r.alias_name, refAliasName: r.ref_alias_name });
+            }
+            return acc;
+          }, [])
+      : [];
+
+    if (selfRefEdges.length === 0) {
+      clampRows(data.map(() => true));
+    } else {
+      const allAliases = [...new Set(data.map((row) => row.alias_name))];
+      const orderedAliases = [];
+      let remaining = allAliases;
+      while (remaining.length > 0) {
+        const remainingSet = new Set(remaining);
+        const unresolved = new Set(
+          selfRefEdges.filter((e) => remainingSet.has(e.refAliasName)).map((e) => e.aliasName)
+        );
+        const ready = remaining.filter((a) => !unresolved.has(a));
+        if (ready.length === 0) {
+          orderedAliases.push(...remaining);
+          break;
+        }
+        orderedAliases.push(...ready);
+        remaining = remaining.filter((a) => unresolved.has(a));
+      }
+      orderedAliases.forEach((alias) => {
+        clampRows(data.map((row) => row.alias_name === alias));
+      });
+    }
   });
   return data;
 }

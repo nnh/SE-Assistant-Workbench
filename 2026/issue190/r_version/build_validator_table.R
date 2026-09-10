@@ -71,7 +71,9 @@ extract_ref_field <- function(validator_type, value) {
 # validate_date_after_or_equal_to/validate_date_before_or_equal_toで使われる形。presence/formula側の
 # ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
 # (alias_name)とフィールド名を取り出す
-date_cross_ref_pattern <- "^ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)$"
+# EDC仕様側の値に"ref('registration',12) "のような末尾スペースが付与されていることがあるため、
+# 前後の空白を許容する(付けないと完全一致に失敗し、この参照が無かったものとして扱われてしまう)
+date_cross_ref_pattern <- "^\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*$"
 
 extract_date_cross_ref_alias <- function(validator_type, value) {
   m <- str_match(value, date_cross_ref_pattern)

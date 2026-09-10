@@ -294,6 +294,22 @@ function populateDmDomain(
     });
   });
 
+  // RFSTDTC(症例登録日)は、上記の独立生成のままだとRFICDTC(同意取得日)や実際の無作為化
+  // (DS RANDOMIZED)と無関係な日付になり、稀にRFSTDTCが被験者の中止日より後になるという時系列上の
+  // 矛盾が生じる(discon以降の日付を禁止する他ドメインのチェックで検出される)。
+  // addRandomizationDsRows()のRANDOMIZEDレコードと同じ考え方で、RFICDTCがあればその数日以内、
+  // 無ければ登録開始日から数日以内にすることで、無作為化のタイミングと整合させる
+  if ("RFSTDTC" in (dm[0] || {})) {
+    const hasRficdtc = "RFICDTC" in (dm[0] || {});
+    const maxOffset = hasRficdtc ? 3 : 7;
+    const todayDays = daysFromEpoch(today);
+    dm.forEach((row) => {
+      const baseDateStr = hasRficdtc && row.RFICDTC ? row.RFICDTC : registrationStartDate;
+      const offset = Math.floor(rng() * (maxOffset + 1));
+      row.RFSTDTC = dateFromDays(Math.min(daysFromEpoch(baseDateStr) + offset, todayDays));
+    });
+  }
+
   // 上記(radio_button/check_box/date)のいずれでも埋まらなかった対象変数(meddra/drug型等)は、
   // とりあえずDUMMY値を入れる(Rのpopulate_dummy_fields()に対応)
   const targetVars = [...new Set(dmSpec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));

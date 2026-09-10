@@ -134,6 +134,58 @@ populate_radio_button_fields <- function(data, spec, target_vars, numeric_bounds
   data
 }
 
+# date_ref_bounds(cdisc_variable, alias_name, label, ref_cdisc_variable, ref_alias_name, ref_label,
+# bound_type)のうち、var_name/bound_typeに該当する行から、dataの各行に対応する参照先の値(Date)の
+# ベクトルを返す(該当行が無ければNULL)。
+# 通常のケース(参照先が別のcdisc_variable。同じ行(同じUSUBJID・同じブロック)から直接参照できる、
+# 例: ECENDTC>=ECSTDTC)は、単純にdata[[ref_var]]を使う。
+# 参照先がvar_name自身(同じcdisc_variable名を、別のalias_name/labelが参照している。例:
+# inductionのSVSTDTCがprephaseのSVSTDTCを参照する、ref('prephase', 825)のようなケース)の場合は、
+# 単純な同じ行からの参照ができない(自分自身を参照することになってしまう)ため、USUBJID単位で
+# 参照先ブロック(ref_alias_name/ref_label)の値を引く。
+# 同じvar_nameに対して複数の行(alias_nameごとに異なる参照先を持つ)がある場合は、それぞれ自分の
+# alias_nameの行だけに適用し、bound_typeに応じて(min_dateはpmax、max_dateはpmin)組み合わせる
+resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_type_val) {
+  bound_rows <- date_ref_bounds %>%
+    filter(cdisc_variable == var_name, bound_type == bound_type_val, ref_cdisc_variable %in% colnames(data))
+  if (nrow(bound_rows) == 0) {
+    return(NULL)
+  }
+  has_alias_name <- "alias_name" %in% colnames(data)
+  has_label <- has_alias_name && "label" %in% colnames(data)
+  combine <- if (bound_type_val == "min_date") pmax else pmin
+
+  result <- rep(as.Date(NA), nrow(data))
+  for (i in seq_len(nrow(bound_rows))) {
+    # unname(): 一部の行で"names"属性付きの文字列が紛れ込むことがあり(joinの経路によって発生)、
+    # identical()がnames属性の違いだけでFALSEになってしまう(値としては同じでも別物と判定される)
+    # のを防ぐため、比較・キーとして使う前に必ず名前を落とす
+    ref_var <- unname(bound_rows[["ref_cdisc_variable"]][i])
+    own_alias <- if ("alias_name" %in% colnames(bound_rows)) unname(bound_rows[["alias_name"]][i]) else NA_character_
+    ref_alias <- if ("ref_alias_name" %in% colnames(bound_rows)) unname(bound_rows[["ref_alias_name"]][i]) else NA_character_
+    ref_label_i <- if ("ref_label" %in% colnames(bound_rows)) unname(bound_rows[["ref_label"]][i]) else NA_character_
+    is_cross_alias_self_ref <- identical(ref_var, var_name) && has_alias_name &&
+      !is.na(own_alias) && !is.na(ref_alias) && !identical(own_alias, ref_alias)
+
+    target_rows <- if (has_alias_name && !is.na(own_alias)) data[["alias_name"]] == own_alias else rep(TRUE, nrow(data))
+    if (!any(target_rows)) next
+
+    values <- if (is_cross_alias_self_ref) {
+      ref_target_rows <- if (has_label && !is.na(ref_label_i)) {
+        data[["alias_name"]] == ref_alias & data[["label"]] == ref_label_i
+      } else {
+        data[["alias_name"]] == ref_alias
+      }
+      ref_map <- set_names(as.Date(as.character(data[[ref_var]][ref_target_rows])), data[["USUBJID"]][ref_target_rows])
+      unname(ref_map[data[["USUBJID"]]])
+    } else {
+      as.Date(as.character(data[[ref_var]]))
+    }
+    result[target_rows] <- combine(result[target_rows], values[target_rows], na.rm = TRUE)
+  }
+  if (all(is.na(result))) NULL else result
+}
+
 # date: registration_start_date〜今日の間でランダムな日付を生成。
 # dataにalias_name列がある場合(build_generic_domainなど)は、同じcdisc_variableでも
 # 定義しているalias_nameが違えば日付を入れず、そのcdisc_variableを実際に定義しているalias_nameの
@@ -185,27 +237,21 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
     var_start_bound <- start_bound
     var_end_bound <- Sys.Date()
     if (!is.null(date_ref_bounds)) {
-      min_ref <- date_ref_bounds %>%
-        filter(cdisc_variable == var_name, bound_type == "min_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
-      if (length(min_ref) > 0) {
+      min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date")
+      if (!is.null(min_ref_vals)) {
         default_lower <- if (is.character(start_bound) && length(start_bound) == 1 && start_bound %in% colnames(data)) {
           as.Date(data[[start_bound]])
         } else {
           as.Date(start_bound)
         }
         lower_col <- str_c("__date_lower_bound__", var_name)
-        data[[lower_col]] <- as.character(pmax(default_lower, as.Date(data[[min_ref[1]]]), na.rm = TRUE))
+        data[[lower_col]] <- as.character(pmax(default_lower, min_ref_vals, na.rm = TRUE))
         var_start_bound <- lower_col
       }
-      max_ref <- date_ref_bounds %>%
-        filter(cdisc_variable == var_name, bound_type == "max_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
-      if (length(max_ref) > 0) {
+      max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date")
+      if (!is.null(max_ref_vals)) {
         upper_col <- str_c("__date_upper_bound__", var_name)
-        data[[upper_col]] <- as.character(pmin(Sys.Date(), as.Date(data[[max_ref[1]]]), na.rm = TRUE))
+        data[[upper_col]] <- as.character(pmin(Sys.Date(), max_ref_vals, na.rm = TRUE))
         var_end_bound <- upper_col
       }
     }
@@ -1223,55 +1269,93 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
     ordered_date_vars <- sorted_date_vars
   }
 
+  has_alias_name <- "alias_name" %in% colnames(data)
+
   for (var_name in ordered_date_vars) {
-    current <- as.Date(as.character(data[[var_name]]))
-    discon <- discon_lookup[data[["USUBJID"]]]
-
-    min_ref_vals <- NULL
-    max_ref_vals <- NULL
-    if (!is.null(date_ref_bounds)) {
-      min_ref <- date_ref_bounds %>%
-        filter(cdisc_variable == var_name, bound_type == "min_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
-      if (length(min_ref) > 0) {
-        min_ref_vals <- as.Date(as.character(data[[min_ref[1]]]))
+    # target_rows(このvar_nameを持つ行のうち、今回の対象)について、discon超過・参照関係違反
+    # (min/max_ref。参照先の値はdataの"現在の"状態から都度計算するため、先に確定した値を反映できる)を
+    # 判定し、該当行だけ新しい日付を再生成してdataに書き戻す
+    clamp_rows <- function(data, target_rows) {
+      if (!any(target_rows)) {
+        return(data)
       }
-      max_ref <- date_ref_bounds %>%
-        filter(cdisc_variable == var_name, bound_type == "max_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
-      if (length(max_ref) > 0) {
-        max_ref_vals <- as.Date(as.character(data[[max_ref[1]]]))
+      current <- as.Date(as.character(data[[var_name]]))
+      discon <- discon_lookup[data[["USUBJID"]]]
+
+      min_ref_vals <- NULL
+      max_ref_vals <- NULL
+      if (!is.null(date_ref_bounds)) {
+        min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date")
+        max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date")
+      }
+
+      # discon超過に加えて、同一行内の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が
+      # 崩れている行も再サンプル対象にする。参照先の値が先の反復で更新されている可能性があるため。
+      discon_over <- !is.na(current) & !is.na(discon) & current > discon
+      ref_violation <- rep(FALSE, length(current))
+      if (!is.null(min_ref_vals)) {
+        ref_violation <- ref_violation | (!is.na(current) & !is.na(min_ref_vals) & current < min_ref_vals)
+      }
+      if (!is.null(max_ref_vals)) {
+        ref_violation <- ref_violation | (!is.na(current) & !is.na(max_ref_vals) & current > max_ref_vals)
+      }
+      over <- target_rows & (discon_over | ref_violation)
+      if (!any(over)) {
+        return(data)
+      }
+
+      lower <- rep(reg_start, sum(over))
+      # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
+      discon_over_vals <- discon[over]
+      upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(current[over]), as.character(pmax(discon_over_vals, reg_start))))
+      if (!is.null(min_ref_vals)) {
+        lower <- pmax(lower, min_ref_vals[over], na.rm = TRUE)
+      }
+      if (!is.null(max_ref_vals)) {
+        upper <- pmin(upper, max_ref_vals[over], na.rm = TRUE)
+      }
+      upper <- pmax(upper, lower)
+      new_dates <- lower + floor(runif(sum(over), 0, as.numeric(upper - lower) + 1))
+      data[[var_name]][over] <- as.character(new_dates)
+      data
+    }
+
+    # 同じcdisc_variable名を、別のalias_nameが参照している場合(例: inductionのSVSTDTCが
+    # prephaseのSVSTDTCを参照する)、参照先(prephase)を先に確定させてから参照元(induction)を
+    # 判定しないと、同じ呼び出しの中で参照先だけが後から再生成されて関係が崩れてしまう。
+    # そのため、そのようなalias_name間の依存がある場合だけ、依存関係順(参照されている側が先)に
+    # alias_nameごとに処理する。依存が無ければ従来通り全行まとめて処理する
+    self_ref_edges <- if (!is.null(date_ref_bounds) && has_alias_name) {
+      date_ref_bounds %>%
+        filter(
+          cdisc_variable == var_name, ref_cdisc_variable == var_name,
+          !is.na(alias_name), !is.na(ref_alias_name), alias_name != ref_alias_name
+        ) %>%
+        distinct(alias_name, ref_alias_name)
+    } else {
+      tibble(alias_name = character(0), ref_alias_name = character(0))
+    }
+
+    if (nrow(self_ref_edges) == 0) {
+      data <- clamp_rows(data, rep(TRUE, nrow(data)))
+    } else {
+      all_aliases <- unique(data[["alias_name"]])
+      ordered_aliases <- character(0)
+      remaining <- all_aliases
+      while (length(remaining) > 0) {
+        unresolved <- self_ref_edges %>% filter(ref_alias_name %in% remaining) %>% pull(alias_name) %>% unique()
+        ready <- setdiff(remaining, unresolved)
+        if (length(ready) == 0) {
+          ordered_aliases <- c(ordered_aliases, remaining)
+          break
+        }
+        ordered_aliases <- c(ordered_aliases, ready)
+        remaining <- setdiff(remaining, ready)
+      }
+      for (alias in ordered_aliases) {
+        data <- clamp_rows(data, data[["alias_name"]] == alias)
       }
     }
-
-    # discon超過に加えて、同一行内の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が
-    # 崩れている行も再サンプル対象にする。参照先の値が先の反復で更新されている可能性があるため。
-    discon_over <- !is.na(current) & !is.na(discon) & current > discon
-    ref_violation <- rep(FALSE, length(current))
-    if (!is.null(min_ref_vals)) {
-      ref_violation <- ref_violation | (!is.na(current) & !is.na(min_ref_vals) & current < min_ref_vals)
-    }
-    if (!is.null(max_ref_vals)) {
-      ref_violation <- ref_violation | (!is.na(current) & !is.na(max_ref_vals) & current > max_ref_vals)
-    }
-    over <- discon_over | ref_violation
-    if (!any(over)) next
-
-    lower <- rep(reg_start, sum(over))
-    # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
-    discon_over_vals <- discon[over]
-    upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(current[over]), as.character(pmax(discon_over_vals, reg_start))))
-    if (!is.null(min_ref_vals)) {
-      lower <- pmax(lower, min_ref_vals[over], na.rm = TRUE)
-    }
-    if (!is.null(max_ref_vals)) {
-      upper <- pmin(upper, max_ref_vals[over], na.rm = TRUE)
-    }
-    upper <- pmax(upper, lower)
-    new_dates <- lower + floor(runif(sum(over), 0, as.numeric(upper - lower) + 1))
-    data[[var_name]][over] <- as.character(new_dates)
   }
   data
 }

@@ -144,6 +144,23 @@ populate_dm_domain <- function(dm, cdisc_variable_values, registration_start_dat
     populate_date_fields(dm_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     populate_dummy_fields(target_vars)
 
+  # RFSTDTC(症例登録日)は、populate_date_fields()による独立生成のままだとRFICDTC(同意取得日)や
+  # 実際の無作為化(DS RANDOMIZED)と無関係な日付になり、稀にRFSTDTCが被験者の中止日より後になる
+  # という時系列上の矛盾が生じる(discon以降の日付を禁止する他ドメインのチェックで検出される)。
+  # add_randomization_ds_rows()のRANDOMIZEDレコードと同じ考え方で、RFICDTCがあればその数日以内、
+  # 無ければ登録開始日から数日以内にすることで、無作為化のタイミングと整合させる
+  if ("RFSTDTC" %in% colnames(dm)) {
+    if ("RFICDTC" %in% colnames(dm)) {
+      base_date <- as.Date(dm[["RFICDTC"]])
+      base_date[is.na(base_date)] <- as.Date(registration_start_date)
+      offset <- sample(0:3, nrow(dm), replace = TRUE)
+    } else {
+      base_date <- as.Date(registration_start_date)
+      offset <- sample(0:7, nrow(dm), replace = TRUE)
+    }
+    dm[["RFSTDTC"]] <- as(pmin(base_date + offset, Sys.Date()), class(dm[["RFSTDTC"]]))
+  }
+
   meddra_vars <- compute_meddra_vars(dm_spec, target_vars)
   if (length(meddra_vars) > 0) {
     meddra_sample <- sample_meddra_rows(meddra, nrow(dm))
