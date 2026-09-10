@@ -189,221 +189,30 @@ ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
-# FA: FATESTCDごとの個別チェック(test3用)。指定visitnum・faobj・falocのレコードに絞り込み、FATEST
-# (+has_blflならFABLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを確認する
-# (FAOBJ/FALOCはfilter条件として使うため、チェック対象には含めない)。
-# has_not_done_split=TRUEの場合、FASTAT=="NOT DONE"で分岐し、FAORRESの要否(NOT DONEなら空欄、
-# それ以外なら必須)を確認する。has_orres_in_targetならFAORRESもsuffix付き列名にリネームして
-# 固定値チェック対象に含める(NOT DONE行を含む全行が対象のときのみ使える)。
-# has_not_done_split=TRUEでFAORRESにも固定値があるときは、check_orres_value_when_done=TRUEを
-# 指定するとDONE行に絞ったうえでFAORRESの固定値チェックも行う(LBのcheck_lb_testcd_at_visit()に対応)
-check_fa_testcd_at_visit <- function(fa, fatestcd, faobj, faloc, visitnum, suffix, fixed_value_checks_csv_path,
-                                      has_blfl = TRUE, has_not_done_split = FALSE,
-                                      has_orres_in_target = FALSE, check_orres_value_when_done = FALSE) {
-  fa_target_cols <- c("FATEST", "VISITNUM")
-  if (has_blfl) fa_target_cols <- c(fa_target_cols, "FABLFL")
-  if (has_orres_in_target) fa_target_cols <- c(fa_target_cols, "FAORRES")
+# FA(Findings About)関連チェックはtools/validate_datasets_test3_fa.Rに切り出してある
+source(here("tools/validate_datasets_test3_fa.R"))
 
-  tmp_fa <- fa %>% filter(FATESTCD == fatestcd & FAOBJ == faobj & FALOC == faloc & VISITNUM == visitnum)
-  tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(fa_target_cols))
-  str_c(fa_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
-
-  orres_col <- if (has_orres_in_target) str_c("FAORRES", suffix) else "FAORRES"
-
-  if (has_not_done_split) {
-    tmp_fa_done <- tmp_fa %>% filter(FASTAT != "NOT DONE")
-    tmp_fa_not_done <- tmp_fa %>% filter(FASTAT == "NOT DONE")
-    orres_col %>% check_required_vars(tmp_fa_done, ., domain_name = "FA")
-    orres_col %>% check_blank_vars(tmp_fa_not_done, ., domain_name = "FA")
-    if (check_orres_value_when_done) {
-      tmp_fa_done <- tmp_fa_done %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
-      str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_done, "FA", .x, fixed_value_checks_csv_path))
-    }
-  } else {
-    orres_col %>% check_required_vars(tmp_fa, ., domain_name = "FA")
-  }
-}
-
-# FA: check_fa_testcd_at_visit()と同内容だが、FALOC(部位)を持たないFATESTCD向けにfaloc引数・
-# filter条件を除き、さらにVISITNUM引数・filter条件・チェックも除いたバージョン
-check_fa_testcd_no_loc <- function(fa, fatestcd, faobj, suffix, fixed_value_checks_csv_path,
-                                             has_blfl = TRUE, has_not_done_split = FALSE,
-                                             has_orres_in_target = FALSE, check_orres_value_when_done = FALSE) {
-  fa_target_cols <- c("FATEST", "FACAT")
-  if (has_blfl) fa_target_cols <- c(fa_target_cols, "FABLFL")
-  if (has_orres_in_target) fa_target_cols <- c(fa_target_cols, "FAORRES")
-
-  tmp_fa <- fa %>% filter(FATESTCD == fatestcd & FAOBJ == faobj)
-  tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(fa_target_cols))
-  str_c(fa_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
-
-  orres_col <- if (has_orres_in_target) str_c("FAORRES", suffix) else "FAORRES"
-
-  if (has_not_done_split) {
-    tmp_fa_done <- tmp_fa %>% filter(FASTAT != "NOT DONE")
-    tmp_fa_not_done <- tmp_fa %>% filter(FASTAT == "NOT DONE")
-    orres_col %>% check_required_vars(tmp_fa_done, ., domain_name = "FA")
-    orres_col %>% check_blank_vars(tmp_fa_not_done, ., domain_name = "FA")
-    if (check_orres_value_when_done) {
-      tmp_fa_done <- tmp_fa_done %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
-      str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_done, "FA", .x, fixed_value_checks_csv_path))
-    }
-  } else {
-    orres_col %>% check_required_vars(tmp_fa, ., domain_name = "FA")
-  }
-}
-
-fa <- fa %>% inner_join(dm %>% select(USUBJID, BRTHDTC, SEX), by="USUBJID")
-fa %>% check_date_after_var_before_today("FADTC", "BRTHDTC", domain_name = "FA")
-
-check_fa_testcd_at_visit(fa,
-                         "STATUS", "Tumor Involvement", "CENTRAL NERVOUS SYSTEM",
-                         100, "_1",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
-
-# 女性被験者はTESTIS(精巣)自体が無いため、FASTATは全て"NOT DONE"・FAORRESは全て空欄であることを確認する
-# (USUBJID列はcheck_value_equals/check_blank_varsのエラー表示に必要なので、selectで落とさない)
-tmp_fa_f <- fa %>% filter(SEX == "F" & FALOC=="TESTIS")
-tmp_fa_f %>% check_value_equals("FASTAT", "NOT DONE", domain_name = "FA")
-tmp_fa_f %>% check_blank_vars("FAORRES", domain_name = "FA")
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "TESTIS",
-                         100, "_2",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Enlargement", "MEDIASTINUM",
-                         100, "_3",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "SKIN",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "BONE",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "LIVER",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "SPLEEN",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "LYMPH NODE",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-check_fa_testcd_at_visit(fa,
-                         "OCCUR", "Tumor Involvement", "KIDNEY",
-                         100, "_4",
-                         fixed_value_checks_csv_path,
-                         has_not_done_split = FALSE, check_orres_value_when_done = TRUE)
-
-tmp_fa <- fa %>% filter(FASPID == "prephase" & VISITNUM == 150)
-"Anemia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Disseminated intravascular coagulation" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Febrile Neutropenia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Heart failure" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Myocardial infarction" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Tachycardia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Bradycardia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Glaucoma" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Ascites" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Constipation" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Diarrhea" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Ileus" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Mucositis oral" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Nausea" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Pancreatitis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Vomiting" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Fever" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Multi-organ failure" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Portal vein thrombosis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Allergic reaction" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Anaphylaxis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Cytokine release syndrome" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Catheter related infection" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Fungemia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_10", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Lung infection" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Meningitis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Sepsis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Thrush" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Urinary tract infection" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Infusion related reaction" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Alanine aminotransferase increased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Aspartate aminotransferase increased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Blood bilirubin increased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Cholesterol high" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Creatinine increased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Fibrinogen decreased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Lymphocyte count decreased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Neutrophil count decreased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Platelet count decreased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Serum amylase increased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"White blood cell decreased" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hyperglycemia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hypertriglyceridemia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Tumor lysis syndrome" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Osteonecrosis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Depressed level of consciousness" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Dizziness" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Dysphasia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Headache" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Intracranial hemorrhage" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Leukoencephalopathy" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Paresthesia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Peripheral motor neuropathy" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Peripheral sensory neuropathy" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Reversible posterior leukoencephalopathy syndrome" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Seizure" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Stroke" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Tremor" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Agitation" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Confusion" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Delirium" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Depression" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hallucinations" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Insomnia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Restlessness" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Suicidal ideation" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_8", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Acute kidney injury" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Adult respiratory distress syndrome" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Dyspnea" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hypoxia" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Bullous dermatitis" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Erythroderma" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_6", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Rash maculo-papular" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_9", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Arterial thromboembolism" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_7", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Capillary leak syndrome" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hypertension" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Hypotension" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-"Thromboembolic event" %>% check_fa_testcd_no_loc(tmp_fa, "GRADE", ., "_5", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-# OCCUR/Tumor InvolvementのうちFALOCが固定サイトでないブロック(label 020/026/027/028/029、
-# field212等)は、FALOCが800件以上の選択肢から自由に選ばれる「その他部位」枠が5つ繰り返されたもの。
-# 生成後のCSVではalias_name/labelが残らずこの5ブロックを個別に区別できないため、まとめて集約検証する。
-# FALOCの値そのもの(選択肢通りであること)はpopulate_radio_button_fields()側の仕組みで構造的に
-# 保証されるため確認せず、FAORRES=='Y'のときだけFALOCが埋まっている(presence)ことだけを確認する
-fa_fixed_locs <- c("CENTRAL NERVOUS SYSTEM", "TESTIS", "SKIN", "LIVER", "SPLEEN", "LYMPH NODE", "KIDNEY", "BONE")
-tmp_fa_other <- fa %>% filter(FATESTCD == "OCCUR" & FAOBJ == "Tumor Involvement" & VISITNUM == "100" & !(FALOC %in% fa_fixed_locs))
-tmp_fa_other %>% filter(FAORRES == "Y") %>% check_required_vars("FALOC", domain_name = "FA")
-tmp_fa_other %>% filter(FAORRES != "Y") %>% check_blank_vars("FALOC", domain_name = "FA")
+# GRADE(重症度)評価パネル(79項目)は、prephase以降の治療フェーズ系18シートで共通して使われている
+# (各シートのVISITNUMは互いに異なる)。シートごとにVISITNUMを指定し、check_fa_grade_panel()で
+# 1シートずつ実行する(どのシートでワーニングが出ているか特定しやすいよう、pwalkでまとめず個別に呼ぶ)
+check_fa_grade_panel("prephase", "150")
+check_fa_grade_panel("induction", "200")
+check_fa_grade_panel("earlyintensifi", "300")
+check_fa_grade_panel("hdm", "400")
+check_fa_grade_panel("hdm2", "400")
+check_fa_grade_panel("hdm5", "400")
+check_fa_grade_panel("hr1fisrt", "1200")
+check_fa_grade_panel("hr2fisrt", "1100")
+check_fa_grade_panel("hr3fisrt", "400")
+check_fa_grade_panel("hr1second", "1600")
+check_fa_grade_panel("hr2second", "1500")
+check_fa_grade_panel("hr3second", "1400")
+check_fa_grade_panel("blin1", "900")
+check_fa_grade_panel("blin2", "1000")
+check_fa_grade_panel("blin3", "1700")
+check_fa_grade_panel("reinduction1", "1900")
+check_fa_grade_panel("reinduction2", "2000")
+check_fa_grade_panel("reinduction3", "2100")
 
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と
