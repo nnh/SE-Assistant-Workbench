@@ -76,6 +76,8 @@ dm %>% check_date_before_today(c("RFSTDTC"), domain_name = "DM")
 dm %>% check_date_after_var_before_today("RFICDTC", "BRTHDTC", domain_name = "DM")
 c("SEX", "RACE", "ETHNIC", "COUNTRY") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
 
+# EC
+
 # FA: FATESTCDごとの個別チェック(test3用)。指定visitnum・faobj・falocのレコードに絞り込み、FATEST
 # (+has_blflならFABLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを確認する
 # (FAOBJ/FALOCはfilter条件として使うため、チェック対象には含めない)。
@@ -261,3 +263,7 @@ tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDT
 sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
 sv %>% check_date_after_var_before_today("SVSTDTC", "MHSTDTC", domain_name = "SV")
 tmp_sv <- sv %>% filter(SVSPID == "prephase")
+sv_target_cols <- c("VISITNUM")
+suffix <- "_1"
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))

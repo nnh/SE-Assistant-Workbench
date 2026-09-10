@@ -716,6 +716,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
   const dateRefBoundsAll = opts.dateRefBounds || [];
+  const isExclusive = !!opts.isExclusive;
 
   // presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   // このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -730,6 +731,12 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const singleAliasNames = aliasNames.filter((a) => !multiSet.has(a));
   const multiAliasNames = aliasNames.filter((a) => multiSet.has(a));
 
+  // 同じcdisc_variableを複数のalias_nameが定義している場合、isExclusive===trueなら
+  // resolvePreferredAliasName()で(その被験者について)候補から1つだけ選ぶ(例: DD。discon/withdrawalの
+  // どちらか一方にしか本当の死因が記録されないような、真に排他的な事象を表すドメイン向け)。
+  // isExclusive===false(既定)の場合は、有効な(USUBJID, alias_name)の組み合わせごとに1行を作る
+  // (例: SV/PR/PC/CE/RS。被験者が実際に複数のalias_name(治療フェーズ・評価時点等)を経過することがあり、
+  // そのどれもが独立して正しいレコードであるドメイン向け。互いに競合させず全て残す)
   let singleRows = [];
   if (singleAliasNames.length > 0) {
     let candidates;
@@ -742,7 +749,9 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
         singleAliasNames.forEach((a) => candidates.push({ USUBJID: dmRow.USUBJID, alias_name: a }));
       });
     }
-    singleRows = resolvePreferredAliasName(candidates, scopedPresenceConditions, builtDomains, cdiscVariableToPrefix);
+    singleRows = isExclusive
+      ? resolvePreferredAliasName(candidates, scopedPresenceConditions, builtDomains, cdiscVariableToPrefix)
+      : candidates;
   }
 
   const multiRows = [];
@@ -1221,6 +1230,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const excludePrefixes = new Set(opts.excludePrefixes || ["DM", "AE", "DS"]);
   const codingBlockPrefixes = new Set(opts.codingBlockPrefixes || ["MH"]);
   const forceRepeatedPrefixes = new Set(opts.repeatedPrefixes || []);
+  const exclusivePrefixes = new Set(opts.exclusivePrefixes || ["DD"]);
   const builtDomains = Object.assign({}, opts.builtDomains || {});
   const ageBounds = opts.ageBounds || [];
   const multiRecordAliasNames = opts.multiRecordAliasNames || [];
@@ -1249,6 +1259,7 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       visitLookup,
       discontinuationDate,
       dateRefBounds,
+      isExclusive: exclusivePrefixes.has(prefix),
     };
     builtDomains[prefix] =
       forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)
