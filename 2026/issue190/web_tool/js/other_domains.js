@@ -72,6 +72,86 @@ function topoSortPrefixes(prefixes, edges) {
   return ordered;
 }
 
+// topoSortPrefixes()と同じアルゴリズムだが、循環(依存が解決できず「ready」が空になる時点)に
+// 達したら、そこで打ち切ってordered(そこまでに確定した順序)とremaining(未解決のまま残った、
+// 循環に関与する・またはそれに依存しているprefix集合)を分けて返す。buildOtherDomains()が、
+// remainingの部分だけをシート(alias_name)単位で改めて依存解決するために使う(Rの
+// topo_sort_prefixes_with_leftover()に対応)
+function topoSortPrefixesWithLeftover(prefixes, edges) {
+  const scopedEdges = edges.filter((e) => prefixes.includes(e.from) && prefixes.includes(e.to));
+  let remaining = [...prefixes];
+  const ordered = [];
+  while (remaining.length > 0) {
+    const remainingSet = new Set(remaining);
+    const ready = remaining.filter((p) => !scopedEdges.some((e) => e.from === p && remainingSet.has(e.to)));
+    if (ready.length === 0) {
+      break;
+    }
+    ordered.push(...ready);
+    remaining = remaining.filter((p) => !ready.includes(p));
+  }
+  return { ordered, remaining };
+}
+
+// presenceConditions/fieldRefBounds/ageBounds/dateRefBoundsから、(prefix, aliasName)をノードとする
+// 依存エッジ一覧を作る(buildCrossPrefixEdges()のシート単位版)。prefix単位のbuildCrossPrefixEdges()と
+// 異なり、同じprefix内の別aliasNameへの参照も含める(Rのbuild_alias_level_edges()に対応)
+function buildAliasLevelEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
+  const rows = [
+    ...(presenceConditions || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.ref_alias_name })),
+    // fieldRefBounds(formula参照)は必ず同一シート内の参照のため、refAliasNameは自分自身と同じ
+    ...(fieldRefBounds || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.alias_name })),
+    ...(ageBounds || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.ref_alias_name })),
+    ...(dateRefBounds || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.ref_alias_name })),
+  ];
+  const seen = new Set();
+  const result = [];
+  rows.forEach(({ aliasName, cdiscVariable, refCdiscVariable, refAliasName }) => {
+    if (aliasName == null || refAliasName == null) return;
+    const fromPrefix = cdiscVariableToPrefix[cdiscVariable];
+    const toPrefix = cdiscVariableToPrefix[refCdiscVariable];
+    if (!fromPrefix || !toPrefix) return;
+    const key = `${fromPrefix}|${aliasName}|${toPrefix}|${refAliasName}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({ fromPrefix, fromAlias: aliasName, toPrefix, toAlias: refAliasName });
+  });
+  return result;
+}
+
+// nodes({prefix, aliasName}の配列)を、edges({fromPrefix, fromAlias, toPrefix, toAlias}。fromはtoに依存する)
+// に基づいてトポロジカルソートする。topoSortPrefixes()の(prefix, aliasName)複合キー版
+// (Rのtopo_sort_prefix_aliases()に対応)
+function topoSortPrefixAliases(nodes, edges) {
+  const nodeKey = (prefix, alias) => `${prefix}${alias}`;
+  const seenNodes = new Set();
+  const uniqueNodes = [];
+  nodes.forEach((n) => {
+    const key = nodeKey(n.prefix, n.alias_name);
+    if (seenNodes.has(key)) return;
+    seenNodes.add(key);
+    uniqueNodes.push({ prefix: n.prefix, alias_name: n.alias_name, key });
+  });
+  const scopedEdges = edges
+    .map((e) => ({ fromKey: nodeKey(e.fromPrefix, e.fromAlias), toKey: nodeKey(e.toPrefix, e.toAlias) }))
+    .filter((e) => seenNodes.has(e.fromKey) && seenNodes.has(e.toKey) && e.fromKey !== e.toKey);
+
+  let remaining = uniqueNodes.map((n) => n.key);
+  const orderedKeys = [];
+  while (remaining.length > 0) {
+    const remainingSet = new Set(remaining);
+    const ready = remaining.filter((k) => !scopedEdges.some((e) => e.fromKey === k && remainingSet.has(e.toKey)));
+    if (ready.length === 0) {
+      orderedKeys.push(...remaining);
+      break;
+    }
+    orderedKeys.push(...ready);
+    remaining = remaining.filter((k) => !ready.includes(k));
+  }
+  const byKey = new Map(uniqueNodes.map((n) => [n.key, n]));
+  return orderedKeys.map((k) => byKey.get(k));
+}
+
 // buildSubjectActiveSheets()が返すactiveSheets({USUBJID: Set(alias_name)})を、
 // (USUBJID, alias_name)の縦持り配列に変換する(Rのactive_sheet_membership_table()に対応)
 function buildActiveSheetTable(activeSheets) {
@@ -405,9 +485,11 @@ function populateGenericChoiceFields(data, spec, numericBounds) {
 // 同じvarNameに対して複数の行(alias_nameごとに異なる参照先を持つ)がある場合は、それぞれ自分の
 // alias_nameの行だけに適用し、boundTypeValに応じて(min_dateは大きい方、max_dateは小さい方を)組み合わせる
 // (Rのresolve_date_ref_bound_vals()に対応)
-function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal) {
+function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal, existingData) {
   const hasAliasName = !!data[0] && "alias_name" in data[0];
   const hasLabel = hasAliasName && "label" in data[0];
+  const hasExisting = !!existingData && existingData.length > 0 && "alias_name" in existingData[0];
+  const existingHasLabel = hasExisting && "label" in existingData[0];
   const boundRows = (dateRefBounds || []).filter(
     (r) => r.cdisc_variable === varName && r.bound_type === boundTypeVal && data[0] && r.ref_cdisc_variable in data[0]
   );
@@ -429,6 +511,17 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal) {
           if (!(row.USUBJID in refMap)) refMap[row.USUBJID] = row[refVar];
         }
       });
+      // このdata(1つのbuild呼び出し=1 wave分)に参照先aliasの行が無い場合、既にドメイン単位/シート単位の
+      // 依存順序解決(wave分割)で先に確定済みのexistingData(前waveの結果)から探す。これにより、
+      // 「ドメイン(prefix)単位では循環に見えるが、実際にはシート単位では循環でない」参照チェーン
+      // (例: SV(hr3fisrt)→RS→LB→FA→SV(prephase))を正しく解決できる
+      if (Object.keys(refMap).length === 0 && hasExisting && refVar in existingData[0]) {
+        existingData.forEach((row) => {
+          if (row.alias_name === refAlias && (refLabel == null || !existingHasLabel || row.label === refLabel)) {
+            if (!(row.USUBJID in refMap)) refMap[row.USUBJID] = row[refVar];
+          }
+        });
+      }
       values = data.map((row) => (row.USUBJID in refMap ? refMap[row.USUBJID] : null));
     } else {
       values = data.map((row) => row[refVar]);
@@ -450,7 +543,30 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal) {
   return result.every((v) => v == null) ? null : result;
 }
 
-function populateGenericDateFields(data, spec, registrationStartDate, dateRefBounds) {
+// builtDomains.DM(既に生成済みのDM)のRFSTDTCをUSUBJID単位で結合する。既にRFSTDTC列がある場合
+// (自分自身がDMの場合など)やDMがまだ無い場合は何もしない。明示的なref()参照を持たない日付項目でも、
+// 下の日付生成でのデフォルト下限(registrationStartDate、試験共通の定数)ではなく被験者本人の
+// 登録日を下限にできるようにするため(戻り値のinjectedで、呼び出し側が最終出力から取り除く列に
+// 加えられるようにする。Rのinject_dm_rfstdtc()に対応)
+function injectDmRfstdtc(data, builtDomains) {
+  if (data[0] && "RFSTDTC" in data[0]) {
+    return { data, injected: false };
+  }
+  const dm = (builtDomains || {}).DM;
+  if (!dm || !dm[0] || !("RFSTDTC" in dm[0])) {
+    return { data, injected: false };
+  }
+  const rfstdtcByUsubjid = {};
+  dm.forEach((row) => {
+    if (!(row.USUBJID in rfstdtcByUsubjid)) rfstdtcByUsubjid[row.USUBJID] = row.RFSTDTC;
+  });
+  data.forEach((row) => {
+    row.RFSTDTC = row.USUBJID in rfstdtcByUsubjid ? rfstdtcByUsubjid[row.USUBJID] : null;
+  });
+  return { data, injected: true };
+}
+
+function populateGenericDateFields(data, spec, registrationStartDate, dateRefBounds, existingData) {
   const existingColumns = new Set(Object.keys(data[0] || {}));
   let dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
     (v) => !existingColumns.has(v)
@@ -460,15 +576,20 @@ function populateGenericDateFields(data, spec, registrationStartDate, dateRefBou
 
   dateVars.forEach((varName) => {
     const dateAliasNames = new Set(spec.filter((r) => r.field_type === "date" && r.cdisc_variable === varName).map((r) => r.alias_name));
-    const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date");
-    const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date");
+    const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date", existingData);
+    const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date", existingData);
     data.forEach((row, i) => {
       if (!dateAliasNames.has(row.alias_name)) {
         row[varName] = null;
         return;
       }
       let lower = registrationStartDate;
-      if (minRefVals != null && minRefVals[i] != null) {
+      // RFSTDTC(症例登録日)は、この変数に明示的なmin_date参照(minRefVals)が無い場合の
+      // デフォルト下限としてのみ使う。明示的な参照がある変数にまで一律にRFSTDTCを下限に加えると、
+      // その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
+      const hasMinRef = minRefVals != null && minRefVals[i] != null;
+      if (!hasMinRef && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
+      if (hasMinRef) {
         const refVal = minRefVals[i];
         if (new Date(refVal).getTime() > new Date(lower).getTime()) lower = refVal;
       }
@@ -631,7 +752,7 @@ function addSeq(data, seqVar) {
 // 同じ行の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が崩れている行も再サンプル対象にする
 // (参照先の値が先の反復で更新されている可能性があるため)。呼び出し側でlabelを跨ぐ行(label!=ref_label)を
 // あらかじめ除いたdateRefBoundsを渡すこと(同じ行内の参照である前提のため)
-function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBounds) {
+function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBounds, existingData) {
   if (!discontinuationDate || discontinuationDate.length === 0 || !data[0] || !("USUBJID" in data[0])) {
     return data;
   }
@@ -652,8 +773,8 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
     // 都度計算するため、先に確定した値を反映できる)を判定し、該当行だけ新しい日付を再生成する
     const clampRows = (targetRows) => {
       if (!targetRows.some((v) => v)) return;
-      const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date");
-      const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date");
+      const minRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "min_date", existingData);
+      const maxRefVals = resolveDateRefBoundVals(data, dateRefBounds, varName, "max_date", existingData);
       data.forEach((row, i) => {
         if (!targetRows[i]) return;
         const discon = disconByUsubjid[row.USUBJID];
@@ -666,6 +787,10 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
         if (!disconOver && !refViolation) return;
 
         let lower = registrationStartDate;
+        // RFSTDTC(症例登録日)は、この変数に明示的なmin_date参照(minVal)が無い場合のデフォルト下限としてのみ
+        // 使う。明示的な参照(例: MHSTDTCのBRTHDTC基準)がある変数にまで一律にRFSTDTCを下限に加えると、
+        // その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
+        if (minVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
         if (minVal != null && minVal > lower) lower = minVal;
         let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
         if (maxVal != null && maxVal < upper) upper = maxVal;
@@ -789,6 +914,10 @@ function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, regis
 
     rows.forEach((row) => {
       let lower = registrationStartDate;
+      // RFSTDTC(症例登録日)は、この変数にchain内の明示的なmin_date参照(minRow)が無い場合の
+      // デフォルト下限としてのみ使う(他の変数に明示的な参照がある場合にまで一律に加えると、
+      // その変数本来の意味を壊してしまうため)
+      if (minRow == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
       if (minRow != null) {
         const refVal = refValueFor(row, minRow.ref_label, minRow.ref_cdisc_variable);
         if (refVal != null && refVal > lower) lower = refVal;
@@ -825,6 +954,14 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   const discontinuationDate = opts.discontinuationDate || null;
   const dateRefBoundsAll = opts.dateRefBounds || [];
   const isExclusive = !!opts.isExclusive;
+  // existingData/finalizeは、依存関係の循環(prefix単位では循環に見えるがシート単位では循環でない
+  // 参照チェーン)のためにこのprefixを複数wave(aliasNameの集合)に分けてビルドする場合に使う
+  // (buildOtherDomains()のwave分割ロジックから渡される)。existingDataは前waveまでに確定済みの、
+  // このprefixの行(alias_name列を保持したまま)。finalize=falseの場合はSEQ相当の連番付与や
+  // 列順整理などprefix全体に対して1回だけ行うべき処理をスキップする。通常(wave分割しない場合)は
+  // どちらも既定値のままでよく、挙動は従来と完全に同じになる
+  const existingData = opts.existingData || null;
+  const finalize = opts.finalize !== false;
 
   // presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   // このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -896,12 +1033,19 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // 適用されないまま日付が生成されてしまう)(Rのbuild_generic_domain()と同じ理由)
   const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
   data = dateInjected.data;
-  const dateInjectedCols = dateInjected.injectedCols;
+  let dateInjectedCols = dateInjected.injectedCols;
+
+  // 明示的なref()参照を持たない日付項目は、下のpopulateGenericDateFields()内でregistrationStartDate
+  // (試験共通の定数)を下限にしてしまう。RFSTDTCを結合しておくことで、被験者本人の登録日を
+  // デフォルトの下限にできるようにする
+  const rfstdtcInjected = injectDmRfstdtc(data, builtDomains);
+  data = rfstdtcInjected.data;
+  if (rfstdtcInjected.injected) dateInjectedCols = [...dateInjectedCols, "RFSTDTC"];
 
   data = populateGenericChoiceFields(data, spec, numericBounds);
-  data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds);
+  data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds, existingData);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
   // alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
   // (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
@@ -909,11 +1053,16 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
   // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
-  addSeq(data, seqVar);
+  // wave分割していない(existingData無し)通常時は、従来通りここでSEQ相当の連番を振る。
+  // wave分割時は、後段でexistingData(前wave分)と結合してから、finalize=trueのタイミングで
+  // まとめて振る(通しの連番にするため)
+  if (!existingData) {
+    addSeq(data, seqVar);
+  }
 
   const meddraVars = [...new Set(spec.filter((r) => r.field_type === "meddra").map((r) => r.cdisc_variable))];
   let codingCols = [];
@@ -954,6 +1103,19 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   }
 
   data = addVisitColumns(data, visitLookup);
+
+  // wave分割時(existingData指定あり)は、ここでこのwaveの新規行を前waveまでの確定済み行と結合する
+  // (existingDataが無ければ何もしない=従来通り)。まだfinalizeでなければ、次waveのexistingDataとして
+  // 使えるようalias_name列を保持したまま返す
+  if (existingData) {
+    data = [...existingData, ...data];
+  }
+  if (existingData && finalize) {
+    addSeq(data, seqVar);
+  }
+  if (!finalize) {
+    return data;
+  }
 
   data.forEach((row) => {
     delete row.alias_name;
@@ -1005,6 +1167,10 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
   const dateRefBoundsAll = opts.dateRefBounds || [];
+  // existingData/finalizeの意味はbuildGenericDomain()と同じ(prefix単位では循環に見える依存関係を
+  // 複数waveに分けて解決するため。通常は既定値のままでよく、挙動は従来と完全に同じになる)
+  const existingData = opts.existingData || null;
+  const finalize = opts.finalize !== false;
   const drugNames = whoDrugIdf ? [...new Set(whoDrugIdf.map((r) => r.full_name_en).filter((v) => v != null))] : [];
 
   const ownVars = new Set(spec.map((r) => r.cdisc_variable));
@@ -1057,7 +1223,13 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // 適用されないまま日付が生成されてしまう)(Rのbuild_repeated_domain()と同じ理由)
   const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
   data = dateInjected.data;
-  const dateInjectedCols = dateInjected.injectedCols;
+  let dateInjectedCols = dateInjected.injectedCols;
+
+  // 明示的なref()参照を持たない日付項目は、下の日付生成でregistrationStartDate(試験共通の定数)を
+  // 下限にしてしまう。RFSTDTCを結合しておくことで、被験者本人の登録日をデフォルトの下限にできるようにする
+  const rfstdtcInjected = injectDmRfstdtc(data, builtDomains);
+  data = rfstdtcInjected.data;
+  if (rfstdtcInjected.injected) dateInjectedCols = [...dateInjectedCols, "RFSTDTC"];
 
   const existingColumns = new Set(Object.keys(data[0] || {}));
   let targetVars = [...new Set(spec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
@@ -1145,8 +1317,13 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
       } else if (g.fieldType === "date") {
         rows.forEach((row) => {
           let lower = registrationStartDate;
-          if (dateMinRow != null && row[dateMinRow.ref_cdisc_variable] != null && row[dateMinRow.ref_cdisc_variable] > lower) {
-            lower = row[dateMinRow.ref_cdisc_variable];
+          // 明示的なmin_date参照(dateMinRow)があっても、labelを跨ぐ連鎖等で行によっては参照先の値が
+          // まだ無い(例: EC複数回投与の1回目=連鎖の先頭)ことがある。そのような行にだけRFSTDTCを
+          // デフォルト下限として補う(参照値がある行では、その変数本来の意味を尊重してRFSTDTCは加えない)
+          const refVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          if (refVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
+          if (refVal != null && refVal > lower) {
+            lower = refVal;
           }
           let upper = today;
           if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
@@ -1244,7 +1421,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const dateRefBoundsForClamp = scopedDateRefBounds.filter(
     (r) => r.label == null || r.ref_label == null || r.label === r.ref_label || !dateVars.includes(r.ref_cdisc_variable)
   );
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp, existingData);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   // シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。alias内の関係
   // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
@@ -1253,7 +1430,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
   // (dateRefBoundsForClamp)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp, existingData);
 
   let codingCols = [];
   if (addCodingBlock) {
@@ -1307,6 +1484,16 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   data = addVisitColumns(data, visitLookup);
 
   const seqVar = `${prefix}SEQ`;
+
+  // wave分割時(existingData指定あり)は、ここでこのwaveの新規行を前waveまでの確定済み行と結合する
+  // (existingDataが無ければ何もしない=従来通り)。まだfinalizeでなければ、次waveのexistingDataとして
+  // 使えるようそのまま返す(SEQ相当の連番はfinalizeのタイミングでまとめて振る)
+  if (existingData) {
+    data = [...existingData, ...data];
+  }
+  if (!finalize) {
+    return data;
+  }
   addSeq(data, seqVar);
 
   // alias_name/labelはここでは残す(オーケストレーター(buildOtherDomains)が他ドメイン参照の突き合わせキーとして使い、
@@ -1351,10 +1538,9 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
   const edges = buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds);
-  const orderedPrefixes = topoSortPrefixes(prefixes, edges);
+  const { ordered: orderedPrefixes, remaining: leftoverPrefixes } = topoSortPrefixesWithLeftover(prefixes, edges);
 
-  orderedPrefixes.forEach((prefix) => {
-    const spec = cdiscVariableValues.filter((r) => r.prefix === prefix);
+  const buildOnePrefix = (prefix, spec, existingData, finalize) => {
     const addCodingBlock = codingBlockPrefixes.has(prefix);
     const buildOptions = {
       addCodingBlock,
@@ -1368,12 +1554,59 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       discontinuationDate,
       dateRefBounds,
       isExclusive: exclusivePrefixes.has(prefix),
+      existingData: existingData || null,
+      finalize: finalize !== false,
     };
-    builtDomains[prefix] =
-      forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(spec)
-        ? buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, buildOptions)
-        : buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, buildOptions);
+    const fullSpec = cdiscVariableValues.filter((r) => r.prefix === prefix);
+    return forceRepeatedPrefixes.has(prefix) || hasRepeatedLabels(fullSpec)
+      ? buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, buildOptions)
+      : buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, buildOptions);
+  };
+
+  // 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)
+  orderedPrefixes.forEach((prefix) => {
+    const spec = cdiscVariableValues.filter((r) => r.prefix === prefix);
+    builtDomains[prefix] = buildOnePrefix(prefix, spec);
   });
+
+  // 循環に関与するprefix(leftoverPrefixes)は、prefix単位ではなくシート(aliasName)単位で依存関係を
+  // 解決し、複数wave(aliasNameのまとまり)に分けてビルドする。実際には循環ではなく、単に同じprefix内の
+  // 別シートを介した参照チェーンが、prefix単位の粗い依存判定では循環に見えていただけ、というケースが
+  // ほとんど(例: SV(hr3fisrt)→RS→LB→FA→SV(prephase))(Rのbuild_other_domains()に対応)
+  if (leftoverPrefixes.length > 0) {
+    const leftoverPrefixSet = new Set(leftoverPrefixes);
+    const leftoverValues = cdiscVariableValues.filter((r) => leftoverPrefixSet.has(r.prefix));
+    const aliasNodesMap = new Map();
+    leftoverValues.forEach((r) => {
+      const key = `${r.prefix}|${r.alias_name}`;
+      if (!aliasNodesMap.has(key)) aliasNodesMap.set(key, { prefix: r.prefix, alias_name: r.alias_name });
+    });
+    const aliasNodes = [...aliasNodesMap.values()];
+    const aliasEdges = buildAliasLevelEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds).filter(
+      (e) => leftoverPrefixSet.has(e.fromPrefix) && leftoverPrefixSet.has(e.toPrefix)
+    );
+    const orderedPairs = topoSortPrefixAliases(aliasNodes, aliasEdges);
+
+    if (orderedPairs.length > 0) {
+      const runs = [];
+      orderedPairs.forEach((pair, i) => {
+        if (i === 0 || pair.prefix !== orderedPairs[i - 1].prefix) {
+          runs.push({ prefix: pair.prefix, aliasNames: new Set() });
+        }
+        runs[runs.length - 1].aliasNames.add(pair.alias_name);
+      });
+      const lastRunIndexByPrefix = {};
+      runs.forEach((run, i) => {
+        lastRunIndexByPrefix[run.prefix] = i;
+      });
+
+      runs.forEach((run, i) => {
+        const spec = leftoverValues.filter((r) => r.prefix === run.prefix && run.aliasNames.has(r.alias_name));
+        const isLast = i === lastRunIndexByPrefix[run.prefix];
+        builtDomains[run.prefix] = buildOnePrefix(run.prefix, spec, builtDomains[run.prefix], isLast);
+      });
+    }
+  }
 
   const result = {};
   prefixes.forEach((prefix) => {

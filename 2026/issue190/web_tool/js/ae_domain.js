@@ -11,10 +11,15 @@ function buildAeDomain(dm, n) {
   const rows = [];
   for (let i = 0; i < n; i += 1) {
     const dmRow = sampleOne(dm);
+    // RFSTDTC(症例登録日)も結合しておく。AEの日付項目は明示的なref()参照を持たず、従来は
+    // registrationStartDate(試験共通の定数)を下限にしていたため、稀に被験者本人の登録日より
+    // 前の日付が生成され得た。populateAeDateFields()側でこれを下限として使う
+    // (最終的な出力列には含めない。finalizeAeDomain()末尾で取り除く)
     rows.push({
       STUDYID: dmRow.STUDYID,
       DOMAIN: "AE",
       USUBJID: dmRow.USUBJID,
+      RFSTDTC: dmRow.RFSTDTC,
     });
   }
   return rows;
@@ -120,7 +125,14 @@ function populateAeDateFields(ae, aeSpec, registrationStartDate) {
   orderedDateVars.forEach((varName) => {
     const useAestdtcAsStart = varName === "AEENDTC" && "AESTDTC" in (ae[0] || {});
     ae.forEach((row) => {
-      const start = useAestdtcAsStart ? row.AESTDTC : registrationStartDate;
+      // RFSTDTC(症例登録日、buildAeDomain()で結合済み)がある場合、AESTDTC以外の日付項目の下限を
+      // registrationStartDate(試験共通の定数)ではなく被験者本人のRFSTDTCにする
+      let start = registrationStartDate;
+      if (useAestdtcAsStart) {
+        start = row.AESTDTC;
+      } else if (row.RFSTDTC != null && row.RFSTDTC > start) {
+        start = row.RFSTDTC;
+      }
       row[varName] = randomDateBetween(start, today);
     });
   });
@@ -341,8 +353,13 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
       } else if (g.fieldType === "date") {
         rows.forEach((row) => {
           let lower = registrationStartDate;
-          if (dateMinRow != null && row[dateMinRow.ref_cdisc_variable] != null && row[dateMinRow.ref_cdisc_variable] > lower) {
-            lower = row[dateMinRow.ref_cdisc_variable];
+          // 明示的なmin_date参照(dateMinRow)があっても、labelを跨ぐ連鎖等で行によっては参照先の値が
+          // まだ無いことがある。そのような行にだけRFSTDTCをデフォルト下限として補う(参照値がある行では、
+          // その変数本来の意味を尊重してRFSTDTCは加えない)
+          const refVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          if (refVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
+          if (refVal != null && refVal > lower) {
+            lower = refVal;
           }
           let upper = today;
           if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
@@ -501,6 +518,7 @@ function finalizeAeDomain(ae, aeSpec, linkedSpec) {
   const linkedVars = new Set((linkedSpec || []).map((r) => r.cdisc_variable));
   ae.forEach((row) => {
     delete row.alias_name;
+    delete row.RFSTDTC;
     linkedVars.forEach((v) => delete row[v]);
   });
 

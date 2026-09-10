@@ -145,7 +145,7 @@ populate_radio_button_fields <- function(data, spec, target_vars, numeric_bounds
 # 参照先ブロック(ref_alias_name/ref_label)の値を引く。
 # 同じvar_nameに対して複数の行(alias_nameごとに異なる参照先を持つ)がある場合は、それぞれ自分の
 # alias_nameの行だけに適用し、bound_typeに応じて(min_dateはpmax、max_dateはpmin)組み合わせる
-resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_type_val) {
+resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_type_val, existing_data = NULL) {
   bound_rows <- date_ref_bounds %>%
     filter(cdisc_variable == var_name, bound_type == bound_type_val, ref_cdisc_variable %in% colnames(data))
   if (nrow(bound_rows) == 0) {
@@ -153,6 +153,8 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
   }
   has_alias_name <- "alias_name" %in% colnames(data)
   has_label <- has_alias_name && "label" %in% colnames(data)
+  has_existing <- !is.null(existing_data) && nrow(existing_data) > 0 && "alias_name" %in% colnames(existing_data)
+  existing_has_label <- has_existing && "label" %in% colnames(existing_data)
   combine <- if (bound_type_val == "min_date") pmax else pmin
 
   result <- rep(as.Date(NA), nrow(data))
@@ -176,8 +178,26 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
       } else {
         data[["alias_name"]] == ref_alias
       }
-      ref_map <- set_names(as.Date(as.character(data[[ref_var]][ref_target_rows])), data[["USUBJID"]][ref_target_rows])
-      unname(ref_map[data[["USUBJID"]]])
+      # このdata(1つのbuild呼び出し=1 wave分)に参照先aliasの行が無い場合、既にドメイン単位/シート単位の
+      # 依存順序解決(wave分割)で先に確定済みのexisting_data(前waveの結果)から探す。これにより、
+      # 「ドメイン(prefix)単位では循環に見えるが、実際にはシート単位では循環でない」参照チェーン
+      # (例: SV(hr3fisrt)→RS→LB→FA→SV(prephase))を正しく解決できる
+      if (!any(ref_target_rows) && has_existing && ref_var %in% colnames(existing_data)) {
+        ext_target_rows <- if (existing_has_label && !is.na(ref_label_i)) {
+          existing_data[["alias_name"]] == ref_alias & existing_data[["label"]] == ref_label_i
+        } else {
+          existing_data[["alias_name"]] == ref_alias
+        }
+        if (any(ext_target_rows)) {
+          ref_map <- set_names(as.Date(as.character(existing_data[[ref_var]][ext_target_rows])), existing_data[["USUBJID"]][ext_target_rows])
+          unname(ref_map[data[["USUBJID"]]])
+        } else {
+          rep(as.Date(NA), nrow(data))
+        }
+      } else {
+        ref_map <- set_names(as.Date(as.character(data[[ref_var]][ref_target_rows])), data[["USUBJID"]][ref_target_rows])
+        unname(ref_map[data[["USUBJID"]]])
+      }
     } else {
       as.Date(as.character(data[[ref_var]]))
     }
@@ -191,7 +211,7 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
 # 定義しているalias_nameが違えば日付を入れず、そのcdisc_variableを実際に定義しているalias_nameの
 # 行だけに絞って生成する(例: CMドメインで"concomitant_drug"にしか無いCMSTDTCが、
 # それを定義していない"baseline1"の行にまで入ってしまうのを防ぐ)
-populate_date_fields <- function(data, spec, target_vars, registration_start_date, date_ref_bounds = NULL) {
+populate_date_fields <- function(data, spec, target_vars, registration_start_date, date_ref_bounds = NULL, existing_data = NULL) {
   date_vars <- spec %>%
     filter(field_type == "date") %>%
     pull(cdisc_variable) %>%
@@ -226,9 +246,14 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
   # start_date引数は列名の文字列も受け付けるため、計算結果を一時列として持たせて渡す
   has_brthdtc <- "BRTHDTC" %in% colnames(data)
   if (has_brthdtc) {
-    data[["__date_lower_bound"]] <- as.character(pmax(as.Date(registration_start_date), as.Date(data[["BRTHDTC"]])))
+    data[["__date_lower_bound"]] <- as.character(pmax(as.Date(registration_start_date), as.Date(data[["BRTHDTC"]]), na.rm = TRUE))
   }
   start_bound <- if (has_brthdtc) "__date_lower_bound" else registration_start_date
+  # RFSTDTC(症例登録日、他ドメインではinject_cross_domain_refs等で結合されている場合がある)は、
+  # 明示的なref()参照(min_ref_vals)を持たない変数だけのデフォルト下限として使う(下のループ内)。
+  # min_ref_vals(例: MHSTDTCのBRTHDTC基準)がある変数にまで一律にRFSTDTCを加えると、
+  # その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
+  has_rfstdtc <- "RFSTDTC" %in% colnames(data)
 
   for (var_name in date_vars) {
     # var_nameにvalidate_date_after_or_equal_to/validate_date_before_or_equal_to(他フィールド参照。
@@ -237,18 +262,26 @@ populate_date_fields <- function(data, spec, target_vars, registration_start_dat
     var_start_bound <- start_bound
     var_end_bound <- Sys.Date()
     if (!is.null(date_ref_bounds)) {
-      min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date")
-      if (!is.null(min_ref_vals)) {
-        default_lower <- if (is.character(start_bound) && length(start_bound) == 1 && start_bound %in% colnames(data)) {
-          as.Date(data[[start_bound]])
-        } else {
-          as.Date(start_bound)
+      min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date", existing_data)
+      default_lower <- if (is.character(start_bound) && length(start_bound) == 1 && start_bound %in% colnames(data)) {
+        as.Date(data[[start_bound]])
+      } else {
+        as.Date(start_bound)
+      }
+      if (!is.null(min_ref_vals) || has_rfstdtc) {
+        lower_val <- pmax(default_lower, min_ref_vals, na.rm = TRUE)
+        # RFSTDTCは、行ごとに明示的な参照値(min_ref_vals)が無い(NA)場合だけ補う
+        # (他の行でmin_ref_valsが解決できていれば、その変数本来の意味を尊重してRFSTDTCは加えない)
+        if (has_rfstdtc) {
+          no_explicit_ref <- if (is.null(min_ref_vals)) rep(TRUE, nrow(data)) else is.na(min_ref_vals)
+          rfstdtc_vals <- as.Date(data[["RFSTDTC"]])
+          lower_val[no_explicit_ref] <- pmax(lower_val[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
         }
         lower_col <- str_c("__date_lower_bound__", var_name)
-        data[[lower_col]] <- as.character(pmax(default_lower, min_ref_vals, na.rm = TRUE))
+        data[[lower_col]] <- as.character(lower_val)
         var_start_bound <- lower_col
       }
-      max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date")
+      max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date", existing_data)
       if (!is.null(max_ref_vals)) {
         upper_col <- str_c("__date_upper_bound__", var_name)
         data[[upper_col]] <- as.character(pmin(Sys.Date(), max_ref_vals, na.rm = TRUE))
@@ -700,6 +733,85 @@ topo_sort_prefixes <- function(prefixes, edges) {
     remaining <- setdiff(remaining, ready)
   }
   ordered
+}
+
+# topo_sort_prefixes()と同じアルゴリズムだが、循環(依存が解決できず「ready」が空になる時点)に
+# 達したら、そこで打ち切ってordered(そこまでに確定した順序)とremaining(未解決のまま残った、
+# 循環に関与する・またはそれに依存しているprefix集合)を分けて返す。build_other_domains()が、
+# remainingの部分だけをシート(alias_name)単位で改めて依存解決するために使う
+topo_sort_prefixes_with_leftover <- function(prefixes, edges) {
+  edges <- edges %>% filter(from %in% prefixes, to %in% prefixes)
+  remaining <- prefixes
+  ordered <- character(0)
+  while (length(remaining) > 0) {
+    ready <- remaining[!vapply(remaining, function(p) any(edges[["from"]] == p & edges[["to"]] %in% remaining), logical(1))]
+    if (length(ready) == 0) {
+      break
+    }
+    ordered <- c(ordered, ready)
+    remaining <- setdiff(remaining, ready)
+  }
+  list(ordered = ordered, remaining = remaining)
+}
+
+# presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsから、(prefix, alias_name)を
+# ノードとする依存エッジ一覧を作る(build_cross_prefix_edges()のシート単位版)。
+# prefix単位のbuild_cross_prefix_edges()と異なり、同じprefix内の別alias_name(シート)への参照
+# (例: inductionのSVSTDTCがprephaseのSVSTDTCを参照する)も含める。これにより、
+# 「prefix単位で見ると循環だが、実際にはシート単位では循環でない」参照チェーン
+# (例: SV(hr3fisrt)→RS→LB→FA→SV(prephase))を正しく順序付けできる
+# (同じprefix内の参照は、通常は各build_*_domain()呼び出し内の自己参照機構で解決されるため、
+# ここに含めても実害は無い。単にトポロジカルソートの精度が上がるだけ)
+build_alias_level_edges <- function(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL) {
+  if (is.null(age_bounds)) {
+    age_bounds <- tibble(alias_name = character(0), cdisc_variable = character(0), ref_cdisc_variable = character(0), ref_alias_name = character(0))
+  }
+  if (is.null(date_ref_bounds)) {
+    date_ref_bounds <- tibble(alias_name = character(0), cdisc_variable = character(0), ref_cdisc_variable = character(0), ref_alias_name = character(0))
+  }
+  if (!("alias_name" %in% colnames(field_ref_bounds))) {
+    field_ref_bounds <- field_ref_bounds %>% mutate(alias_name = NA_character_)
+  }
+  bind_rows(
+    presence_conditions %>% select(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name),
+    # field_ref_bounds(formula参照)は必ず同一シート内の参照のため、ref_alias_nameは自分自身と同じ
+    field_ref_bounds %>% transmute(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name),
+    age_bounds %>% select(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name),
+    date_ref_bounds %>% select(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name)
+  ) %>%
+    filter(!is.na(alias_name), !is.na(ref_alias_name)) %>%
+    distinct() %>%
+    left_join(cdisc_variable_to_prefix, by = "cdisc_variable") %>%
+    left_join(
+      cdisc_variable_to_prefix %>% rename(ref_cdisc_variable = cdisc_variable, ref_prefix = prefix),
+      by = "ref_cdisc_variable"
+    ) %>%
+    filter(!is.na(prefix), !is.na(ref_prefix)) %>%
+    distinct(from_prefix = prefix, from_alias = alias_name, to_prefix = ref_prefix, to_alias = ref_alias_name)
+}
+
+# nodes(prefix, alias_name)を、edges(from_prefix, from_alias, to_prefix, to_alias。fromはtoに依存する)に
+# 基づいてトポロジカルソートする。topo_sort_prefixes()の(prefix, alias_name)複合キー版。
+# 循環参照が残った場合は、それ以上並べ替えできない分をそのまま残りの順序で追加する(安全策)
+topo_sort_prefix_aliases <- function(nodes, edges) {
+  node_key <- function(prefix, alias) str_c(prefix, "", alias)
+  nodes <- nodes %>% distinct(prefix, alias_name) %>% mutate(.key = node_key(prefix, alias_name))
+  edges <- edges %>%
+    mutate(.from_key = node_key(from_prefix, from_alias), .to_key = node_key(to_prefix, to_alias)) %>%
+    filter(.from_key %in% nodes[[".key"]], .to_key %in% nodes[[".key"]], .from_key != .to_key)
+
+  remaining <- nodes[[".key"]]
+  ordered_keys <- character(0)
+  while (length(remaining) > 0) {
+    ready <- remaining[!vapply(remaining, function(k) any(edges[[".from_key"]] == k & edges[[".to_key"]] %in% remaining), logical(1))]
+    if (length(ready) == 0) {
+      ordered_keys <- c(ordered_keys, remaining)
+      break
+    }
+    ordered_keys <- c(ordered_keys, ready)
+    remaining <- setdiff(remaining, ready)
+  }
+  nodes[match(ordered_keys, nodes[[".key"]]), c("prefix", "alias_name")]
 }
 
 # presence_conditions/field_ref_boundsが参照するcdisc_variableのうち、dataにまだ無いものを、
@@ -1235,7 +1347,7 @@ reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, r
 # この矛盾を解消する。中止日情報が無い(NAまたはdiscontinuation_dateに無い)被験者は対象外
 # (今まで通り登録開始日〜今日の範囲のまま)。registration_start_date > 中止日の場合(通常は
 # 起こらないはずだが念のため)は中止日そのものにする
-clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds = NULL) {
+clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds = NULL, existing_data = NULL) {
   if (is.null(discontinuation_date) || nrow(discontinuation_date) == 0 || !("USUBJID" %in% colnames(data))) {
     return(data)
   }
@@ -1285,8 +1397,8 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       min_ref_vals <- NULL
       max_ref_vals <- NULL
       if (!is.null(date_ref_bounds)) {
-        min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date")
-        max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date")
+        min_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date", existing_data)
+        max_ref_vals <- resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "max_date", existing_data)
       }
 
       # discon超過に加えて、同一行内の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が
@@ -1305,6 +1417,12 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       }
 
       lower <- rep(reg_start, sum(over))
+      # RFSTDTC(症例登録日)は、この変数に明示的なmin_date参照(min_ref_vals)が無い場合の
+      # デフォルト下限としてのみ使う。明示的な参照(例: MHSTDTCのBRTHDTC基準)がある変数にまで
+      # 一律にRFSTDTCを下限に加えると、その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
+      if (is.null(min_ref_vals) && "RFSTDTC" %in% colnames(data)) {
+        lower <- pmax(lower, as.Date(as.character(data[["RFSTDTC"]][over])), na.rm = TRUE)
+      }
       # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
       discon_over_vals <- discon[over]
       upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(current[over]), as.character(pmax(discon_over_vals, reg_start))))
@@ -1422,6 +1540,12 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
     }
 
     lower <- rep(as.numeric(reg_start), sum(mask))
+    # RFSTDTC(症例登録日)は、この変数にchain内の明示的なmin_date参照(min_row)が無い場合の
+    # デフォルト下限としてのみ使う(他の変数に明示的な参照がある場合にまで一律に加えると、
+    # その変数本来の意味を壊してしまうため)
+    if (nrow(min_row) == 0 && "RFSTDTC" %in% colnames(data)) {
+      lower <- pmax(lower, as.numeric(as.Date(as.character(data[["RFSTDTC"]][mask]))), na.rm = TRUE)
+    }
     if (nrow(min_row) > 0) {
       lower <- pmax(lower, ref_value_for(min_row[["ref_label"]], min_row[["ref_cdisc_variable"]]), na.rm = TRUE)
     }
@@ -1440,13 +1564,36 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
   data
 }
 
+# built_domains$DM(既に生成済みのDM)のRFSTDTCをUSUBJID単位で結合する。既にRFSTDTC列がある場合
+# (自分自身がDMの場合など)やDMがまだ無い場合は何もしない。明示的なref()参照を持たない日付項目でも、
+# populate_date_fields()のデフォルト下限(registration_start_date)ではなく被験者本人の登録日を
+# 下限にできるようにするため(戻り値のinjectedで、呼び出し側が最終出力から取り除く列に加えられるようにする)
+inject_dm_rfstdtc <- function(data, built_domains) {
+  if ("RFSTDTC" %in% colnames(data)) {
+    return(list(data = data, injected = FALSE))
+  }
+  dm <- built_domains[["DM"]]
+  if (is.null(dm) || !all(c("USUBJID", "RFSTDTC") %in% colnames(dm))) {
+    return(list(data = data, injected = FALSE))
+  }
+  dm_rfstdtc <- dm %>% select(USUBJID, RFSTDTC) %>% distinct(USUBJID, .keep_all = TRUE)
+  list(data = data %>% left_join(dm_rfstdtc, by = "USUBJID"), injected = TRUE)
+}
+
 # DM/AE/DSのような個別ロジックを持たないドメイン向けの汎用生成。
 # alias_nameがmulti_record_alias_namesに該当しない場合はUSUBJIDごとに1レコード、
 # 該当する場合(AE報告のように被験者ごとに複数件記録されうるシート)はAEドメインと同様、
 # 被験者に対してランダムな件数(0件を含む)のレコードを作る。
 # radio_button/date/ダミーの共通パターンで項目を埋め、prefixSEQ(例: CMSEQ)をデータセット全体の通番として、
 # prefixSPID(例: CMSPID)にalias_name(該当する場合はUSUBJID×alias_name内の連番付き)を付与する
-build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL, is_exclusive = FALSE) {
+# existing_data/finalizeは、依存関係の循環(prefix単位では循環に見えるがシート単位では循環でない
+# 参照チェーン)のためにこのprefixを複数wave(alias_nameの集合)に分けてビルドする場合に使う
+# (build_other_domains()のwave分割ロジックから渡される)。existing_dataは前waveまでに確定済みの、
+# このprefixの行(alias_name列を保持したまま)。finalize=FALSE の場合はDSSEQ相当の連番付与や
+# 列順整理などprefix全体に対して1回だけ行うべき処理をスキップし、alias_name列を保持したまま
+# (existing_dataと結合した)全行を返す。通常(wave分割しない場合)は両方とも既定値のままでよく、
+# 挙動は従来と完全に同じになる
+build_generic_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, numeric_bounds = NULL, field_ref_bounds = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL, is_exclusive = FALSE, existing_data = NULL, finalize = TRUE) {
   # presence_conditions/field_ref_bounds/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   # 同じref_cdisc_variableを別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が混同してしまう。
   # このドメイン自身のcdisc_variableに関する行だけに絞ってから使う
@@ -1525,10 +1672,17 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   data <- date_injected[["data"]]
   date_injected_cols <- date_injected[["injected_cols"]]
 
+  # 明示的なref()参照を持たない日付項目は、下のpopulate_date_fields()内でregistration_start_date
+  # (試験共通の定数)を下限にしてしまう。RFSTDTCを結合しておくことで、被験者本人の登録日を
+  # デフォルトの下限にできるようにする
+  rfstdtc_injected <- inject_dm_rfstdtc(data, built_domains)
+  data <- rfstdtc_injected[["data"]]
+  if (rfstdtc_injected[["injected"]]) date_injected_cols <- c(date_injected_cols, "RFSTDTC")
+
   data <- data %>%
     populate_radio_button_fields(spec, target_vars, numeric_bounds) %>%
-    populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds) %>%
-    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds) %>%
+    populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds, existing_data) %>%
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data) %>%
     # 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
     # alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
     # (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
@@ -1536,10 +1690,16 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
     # 他ドメイン参照(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
     # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
-    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds) %>%
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data) %>%
     populate_dose_fields(target_vars) %>%
-    populate_dummy_fields(target_vars) %>%
-    add_seq(seq_var)
+    populate_dummy_fields(target_vars)
+
+  # wave分割していない(existing_data無し)通常時は、従来通りここでDSSEQ相当の連番を振る。
+  # wave分割時は、後段でexisting_data(前wave分)と結合してから、finalize=TRUEのタイミングで
+  # まとめて振る(通しの連番にするため)
+  if (is.null(existing_data)) {
+    data <- data %>% add_seq(seq_var)
+  }
 
   meddra_vars <- compute_meddra_vars(spec, target_vars)
   coding_cols <- character(0)
@@ -1576,7 +1736,20 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   if (length(drug_vars) > 0 && !is.null(who_drug_idf) && drug_vars_need_decod(spec, drug_vars)) {
     data <- data %>% add_drug_decod(spec, drug_vars, who_drug_idf, prefix)
   }
-  data <- data %>% add_visit_columns(visit_lookup) %>% select(-alias_name)
+  data <- data %>% add_visit_columns(visit_lookup)
+
+  # wave分割時(existing_data指定あり)は、ここでこのwaveの新規行を前waveまでの確定済み行と結合する
+  # (existing_dataがNULLなら何もしない=従来通り)。まだfinalizeでなければ、次waveのexisting_dataとして
+  # 使えるようalias_name列を保持したまま返す
+  data <- bind_rows(existing_data, data)
+  if (!is.null(existing_data) && finalize) {
+    data <- data %>% add_seq(seq_var)
+  }
+  if (!finalize) {
+    return(data)
+  }
+
+  data <- data %>% select(-alias_name)
 
   data %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), meddra_vars, coding_cols))
@@ -1585,7 +1758,9 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 # TRのように、同じcdisc_variableが同じalias_name内で複数のlabel(繰り返しフィールド)に対応するドメイン向け。
 # USUBJID×(alias_name, label)の組み合わせごとに1レコード作り、各変数は自分のlabelに対応するspec行だけを見て
 # 値を生成する(対応するlabelが無ければNAのまま)。radio_button/date/meddra/dummyの基本パターンに対応
-build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
+# existing_data/finalizeの意味はbuild_generic_domain()と同じ(prefix単位では循環に見える依存関係を
+# 複数waveに分けて解決するため。通常は既定値のままでよく、挙動は従来と完全に同じになる)
+build_repeated_domain <- function(dm, spec, prefix, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, add_coding_block = FALSE, built_domains = list(), cdisc_variable_to_prefix = NULL, age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL, existing_data = NULL, finalize = TRUE) {
   drug_names <- if (!is.null(who_drug_idf)) who_drug_idf[["full_name_en"]] %>% discard(is.na) %>% unique() else character(0)
   # presence_conditions/age_bounds/date_ref_boundsは全ドメイン分を含む共通テーブルのため、
   # 同じref_cdisc_variableを別ドメインが別のlabelで参照しているとinject_cross_domain_refs()が
@@ -1623,6 +1798,12 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds)
   data <- date_injected[["data"]]
   date_injected_cols <- date_injected[["injected_cols"]]
+
+  # 明示的なref()参照を持たない日付項目は、下の日付生成でregistration_start_date(試験共通の定数)を
+  # 下限にしてしまう。RFSTDTCを結合しておくことで、被験者本人の登録日をデフォルトの下限にできるようにする
+  rfstdtc_injected <- inject_dm_rfstdtc(data, built_domains)
+  data <- rfstdtc_injected[["data"]]
+  if (rfstdtc_injected[["injected"]]) date_injected_cols <- c(date_injected_cols, "RFSTDTC")
 
   target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
 
@@ -1711,11 +1892,22 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
             sample_values_with_coverage(cs, nn)
           }
         } else if (ft == "date") {
-          if (is.na(date_min_ref) && is.na(date_max_ref)) {
+          if (is.na(date_min_ref) && is.na(date_max_ref) && !("RFSTDTC" %in% colnames(data))) {
             as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
           } else {
-            lower <- rep(as.Date(registration_start_date), nn)
-            if (!is.na(date_min_ref)) lower <- pmax(lower, as.Date(.data[[date_min_ref]]), na.rm = TRUE)
+            # RFSTDTC(症例登録日、明示的なref()参照が無い日付項目のデフォルト下限として
+            # inject_dm_rfstdtc()で結合されている場合がある)は被験者ごとに異なるため、
+            # 一律のseq()ではなく行ごとにrunif()で生成する。この変数にlabelを跨ぐ連鎖参照がある場合
+            # (例: EC複数回投与の2回目以降)、行によっては参照先(前labelの値)が実際に存在するため、
+            # そのような行ではRFSTDTCを加えず参照値のみ尊重する。参照値が無い行(連鎖の先頭等)だけ
+            # RFSTDTCを補う
+            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) else rep(as.Date(NA), nn)
+            lower <- pmax(rep(as.Date(registration_start_date), nn), ref_vals, na.rm = TRUE)
+            if ("RFSTDTC" %in% colnames(data)) {
+              no_explicit_ref <- is.na(ref_vals)
+              rfstdtc_vals <- as.Date(.data[["RFSTDTC"]])
+              lower[no_explicit_ref] <- pmax(lower[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
+            }
             upper <- rep(Sys.Date(), nn)
             if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]), na.rm = TRUE)
             upper <- pmax(upper, lower)
@@ -1790,7 +1982,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   } else {
     date_ref_bounds
   }
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp, existing_data)
   # 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   # シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。
   # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
@@ -1799,7 +1991,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
   # 他ドメイン参照(date_ref_bounds_for_clamp)の下限/上限が再び崩れる場合がある。ここでもう一度
   # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp, existing_data)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、
@@ -1839,8 +2031,17 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   # alias_name/labelはここでは落とさない(他ドメインからの参照で突き合わせキーとして使うため)。
   # build_other_domains側で、返り値を作る最後の段階で取り除く
+  data <- data %>% add_visit_columns(visit_lookup)
+
+  # wave分割時(existing_data指定あり)は、ここでこのwaveの新規行を前waveまでの確定済み行と結合する
+  # (existing_dataがNULLなら何もしない=従来通り)。まだfinalizeでなければ、次waveのexisting_dataとして
+  # 使えるようそのまま返す(DSSEQ相当の連番はfinalizeのタイミングでまとめて振る)
+  data <- bind_rows(existing_data, data)
+  if (!finalize) {
+    return(data)
+  }
+
   data %>%
-    add_visit_columns(visit_lookup) %>%
     add_seq(str_c(prefix, "SEQ")) %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), coding_cols))
 }
@@ -1941,11 +2142,22 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
             sample_values_with_coverage(cs, nn)
           }
         } else if (ft == "date") {
-          if (is.na(date_min_ref) && is.na(date_max_ref)) {
+          if (is.na(date_min_ref) && is.na(date_max_ref) && !("RFSTDTC" %in% colnames(data))) {
             as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
           } else {
-            lower <- rep(as.Date(registration_start_date), nn)
-            if (!is.na(date_min_ref)) lower <- pmax(lower, as.Date(.data[[date_min_ref]]), na.rm = TRUE)
+            # RFSTDTC(症例登録日、明示的なref()参照が無い日付項目のデフォルト下限として
+            # inject_dm_rfstdtc()で結合されている場合がある)は被験者ごとに異なるため、
+            # 一律のseq()ではなく行ごとにrunif()で生成する。この変数にlabelを跨ぐ連鎖参照がある場合
+            # (例: EC複数回投与の2回目以降)、行によっては参照先(前labelの値)が実際に存在するため、
+            # そのような行ではRFSTDTCを加えず参照値のみ尊重する。参照値が無い行(連鎖の先頭等)だけ
+            # RFSTDTCを補う
+            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) else rep(as.Date(NA), nn)
+            lower <- pmax(rep(as.Date(registration_start_date), nn), ref_vals, na.rm = TRUE)
+            if ("RFSTDTC" %in% colnames(data)) {
+              no_explicit_ref <- is.na(ref_vals)
+              rfstdtc_vals <- as.Date(.data[["RFSTDTC"]])
+              lower[no_explicit_ref] <- pmax(lower[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
+            }
             upper <- rep(Sys.Date(), nn)
             if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]), na.rm = TRUE)
             upper <- pmax(upper, lower)
@@ -2033,17 +2245,19 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
   edges <- build_cross_prefix_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
-  ordered_prefixes <- topo_sort_prefixes(prefixes, edges)
+  sort_result <- topo_sort_prefixes_with_leftover(prefixes, edges)
+  ordered_prefixes <- sort_result[["ordered"]]
+  leftover_prefixes <- sort_result[["remaining"]]
 
-  for (px in ordered_prefixes) {
-    spec <- cdisc_variable_values %>% filter(prefix == px)
-    built_domains[[px]] <- if (px %in% repeated_prefixes || has_repeated_labels(spec)) {
+  build_one_prefix <- function(px, spec, existing_data = NULL, finalize = TRUE) {
+    if (px %in% repeated_prefixes || has_repeated_labels(cdisc_variable_values %>% filter(prefix == px))) {
       build_repeated_domain(
         dm, spec, px, registration_start_date, meddra, presence_conditions, required_var_instances,
         add_coding_block = px %in% coding_block_prefixes,
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
-        visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds
+        visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds,
+        existing_data = existing_data, finalize = finalize
       )
     } else {
       build_generic_domain(
@@ -2052,8 +2266,40 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
         built_domains = built_domains, cdisc_variable_to_prefix = cdisc_variable_to_prefix, age_bounds = age_bounds,
         multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf, active_sheet_table = active_sheet_table,
         visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds,
-        is_exclusive = px %in% exclusive_prefixes
+        is_exclusive = px %in% exclusive_prefixes, existing_data = existing_data, finalize = finalize
       )
+    }
+  }
+
+  # 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)
+  for (px in ordered_prefixes) {
+    spec <- cdisc_variable_values %>% filter(prefix == px)
+    built_domains[[px]] <- build_one_prefix(px, spec)
+  }
+
+  # 循環に関与するprefix(leftover_prefixes)は、prefix単位ではなくシート(alias_name)単位で
+  # 依存関係を解決し、複数wave(alias_nameのまとまり)に分けてビルドする。実際には循環ではなく、
+  # 単に同じprefix内の別シートを介した参照チェーンが、prefix単位の粗い依存判定では循環に
+  # 見えていただけ、というケースがほとんど(例: SV(hr3fisrt)→RS→LB→FA→SV(prephase))
+  if (length(leftover_prefixes) > 0) {
+    leftover_values <- cdisc_variable_values %>% filter(prefix %in% leftover_prefixes)
+    alias_nodes <- leftover_values %>% distinct(prefix, alias_name)
+    alias_edges <- build_alias_level_edges(presence_conditions, field_ref_bounds, cdisc_variable_to_prefix, age_bounds, date_ref_bounds) %>%
+      filter(from_prefix %in% leftover_prefixes, to_prefix %in% leftover_prefixes)
+    ordered_pairs <- topo_sort_prefix_aliases(alias_nodes, alias_edges)
+
+    if (nrow(ordered_pairs) > 0) {
+      run_id <- cumsum(ordered_pairs[["prefix"]] != dplyr::lag(ordered_pairs[["prefix"]], default = ordered_pairs[["prefix"]][1]) | seq_len(nrow(ordered_pairs)) == 1)
+      last_run_by_prefix <- tapply(run_id, ordered_pairs[["prefix"]], max)
+
+      for (rid in unique(run_id)) {
+        run_rows <- ordered_pairs[run_id == rid, ]
+        px <- run_rows[["prefix"]][1]
+        wave_alias_names <- unique(run_rows[["alias_name"]])
+        spec <- leftover_values %>% filter(prefix == px, alias_name %in% wave_alias_names)
+        is_last <- rid == last_run_by_prefix[[px]]
+        built_domains[[px]] <- build_one_prefix(px, spec, existing_data = built_domains[[px]], finalize = is_last)
+      }
     }
   }
 

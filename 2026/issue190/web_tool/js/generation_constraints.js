@@ -46,8 +46,16 @@ function extractNumericValue(validatorType, value) {
   return Number.isNaN(n) ? null : n;
 }
 
+// "field3"のような同一シート内の別フィールド参照、または"f84 +1.day"のような日数オフセット付きの
+// 同一シート内参照(EDC仕様上25箇所で使用、いずれも"+1.day(s)"のみ)の場合、参照先フィールド名を
+// 取り出す。日数オフセット自体は下限として厳密には反映しない(populateDateFields等はref_field自身の
+// 値をそのまま下限にする。+1日分だけ緩い下限になるが、参照が完全に無視されるよりは実態に即しており、
+// この差はcheckDateAfterVarBeforeToday等の>=判定には影響しない)
 function extractRefField(validatorType, value) {
-  if (validatorType === "date" && value != null && /^field[0-9]+$/.test(value)) return value;
+  if (validatorType !== "date" || value == null) return null;
+  if (/^field[0-9]+$/.test(value)) return value;
+  const m = value.match(/^f([0-9]+)\s*\+\s*[0-9]+\.days?$/);
+  if (m) return `field${m[1]}`;
   return null;
 }
 
@@ -650,7 +658,9 @@ function buildFieldRefBounds(validatorTable, fieldLookup) {
     ownMatches.forEach((own) => {
       refMatches.forEach((ref) => {
         if (own.cdisc_variable == null || ref.cdisc_variable == null) return;
-        rows.push({ cdisc_variable: own.cdisc_variable, ref_cdisc_variable: ref.cdisc_variable, bound_type: vr.bound_type });
+        // alias_name(自分自身の所属シート。formula参照は必ず同一シート内なのでref_alias_nameも同じ)は、
+        // buildAliasLevelEdges()がprefixだけでなくシート単位で依存関係を見られるようにするために保持する
+        rows.push({ alias_name: vr.alias_name, cdisc_variable: own.cdisc_variable, ref_cdisc_variable: ref.cdisc_variable, bound_type: vr.bound_type });
       });
     });
   });
@@ -671,7 +681,12 @@ function buildDateRefBounds(validatorTable, fieldLookup) {
   validatorTable.forEach((vr) => {
     if (vr.validator_type !== "date") return;
     if (vr.bound_type == null || vr.ref_field == null) return;
-    if (vr.ref_field === vr.field_name) return;
+    // 自己参照除外(ref_field===field_name)は、dateRefAliasName(ref('sheet_alias', N)形式の
+    // 他シート参照)が無い場合(=同一シート内の参照)にだけ適用する。他シート参照の場合、
+    // 参照先の(そのシート内での)フィールド番号が自分のフィールド番号とたまたま同じことがあり
+    // (例: earlyintensifiのfield820がinductionのfield820を参照)、これを自己参照として
+    // 誤除外してしまうため
+    if (vr.date_ref_alias_name == null && vr.ref_field === vr.field_name) return;
     const key = `${vr.alias_name}|${vr.field_name}|${vr.ref_field}|${vr.bound_type}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -712,7 +727,10 @@ function buildAgeBounds(validatorTable, fieldLookup) {
     ownMatches.forEach((own) => {
       refMatches.forEach((ref) => {
         if (own.cdisc_variable == null || ref.cdisc_variable == null) return;
+        // alias_name(自分自身の所属シート)は、buildAliasLevelEdges()がprefixだけでなくシート単位で
+        // 依存関係を見られるようにするために保持する(age()参照は必ず同一シート内なのでref_alias_nameも同じ)
         rows.push({
+          alias_name: vr.alias_name,
           cdisc_variable: own.cdisc_variable,
           ref_cdisc_variable: ref.cdisc_variable,
           ref_alias_name: vr.alias_name,

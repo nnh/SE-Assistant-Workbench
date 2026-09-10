@@ -309,7 +309,9 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_cdisc_variable %>% rename(ref_cdisc_variable = cdisc_variable),
       by = c("alias_name", "ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, bound_type) %>%
+    # alias_name(自分自身の所属シート。formula参照は必ず同一シート内なのでref_alias_nameも同じ)は、
+    # build_alias_level_edges()がprefixだけでなくシート単位で依存関係を見られるようにするために保持する
+    transmute(alias_name, cdisc_variable, ref_cdisc_variable, bound_type) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   # validate_date_after_or_equal_to/validate_date_before_or_equal_toが他フィールド参照
@@ -323,8 +325,16 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
   # label(行)を跨いだ参照とlabel内の参照が混在する。cdisc_variable単位まで潰してしまうと
   # (ECSTDTC min_date ECENDTC / ECENDTC min_date ECSTDTC のように)矛盾した規則に見えてしまうため、
   # build_repeated_domain側でlabel/ref_labelを見てlabelを跨ぐ参照かどうかを判定できるようにする
+  # ref_field != field_nameの自己参照除外は、date_ref_alias_name(ref('sheet_alias', N)形式の
+  # 他シート参照)が無い場合(=同一シート内の参照)にだけ適用する。他シート参照の場合、
+  # 参照先の(そのシート内での)フィールド番号が自分のフィールド番号とたまたま同じことがあり
+  # (例: earlyintensifiのfield820がinductionのfield820を参照)、これを自己参照として誤除外
+  # してしまうため
   date_ref_bounds <- validator_table %>%
-    filter(validator_type == "date", !is.na(bound_type), !is.na(ref_field), ref_field != field_name) %>%
+    filter(
+      validator_type == "date", !is.na(bound_type), !is.na(ref_field),
+      !is.na(date_ref_alias_name) | ref_field != field_name
+    ) %>%
     distinct(alias_name, field_name, ref_field, bound_type, date_ref_alias_name) %>%
     # ref('sheet_alias', N)形式の他シート参照(date_ref_alias_name)があればそちらを、無ければ
     # 従来通り自分自身と同じalias_nameを参照先のlookupに使う
@@ -358,7 +368,9 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_label %>% rename(ref_label = label),
       by = c("alias_name", "age_ref_field" = "field")
     ) %>%
-    transmute(cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, min_age, max_age) %>%
+    # alias_name(自分自身の所属シート)は、build_alias_level_edges()がprefixだけでなくシート単位で
+    # 依存関係を見られるようにするために保持する(age()参照は必ず同一シート内なのでref_alias_nameも同じ)
+    transmute(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name, ref_label, min_age, max_age) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable))
 
   list(

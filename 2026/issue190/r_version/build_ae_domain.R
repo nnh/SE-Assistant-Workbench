@@ -7,10 +7,14 @@ build_ae_domain <- function(dm, n = 100) {
   ae <- tibble(
     USUBJID = sample(dm[["USUBJID"]], n, replace = TRUE)
   )
-  ae <- ae %>% left_join(dm %>% select(USUBJID, STUDYID), by = "USUBJID")
+  # RFSTDTC(症例登録日)も結合しておく。AEの日付項目は明示的なref()参照を持たず、
+  # 従来はregistration_start_date(試験共通の定数)を下限にしていたため、稀に被験者本人の
+  # 登録日より前の日付が生成され得た。populate_ae_domain()側でこれを下限として使う
+  # (最終的な出力列には含めない。populate_ae_domain()末尾で取り除く)
+  ae <- ae %>% left_join(dm %>% select(USUBJID, STUDYID, any_of("RFSTDTC")), by = "USUBJID")
   ae[["DOMAIN"]] <- "AE"
 
-  ae %>% select(STUDYID, DOMAIN, USUBJID)
+  ae %>% select(STUDYID, DOMAIN, USUBJID, any_of("RFSTDTC"))
 }
 
 populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds = NULL, field_ref_bounds = NULL, required_llt_codes = character(0), who_drug_idf = NULL, active_sheet_table = NULL, date_ref_bounds = NULL) {
@@ -46,13 +50,21 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
     setdiff(ae_date_vars, c("AESTDTC", "AEENDTC")),
     intersect("AEENDTC", ae_date_vars)
   )
+  # RFSTDTC(症例登録日)がある場合、AESTDTC以外の日付項目の下限をregistration_start_date
+  # (試験共通の定数)ではなく被験者本人のRFSTDTCにする(build_ae_domain()で結合済み)
+  has_rfstdtc <- "RFSTDTC" %in% colnames(ae)
+  if (has_rfstdtc) {
+    ae[["__date_lower_bound"]] <- as.character(pmax(as.Date(registration_start_date), as.Date(ae[["RFSTDTC"]]), na.rm = TRUE))
+  }
+  ae_start_bound <- if (has_rfstdtc) "__date_lower_bound" else registration_start_date
   for (var_name in ordered_date_vars) {
     if (var_name == "AEENDTC" && "AESTDTC" %in% colnames(ae)) {
       ae <- generate_random_date(ae, "AESTDTC", Sys.Date(), var_name)
     } else {
-      ae <- generate_random_date(ae, registration_start_date, Sys.Date(), var_name)
+      ae <- generate_random_date(ae, ae_start_bound, Sys.Date(), var_name)
     }
   }
+  if (has_rfstdtc) ae[["__date_lower_bound"]] <- NULL
 
   # AE報告が複数のalias(シート、例: "sae_report"/"ae2")にまたがる場合、シートの本来の並び順
   # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする(同じ行のAESTDTC<=AEENDTCの関係は保つ)
@@ -108,7 +120,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   # 断片テーブルに分離する(AESPIDをそのままprefixSPIDとして引き継ぎ、どのAE報告に対応するか分かるようにする)。
   # AE自身の返り値には、リンク先prefixの列とalias_nameは含めない
   linked_domains <- split_linked_domains(ae, linked_spec, "AESPID")
-  ae <- ae %>% select(-alias_name, -any_of(linked_spec[["cdisc_variable"]] %>% unique()))
+  ae <- ae %>% select(-alias_name, -any_of("RFSTDTC"), -any_of(linked_spec[["cdisc_variable"]] %>% unique()))
 
   # 列順を整理: STUDYID/DOMAIN/USUBJID/AESEQ/AESPID -> meddra項目 -> MedDRAコーディングブロック -> その他 -> AETOXGR/AESTDTC/AEENDTC
   ae <- ae %>%
