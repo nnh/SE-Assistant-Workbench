@@ -91,6 +91,14 @@ ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
+tmp_ec <- ec %>% filter(ECTRT == "PEGASPARGASE" & VISITNUM == 200)
+suffix <- "_1"
+ec_target_cols <- c("ECMOOD")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+str_c(ec_target_cols, suffix) %>% check_required_vars(tmp_ec, ., domain_name = "EC")
+"ECSTDTC" %>% check_date_before_today(tmp_ec, ., domain_name ="EC")
+
 # FA: FATESTCDごとの個別チェック(test3用)。指定visitnum・faobj・falocのレコードに絞り込み、FATEST
 # (+has_blflならFABLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを確認する
 # (FAOBJ/FALOCはfilter条件として使うため、チェック対象には含めない)。
@@ -383,8 +391,13 @@ str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
 sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
 sv %>% check_date_after_var_before_today("SVSTDTC", "MHSTDTC", domain_name = "SV")
+
 tmp_sv <- sv %>% filter(SVSPID == "prephase")
 sv_target_cols <- c("VISITNUM")
 suffix <- "_1"
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+
+tmp_sv_2 <- sv %>% filter(SVSPID == "prephase") %>% select(USUBJID, prephase825=SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "induction") %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "prephase825", domain_name = "SV")
