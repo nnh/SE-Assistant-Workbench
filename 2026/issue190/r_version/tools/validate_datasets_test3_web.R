@@ -69,6 +69,61 @@ list2env(other_domains, envir = .GlobalEnv)
 
 # test3個別チェック
 
+# CM
+cm %>% filter(CMSPID != "sct1") %>% check_required_vars("CMOCCUR", domain_name = "CM")
+cm %>% filter(CMSPID == "sct1") %>% check_blank_vars("CMOCCUR", domain_name = "CM")
+cm_target_cols <- c("CMCAT", "CMOCCUR", "CMPRESP")
+tmp_cm <- cm %>% filter(CMTRT == "ANTIFUNGAL DRUG" & VISITNUM == 200)
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)" & VISITNUM == 200)
+suffix <- "_2"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+cm_target_cols <- c("CMOCCUR", "CMPRESP")
+tmp_cm <- cm %>% filter(CMTRT == "UNFRACTIONATED HEPARIN" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "LOW MOLECULAR HEPARIN" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "HEPARINOID" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "OTHER ANTICOAGULANT" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "UNFRACTIONATED HEPARIN" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "LOW MOLECULAR HEPARIN" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "HEPARINOID" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
+tmp_cm <- cm %>% filter(CMTRT == "OTHER ANTICOAGULANT" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
+suffix <- "_1"
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
+str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
 # DM
 c("RFICDTC", "BRTHDTC", "SEX", "RACE", "RFSTDTC") %>% check_required_vars(dm, ., domain_name = "DM")
 dm %>% check_date_before_today(c("BRTHDTC"), domain_name = "DM")
@@ -98,6 +153,41 @@ tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 str_c(ec_target_cols, suffix) %>% check_required_vars(tmp_ec, ., domain_name = "EC")
 "ECSTDTC" %>% check_date_before_today(tmp_ec, ., domain_name ="EC")
+
+tmp_ec <- ec %>% filter(ECTRT == "PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_3"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+tmp_ec <- ec %>% filter(ECTRT == "VINCRISTINE SULFATE" & VISITNUM == 200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_3"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+tmp_ec <- ec %>% filter(ECTRT == "DAUNORUBICIN HYDROCHLORIDE" & VISITNUM == 200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_3"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+tmp_ec <- ec %>% filter(ECTRT == "L-ASPARAGINASE" & VISITNUM == 200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_4"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
 # FA: FATESTCDごとの個別チェック(test3用)。指定visitnum・faobj・falocのレコードに絞り込み、FATEST
 # (+has_blflならFABLFL)をsuffix付き列名にリネームしたうえで固定値と一致することを確認する
@@ -386,6 +476,15 @@ tmp_mh <- tmp_mh %>% rename_with(~ str_c(.x, suffix), all_of(mh_target_cols))
 str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh, "MH", .x, fixed_value_checks_csv_path))
 
 "MHTERM" %>% check_required_vars(filter(mh, MHOCCUR=="Y"), ., domain_name="MH")
+
+# PR
+pr %>% filter(PRSPID != "sct1") %>% check_required_vars("PROCCUR", domain_name = "PR")
+pr %>% filter(PRSPID == "sct1") %>% check_blank_vars("PROCCUR", domain_name = "PR")
+pr_target_cols <- c("PRPRESP", "PROCCUR")
+tmp_pr <- pr %>% filter(PRTRT == "Central Venous Catheter Placement" & VISITNUM == 200)
+suffix <- "_1"
+tmp_pr <- tmp_pr %>% rename_with(~ str_c(.x, suffix), all_of(pr_target_cols))
+str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
 
 # SV
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
