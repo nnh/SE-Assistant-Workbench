@@ -827,8 +827,13 @@ topo_sort_prefix_aliases <- function(nodes, edges) {
 # 各組み合わせをdataの該当行(dataのalias_nameがそのref_alias_nameと一致する行)だけに絞って注入する。
 # dataがalias_nameを持たない場合や、そのref_alias_nameがdata自身のalias_nameのどれとも一致しない場合
 # (=真に外部の固定参照)は、全行に対して適用する
+# own_prefixが指定されている場合、ref_prefix(参照先変数のドメイン)がown_prefixと同じ(=自分自身の
+# ドメインを参照している)ものは注入しない。wave分割時、built_domains[[own_prefix]]には前waveまでの
+# 未finalizeな結果が既に入っているため、素通りさせるとdata自身に同名列が「既にある」ことになり、
+# このあとの通常の値生成(populate_date_fields等)がその変数をまるごとスキップしてしまう
+# (このケースはresolve_date_ref_bound_vals()のexisting_dataフォールバックで別途正しく処理される)
 # 戻り値はlist(data=結合後のdata, injected_cols=このために追加した列名)
-inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL) {
+inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds = NULL, date_ref_bounds = NULL, own_prefix = NULL) {
   if (is.null(presence_conditions)) {
     presence_conditions <- tibble(ref_cdisc_variable = character(0))
   }
@@ -881,6 +886,9 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
     }
     ref_prefix <- cdisc_variable_to_prefix %>% filter(cdisc_variable == ref_var) %>% pull(prefix) %>% first()
     if (is.na(ref_prefix) || !(ref_prefix %in% names(built_domains))) {
+      next
+    }
+    if (!is.null(own_prefix) && ref_prefix == own_prefix) {
       next
     }
     ref_data <- built_domains[[ref_prefix]]
@@ -1328,12 +1336,19 @@ reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, r
     row_discon <- discon_lookup[data[["USUBJID"]]]
     row_upper_bound <- pmin(row_upper_bound, row_discon, na.rm = TRUE)
   }
+  # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+  # シフト後もこれより前にならないようにする(乳児コホート等ではBRTHDTCがregistration_start_dateより
+  # 後になり得るため、registration_start_dateだけでは生年月日より前の日付になり得る)
+  row_lower_bound <- rep(reg_start, nrow(data))
+  if ("BRTHDTC" %in% colnames(data)) {
+    row_lower_bound <- pmax(row_lower_bound, as.Date(data[["BRTHDTC"]]), na.rm = TRUE)
+  }
 
   for (var_name in date_vars) {
     has_val <- !is.na(data[[var_name]]) & !is.na(data[["delta"]])
     if (!any(has_val)) next
     new_dates <- as.Date(data[[var_name]][has_val]) + data[["delta"]][has_val]
-    new_dates <- pmin(pmax(new_dates, reg_start), row_upper_bound[has_val])
+    new_dates <- pmin(pmax(new_dates, row_lower_bound[has_val]), row_upper_bound[has_val])
     data[[var_name]][has_val] <- as.character(new_dates)
   }
 
@@ -1422,6 +1437,11 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       # 一律にRFSTDTCを下限に加えると、その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
       if (is.null(min_ref_vals) && "RFSTDTC" %in% colnames(data)) {
         lower <- pmax(lower, as.Date(as.character(data[["RFSTDTC"]][over])), na.rm = TRUE)
+      }
+      # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+      # RFSTDTCと異なり全行に適用する(build_repeated_domain内の日付生成ループと同じ理由)
+      if ("BRTHDTC" %in% colnames(data)) {
+        lower <- pmax(lower, as.Date(as.character(data[["BRTHDTC"]][over])), na.rm = TRUE)
       }
       # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
       discon_over_vals <- discon[over]
@@ -1668,7 +1688,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   # date_ref_boundsが他ドメインの日付列を参照する場合、populate_date_fields()より前に
   # built_domainsから該当列を結合しておく(そうしないと生成時点でref_cdisc_variableが
   # colnames(data)に無く、下限/上限制約が適用されないまま日付が生成されてしまう)
-  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds)
+  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds, own_prefix = prefix)
   data <- date_injected[["data"]]
   date_injected_cols <- date_injected[["injected_cols"]]
 
@@ -1721,7 +1741,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
 
   # presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   # built_domains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
-  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
+  injected <- inject_cross_domain_refs(data, presence_conditions, field_ref_bounds, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds, own_prefix = prefix)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions, cdisc_variable_to_prefix) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%
@@ -1795,7 +1815,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # date_ref_boundsが他ドメインの日付列を参照する場合、このあとの日付生成ループより前に
   # built_domainsから該当列を結合しておく(そうしないと生成時点でref_cdisc_variableが
   # colnames(data)に無く、下限/上限制約が適用されないまま日付が生成されてしまう)
-  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds)
+  date_injected <- inject_cross_domain_refs(data, NULL, NULL, built_domains, cdisc_variable_to_prefix, NULL, date_ref_bounds, own_prefix = prefix)
   data <- date_injected[["data"]]
   date_injected_cols <- date_injected[["injected_cols"]]
 
@@ -1804,6 +1824,15 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   rfstdtc_injected <- inject_dm_rfstdtc(data, built_domains)
   data <- rfstdtc_injected[["data"]]
   if (rfstdtc_injected[["injected"]]) date_injected_cols <- c(date_injected_cols, "RFSTDTC")
+
+  # BRTHDTC(生年月日)より前の日付が生成されないよう、dmから直接結合しておく。乳児コホート等では
+  # BRTHDTCがregistration_start_date/RFSTDTCより後になり得るため、明示的なref()参照の有無に
+  # よらず常に適用すべき下限(生物学的制約)として扱う。追加した列は他のinjected_colsと同様、
+  # 最後に取り除く
+  if ("BRTHDTC" %in% colnames(dm) && !("BRTHDTC" %in% colnames(data))) {
+    data <- data %>% left_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID")
+    date_injected_cols <- c(date_injected_cols, "BRTHDTC")
+  }
 
   target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
 
@@ -1892,7 +1921,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
             sample_values_with_coverage(cs, nn)
           }
         } else if (ft == "date") {
-          if (is.na(date_min_ref) && is.na(date_max_ref) && !("RFSTDTC" %in% colnames(data))) {
+          if (is.na(date_min_ref) && is.na(date_max_ref) && !("RFSTDTC" %in% colnames(data)) && !("BRTHDTC" %in% colnames(data))) {
             as.character(sample(seq(as.Date(registration_start_date), Sys.Date(), by = "day"), nn, replace = TRUE))
           } else {
             # RFSTDTC(症例登録日、明示的なref()参照が無い日付項目のデフォルト下限として
@@ -1907,6 +1936,13 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
               no_explicit_ref <- is.na(ref_vals)
               rfstdtc_vals <- as.Date(.data[["RFSTDTC"]])
               lower[no_explicit_ref] <- pmax(lower[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
+            }
+            # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+            # RFSTDTCと異なり全行に適用する(乳児コホート等ではBRTHDTCがregistration_start_date/RFSTDTCより
+            # 後になり得るため、それらのデフォルト下限だけでは生年月日より前の日付が生成されてしまう)
+            if ("BRTHDTC" %in% colnames(data)) {
+              brthdtc_vals <- as.Date(.data[["BRTHDTC"]])
+              lower <- pmax(lower, brthdtc_vals, na.rm = TRUE)
             }
             upper <- rep(Sys.Date(), nn)
             if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]), na.rm = TRUE)
@@ -1954,9 +1990,13 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # 同じdataフレーム内にref_labelの行がある前提のため、ref_cdisc_variableが他ドメインの変数
   # (例: RSDTCがCMSTDTCを参照)の場合はref_labelの行が存在せず機能しない。他ドメイン参照は
   # inject_cross_domain_refs()で既にref_cdisc_variable列自体がdataに結合済みなので、通常の
-  # 列単位生成・下のclamp_dates_to_discontinuationのref_violation判定に任せればよい)
+  # 列単位生成・下のclamp_dates_to_discontinuationのref_violation判定に任せればよい)。
+  # alias_name == ref_alias_nameも必須にする(同一ドメイン内で別alias(シート)を参照するケース、
+  # 例: evaluationtp1のLBDTCがinductionlabのLBDTCを参照、はlabelが一致しないだけでこのフィルタに
+  # 誤って引っかかっていた。regenerate_date_chain()は同じaliasのlabel行しか見ないため参照先が
+  # 見つからずref無視のまま生成され、下限が緩すぎる日付が生成されてしまうバグがあった)
   chain_bounds <- if (!is.null(date_ref_bounds)) {
-    date_ref_bounds %>% filter(cdisc_variable %in% date_vars, ref_cdisc_variable %in% date_vars, !is.na(label), !is.na(ref_label), label != ref_label)
+    date_ref_bounds %>% filter(cdisc_variable %in% date_vars, ref_cdisc_variable %in% date_vars, !is.na(label), !is.na(ref_label), label != ref_label, alias_name == ref_alias_name)
   } else {
     date_ref_bounds
   }
@@ -2014,7 +2054,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
   # presence_conditions/age_boundsが他ドメインの変数を参照している場合、built_domainsから値を結合してから適用し、
   # 結合用に追加した列は最後に外す(alias_name/labelが揃っている場合はそれも突き合わせキーに使う)
-  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds)
+  injected <- inject_cross_domain_refs(data, presence_conditions, NULL, built_domains, cdisc_variable_to_prefix, age_bounds, date_ref_bounds, own_prefix = prefix)
   data <- injected[["data"]] %>%
     apply_presence_conditions(presence_conditions, cdisc_variable_to_prefix) %>%
     drop_all_blank_required_records(target_vars, required_var_instances, prefix) %>%

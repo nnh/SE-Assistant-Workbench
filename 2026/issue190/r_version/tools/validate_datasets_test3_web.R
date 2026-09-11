@@ -224,7 +224,7 @@ check_fa_grade_panel("reinduction3", "2100")
 check_lb_testcd_at_visit <- function(lb, lbtestcd, visitnum, suffix, extra_cols, fixed_value_checks_csv_path,
                                       has_blfl = TRUE, has_not_done_split = FALSE,
                                       has_orres_in_target = FALSE, check_orres_value_when_done = FALSE) {
-  target_lb_cols <- c("LBTEST", "LBCAT", extra_cols, "VISITNUM")
+  target_lb_cols <- c("LBTEST", "LBCAT", extra_cols)
   if (has_blfl) target_lb_cols <- c(target_lb_cols, "LBBLFL")
   if (has_orres_in_target) target_lb_cols <- c(target_lb_cols, "LBORRES")
 
@@ -261,6 +261,15 @@ check_lb_testcd_at_visit(lb, "IKZF1ALT", 100, "_7", c("LBMETHOD"), fixed_value_c
 check_lb_testcd_at_visit(lb, "TP53MUT", 100, "_8", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
 check_lb_testcd_at_visit(lb, "IAMP21", 100, "_9", c("LBMETHOD"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
 check_lb_testcd_at_visit(lb, "CD19", 100, "_10", c("LBMETHOD", "LBSPEC"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+
+check_lb_testcd_at_visit(lb, "WBC", 200, "_1", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
+tmp_sv <- sv %>% filter(VISITNUM == 200) %>% select(USUBJID, SVSTDTC)
+tmp_lb <- lb %>% filter(LBTESTCD == "WBC" & VISITNUM == 200) %>% inner_join(tmp_sv, by="USUBJID")
+tmp_lb %>% check_date_after_var_before_today("LBDTC", "SVSTDTC")
+
+check_lb_testcd_at_visit(lb, "BLASTLE", 200, "_11", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
+tmp_lb <- lb %>% filter(LBTESTCD == "WBC" & VISITNUM == 200) %>% inner_join(tmp_sv, by="USUBJID")
+tmp_lb_2 <- lb %>% filter(LBTESTCD == "BLASTLE" & VISITNUM == 200)
 
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")

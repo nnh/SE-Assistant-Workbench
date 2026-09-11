@@ -280,7 +280,7 @@ function resolvePreferredAliasName(candidates, presenceConditions, builtDomains,
 // どちらの情報も無ければUSUBJIDのみで結合する(参照元に複数レコードあると最初の1件を使う)。
 // 戻り値は{ data, injectedCols }(injectedColsはこのために追加した列名。呼び出し側でゲーティングに
 // 使い終わった後に削除する想定)(Rのinject_cross_domain_refs()に対応)
-function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDomains, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
+function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDomains, cdiscVariableToPrefix, ageBounds, dateRefBounds, ownPrefix) {
   if (!data || data.length === 0) return { data, injectedCols: [] };
 
   // label(own_label)は、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス。
@@ -309,6 +309,12 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
     if (refVar in data[0]) return;
     const refPrefix = cdiscVariableToPrefix ? cdiscVariableToPrefix[refVar] : null;
     if (!refPrefix || !builtDomains || !builtDomains[refPrefix] || builtDomains[refPrefix].length === 0) return;
+    // ownPrefixが指定されている場合、参照先が自分自身のドメインなら注入しない。wave分割時、
+    // builtDomains[ownPrefix]には前waveまでの未finalizeな結果が既に入っているため、素通りさせると
+    // data自身に同名列が「既にある」ことになり、このあとの通常の値生成(populateDateFields等)が
+    // その変数をまるごとスキップしてしまう(このケースはresolveDateRefBoundVals()のexistingDataフォールバックで
+    // 別途正しく処理される)
+    if (ownPrefix && refPrefix === ownPrefix) return;
     const refData = builtDomains[refPrefix];
     if (!(refVar in refData[0])) return;
     const hasRefAlias = "alias_name" in refData[0] && "label" in refData[0];
@@ -792,6 +798,9 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
         // その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
         if (minVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
         if (minVal != null && minVal > lower) lower = minVal;
+        // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+        // RFSTDTCと異なり全行に適用する(buildRepeatedDomain内の日付生成ループと同じ理由)
+        if (row.BRTHDTC != null && row.BRTHDTC > lower) lower = row.BRTHDTC;
         let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
         if (maxVal != null && maxVal < upper) upper = maxVal;
         if (upper < lower) upper = lower;
@@ -1031,7 +1040,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // dateRefBoundsが他ドメインの日付列を参照する場合、populateGenericDateFields()より前にbuiltDomains
   // から該当列を結合しておく(そうしないと生成時点でref_cdisc_variableがdataの列に無く、下限/上限制約が
   // 適用されないまま日付が生成されてしまう)(Rのbuild_generic_domain()と同じ理由)
-  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
+  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds, prefix);
   data = dateInjected.data;
   let dateInjectedCols = dateInjected.injectedCols;
 
@@ -1084,7 +1093,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
 
   // presence_conditions/field_ref_bounds/age_boundsが他ドメインの変数を参照している場合、
   // builtDomains(既に生成済みのドメイン)から値を結合してから条件を適用し、結合用に追加した列は最後に外す
-  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
+  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, scopedFieldRefBounds, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds, prefix);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions, cdiscVariableToPrefix);
   data = dropAllBlankRequiredRecords(data, [...ownVars], requiredVarInstances, prefix);
@@ -1221,7 +1230,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // dateRefBoundsが他ドメインの日付列を参照する場合、このあとの日付生成より前にbuiltDomainsから
   // 該当列を結合しておく(そうしないと生成時点でref_cdisc_variableがdataの列に無く、下限/上限制約が
   // 適用されないまま日付が生成されてしまう)(Rのbuild_repeated_domain()と同じ理由)
-  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds);
+  const dateInjected = injectCrossDomainRefs(data, null, null, builtDomains, cdiscVariableToPrefix, null, scopedDateRefBounds, prefix);
   data = dateInjected.data;
   let dateInjectedCols = dateInjected.injectedCols;
 
@@ -1230,6 +1239,20 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   const rfstdtcInjected = injectDmRfstdtc(data, builtDomains);
   data = rfstdtcInjected.data;
   if (rfstdtcInjected.injected) dateInjectedCols = [...dateInjectedCols, "RFSTDTC"];
+
+  // BRTHDTC(生年月日)より前の日付が生成されないよう、dmから直接結合しておく。乳児コホート等では
+  // BRTHDTCがregistrationStartDate/RFSTDTCより後になり得るため、明示的なref()参照の有無によらず
+  // 常に適用すべき下限(生物学的制約)として扱う。追加した列は他のinjectedColsと同様、最後に取り除く
+  if (dm[0] && "BRTHDTC" in dm[0] && !(data[0] && "BRTHDTC" in data[0])) {
+    const brthdtcByUsubjid = {};
+    dm.forEach((row) => {
+      if (!(row.USUBJID in brthdtcByUsubjid)) brthdtcByUsubjid[row.USUBJID] = row.BRTHDTC;
+    });
+    data.forEach((row) => {
+      row.BRTHDTC = row.USUBJID in brthdtcByUsubjid ? brthdtcByUsubjid[row.USUBJID] : null;
+    });
+    dateInjectedCols = [...dateInjectedCols, "BRTHDTC"];
+  }
 
   const existingColumns = new Set(Object.keys(data[0] || {}));
   let targetVars = [...new Set(spec.map((r) => r.cdisc_variable))].filter((v) => !existingColumns.has(v));
@@ -1325,6 +1348,10 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
           if (refVal != null && refVal > lower) {
             lower = refVal;
           }
+          // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+          // RFSTDTCと異なり全行に適用する(乳児コホート等ではBRTHDTCがregistrationStartDate/RFSTDTCより
+          // 後になり得るため、それらのデフォルト下限だけでは生年月日より前の日付が生成されてしまう)
+          if (row.BRTHDTC != null && row.BRTHDTC > lower) lower = row.BRTHDTC;
           let upper = today;
           if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
             upper = row[dateMaxRow.ref_cdisc_variable];
@@ -1387,14 +1414,18 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // dataフレーム内にrefLabelの行がある前提のため、refCdiscVariableが他ドメインの変数(例: RSDTCが
   // CMSTDTCを参照)の場合はrefLabelの行が存在せず機能しない。他ドメイン参照はinjectCrossDomainRefs()で
   // 既にrefCdiscVariable列自体がdataに結合済みなので、通常の変数単位生成・下のclampDatesToDiscontinuation
-  // のref違反判定に任せればよい)
+  // のref違反判定に任せればよい)。aliasName === refAliasNameも必須にする(同一ドメイン内で別alias(シート)を
+  // 参照するケース、例: evaluationtp1のLBDTCがinductionlabのLBDTCを参照、はlabelが一致しないだけでこの
+  // フィルタに誤って引っかかっていた。regenerateDateChain()は同じaliasのlabel行しか見ないため参照先が
+  // 見つからずref無視のまま生成され、下限が緩すぎる日付が生成されてしまうバグがあった)
   const chainBounds = scopedDateRefBounds.filter(
     (r) =>
       dateVars.includes(r.cdisc_variable) &&
       dateVars.includes(r.ref_cdisc_variable) &&
       r.label != null &&
       r.ref_label != null &&
-      r.label !== r.ref_label
+      r.label !== r.ref_label &&
+      r.alias_name === r.ref_alias_name
   );
   if (chainBounds.length > 0) {
     const chainVars = [...new Set([...chainBounds.map((r) => r.cdisc_variable), ...chainBounds.map((r) => r.ref_cdisc_variable)])].filter(
@@ -1463,7 +1494,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 
   // presence_conditions/age_boundsが他ドメインの変数を参照している場合、builtDomainsから値を結合してから
   // 条件を適用し、結合用に追加した列は最後に外す(field_ref_boundsはRのbuild_repeated_domain()と同様に対象外)
-  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds);
+  const injected = injectCrossDomainRefs(data, scopedPresenceConditions, null, builtDomains, cdiscVariableToPrefix, scopedAgeBounds, scopedDateRefBounds, prefix);
   data = injected.data;
   data = applyPresenceConditions(data, scopedPresenceConditions, cdiscVariableToPrefix);
   data = dropAllBlankRequiredRecords(data, targetVars, requiredVarInstances, prefix);

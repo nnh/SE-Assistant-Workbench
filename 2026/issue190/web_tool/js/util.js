@@ -281,6 +281,13 @@ function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registratio
       if (row[v] == null) return;
       let t = new Date(row[v]).getTime() + delta * oneDay;
       if (t < regStartTime) t = regStartTime;
+      // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+      // シフト後もこれより前にならないようにする(乳児コホート等ではBRTHDTCがregistrationStartDateより
+      // 後になり得るため、registrationStartDateだけでは生年月日より前の日付になり得る)
+      if (row.BRTHDTC != null) {
+        const brthTime = new Date(row.BRTHDTC).getTime();
+        if (t < brthTime) t = brthTime;
+      }
       if (t > upperTime) t = upperTime;
       row[v] = new Date(t).toISOString().slice(0, 10);
     });
