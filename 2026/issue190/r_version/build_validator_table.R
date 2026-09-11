@@ -61,18 +61,21 @@ resolve_validator_value <- function(validator_type, value) {
   if_else(validator_type == "date" & value == "Date.current", as.character(Sys.Date()), value)
 }
 
-# valueが"field3"のような同一シート内の別フィールド参照、または"f84 +1.day"のような
-# 日数オフセット付きの同一シート内参照(EDC仕様上25箇所で使用、いずれも"+1.day(s)"のみ)の場合、
-# その参照先フィールド名を取り出す。日数オフセット自体は下限として厳密には反映しない
+# valueが"field3"のような同一シート内の別フィールド参照、"f3"のような省略形(fieldプレフィックス無し、
+# EDC仕様上26箇所で使用)、または"f84 +1.day"のような日数オフセット付きの同一シート内参照
+# (EDC仕様上25箇所で使用、いずれも"+1.day(s)"のみ)の場合、その参照先フィールド名を取り出す。
+# 日数オフセット自体は下限として厳密には反映しない
 # (populate_date_fields等はref_field自身の値をそのまま下限にする。+1日分だけ緩い下限になるが、
 # 参照が完全に無視されるよりは実態に即しており、この差はcheck_date_after_var_before_today等の
 # >=判定には影響しない)。参照先のfield_typeはdateである前提とする
 extract_ref_field <- function(validator_type, value) {
   bare_field <- str_detect(value, "^field[0-9]+$")
+  short_field <- str_detect(value, "^f[0-9]+$")
   offset_match <- str_match(value, "^f([0-9]+)\\s*\\+\\s*[0-9]+\\.days?$")
   case_when(
     validator_type != "date" ~ NA_character_,
     bare_field ~ value,
+    short_field ~ str_c("field", str_sub(value, 2)),
     !is.na(offset_match[, 1]) ~ str_c("field", offset_match[, 2]),
     TRUE ~ NA_character_
   )

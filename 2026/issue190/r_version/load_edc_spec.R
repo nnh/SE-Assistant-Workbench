@@ -17,6 +17,7 @@ source(here("build_field_reference_table.R"))
 source(here("lb_reference_ranges.R"))
 source(here("tr_orres_values.R"))
 source(here("vs_orres_values.R"))
+source(here("fa_orres_values.R"))
 source(here("read_who_drug_idf.R"))
 
 # json_path(EDC仕様JSON)からDM/AE/DS/その他ドメインのダミーデータ一式を生成する。
@@ -139,12 +140,13 @@ load_edc_spec <- function(json_path) {
   # AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
   other_domains <- merge_linked_domains(other_domains, ae_linked_domains)
 
-  # LB/TR/VSのORRESを、EDC仕様の数値バリデーション(min/max)に基づいたそれらしい数値に置き換える
+  # LB/TR/VS/FAのORRESを、EDC仕様の数値バリデーション(min/max)に基づいたそれらしい数値に置き換える
   # (対応するドメインが存在しない、またはTESTCD/ORRES列が無い場合は何もしない)
   other_domains <- apply_orres_populators(other_domains, list(
     LB = function(d) populate_lb_orres(d, cdisc_variable_values, field_numeric_bounds),
     TR = function(d) populate_tr_orres(d, cdisc_variable_values, field_numeric_bounds),
-    VS = function(d) populate_vs_orres(d, cdisc_variable_values, field_numeric_bounds)
+    VS = function(d) populate_vs_orres(d, cdisc_variable_values, field_numeric_bounds),
+    FA = function(d) populate_fa_orres(d, cdisc_variable_values, field_numeric_bounds)
   ))
 
   # DD(死因)は死亡した被験者のみのレコードにする(DDTEST/DDTESTCDのような固定値の列ではなく、

@@ -359,11 +359,12 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   }
   // AE報告と同じ行として生成したリンク先ブロック(例: FA)を、対応するドメインにマージする
   mergeLinkedDomains(otherDomains, aeLinkedDomains);
-  // LB/TR/VSのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
+  // LB/TR/VS/FAのORRESを、それぞれの基準範囲・条件に基づいたそれらしい数値に置き換える
   applyOrresPopulators(otherDomains, {
     LB: (d) => populateLbOrres(d, cdiscVariableValues, fieldNumericBounds),
     TR: (d) => populateTrOrres(d, cdiscVariableValues, fieldNumericBounds),
     VS: (d) => populateVsOrres(d, cdiscVariableValues, fieldNumericBounds),
+    FA: (d) => populateFaOrres(d, cdiscVariableValues, fieldNumericBounds),
   });
   // prefixSEQ列を持つドメインは、その列で行を並べ替えておく(mergeやfilter等で崩れた行順を
   // 最終出力前に揃えるため)

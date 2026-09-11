@@ -214,7 +214,11 @@ check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
 
+suffix <- "_11"
+target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
 tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES")
+tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(target_fa_cols))
+str_c(target_fa_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
 
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と

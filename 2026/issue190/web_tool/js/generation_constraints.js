@@ -54,6 +54,7 @@ function extractNumericValue(validatorType, value) {
 function extractRefField(validatorType, value) {
   if (validatorType !== "date" || value == null) return null;
   if (/^field[0-9]+$/.test(value)) return value;
+  if (/^f[0-9]+$/.test(value)) return `field${value.slice(1)}`;
   const m = value.match(/^f([0-9]+)\s*\+\s*[0-9]+\.days?$/);
   if (m) return `field${m[1]}`;
   return null;

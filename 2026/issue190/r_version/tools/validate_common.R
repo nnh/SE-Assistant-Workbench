@@ -226,12 +226,17 @@ check_blank_vars <- function(data, blank_vars, domain_name = NULL) {
 # data(1ドメイン分。USUBJID列が必要)のvar列(数値の文字列)がmin_value以上max_value以下かを
 # 確認する。min_value/max_valueはNA(既定値)にすると片側無制限にできる。
 # varが無い(NAまたは空文字列"")行は判定対象から除く(値の有無自体はcheck_required_vars等の
-# 別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
+# 別チェックで見る)。空欄ではないが数値に変換できない値(例: "DUMMY")が1件でもある場合は、
+# 範囲チェックがその行を素通りしてしまう(NG判定から除外される)ことに気づけるよう、
+# 警告(warning())を出す。domain_nameを指定するとメッセージの先頭に付く。
 # 範囲外の値がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
 check_numeric_range <- function(data, var, min_value = NA, max_value = NA, domain_name = NULL) {
   label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
-  values <- suppressWarnings(as.numeric(data[[var]]))
+  raw <- data[[var]]
+  values <- suppressWarnings(as.numeric(raw))
   valid <- !is.na(values)
+  is_blank <- is.na(raw) | raw == ""
+  non_numeric <- !valid & !is_blank
 
   invalid <- valid & ((!is.na(min_value) & values < min_value) | (!is.na(max_value) & values > max_value))
   invalid_usubjid <- data[["USUBJID"]][invalid]
@@ -245,6 +250,13 @@ check_numeric_range <- function(data, var, min_value = NA, max_value = NA, domai
     stop(str_c(
       label, var, "範囲チェック: ", length(invalid_usubjid), "件NG(", range_label,
       "の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  if (any(non_numeric)) {
+    non_numeric_usubjid <- data[["USUBJID"]][non_numeric]
+    warning(str_c(
+      label, var, "範囲チェック: 警告 - ", sum(non_numeric), "件が数値に変換できません(例: \"DUMMY\"等)。",
+      "範囲チェックから除外されています。USUBJID: ", paste(non_numeric_usubjid, collapse = ", ")
     ))
   }
   cat(
@@ -316,31 +328,6 @@ check_date_after_var_before_today <- function(data, date_var, ref_date_var, doma
   cat(
     label, date_var, "範囲チェック: OK(", date_var, "が", ref_date_var, "以降・今日(", as.character(today),
     ")以前であることを確認、", sum(valid_pair), "件)\n",
-    sep = ""
-  )
-}
-
-# data(1ドメイン分。USUBJID列が必要)のnum_var列(数値。文字列で入っていてもas.numeric()で変換して判定する)が、
-# min_val以上・max_val以下の範囲内かを確認する。数値に変換できない・NAの行は判定対象から除く
-# (値の有無自体はcheck_required_vars等の別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
-# 範囲外がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
-check_numeric_range <- function(data, num_var, min_val, max_val, domain_name = NULL) {
-  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
-  vals <- as.numeric(data[[num_var]])
-  valid <- !is.na(vals)
-
-  invalid <- valid & (vals < min_val | vals > max_val)
-  invalid_usubjid <- data[["USUBJID"]][invalid]
-
-  if (length(invalid_usubjid) > 0) {
-    stop(str_c(
-      label, num_var, "範囲チェック: ", length(invalid_usubjid), "件NG(", min_val, "以上・", max_val,
-      "以下の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
-    ))
-  }
-  cat(
-    label, num_var, "範囲チェック: OK(", num_var, "が", min_val, "以上・", max_val, "以下であることを確認、",
-    sum(valid), "件)\n",
     sep = ""
   )
 }

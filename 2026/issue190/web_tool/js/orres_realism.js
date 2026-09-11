@@ -112,6 +112,22 @@ function populateVsOrres(vs, cdiscVariableValues, fieldNumericBounds) {
   return vs;
 }
 
+// FATESTCD/FAORRESが両方ある場合のみ、EDC仕様の数値バリデーション(min/max)に基づいてFAORRESを
+// それらしい数値に置き換える。バリデーションが定義されていないFATESTCD(未知のTESTCD含む)は
+// generateOrresValue()側で0〜100のランダムな整数になる。FAORRESが既にnull(NOT DONE等の
+// presence_conditionsで空白化された)の行、およびradio_button/check_boxで定義された
+// (選択式の)TESTCDの行は上書きしない(Rのpopulate_fa_orres()に対応)
+function populateFaOrres(fa, cdiscVariableValues, fieldNumericBounds) {
+  if (!fa[0] || !("FATESTCD" in fa[0]) || !("FAORRES" in fa[0])) return fa;
+  const testcdBounds = buildTestcdNumericBounds(cdiscVariableValues, fieldNumericBounds, "FATESTCD", "FAORRES");
+  const categoricalTestcds = buildTestcdCategoricalSet(cdiscVariableValues, "FATESTCD", "FAORRES");
+  fa.forEach((row) => {
+    if (row.FAORRES == null || categoricalTestcds.has(row.FATESTCD)) return;
+    row.FAORRES = String(generateOrresValue(row.FATESTCD, testcdBounds));
+  });
+  return fa;
+}
+
 // otherDomains(prefixをキーにしたオブジェクト)のうち、populators(prefix -> populate関数)に
 // 該当するドメインだけ、対応するpopulate関数を適用する(Rのapply_orres_populators()に対応)
 function applyOrresPopulators(otherDomains, populators) {
