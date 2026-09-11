@@ -164,15 +164,28 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
     # のを防ぐため、比較・キーとして使う前に必ず名前を落とす
     ref_var <- unname(bound_rows[["ref_cdisc_variable"]][i])
     own_alias <- if ("alias_name" %in% colnames(bound_rows)) unname(bound_rows[["alias_name"]][i]) else NA_character_
+    own_label <- if ("label" %in% colnames(bound_rows)) unname(bound_rows[["label"]][i]) else NA_character_
     ref_alias <- if ("ref_alias_name" %in% colnames(bound_rows)) unname(bound_rows[["ref_alias_name"]][i]) else NA_character_
     ref_label_i <- if ("ref_label" %in% colnames(bound_rows)) unname(bound_rows[["ref_label"]][i]) else NA_character_
-    is_cross_alias_self_ref <- identical(ref_var, var_name) && has_alias_name &&
-      !is.na(own_alias) && !is.na(ref_alias) && !identical(own_alias, ref_alias)
+    # 同じcdisc_variable名を参照する自己参照(ref_var==var_name)には、alias_nameが異なる場合
+    # (例: inductionのSVSTDTCがprephaseのSVSTDTCを参照)だけでなく、同一alias内でlabelだけが
+    # 異なる場合(例: BLASTLE(005)がWBC(006)のLBDTCを参照)も含める。後者を素通りさせて下のelse節
+    # (values = data[[ref_var]]、つまり自分自身の現在値)に落ちると、常に「自分自身と等しい」という
+    # 無意味な比較になり、参照先(WBC)が後続のclampで動いても追従できなくなる(実際に発生したバグ:
+    # WBC/BLASTLEの等号制約が崩れた)
+    is_self_ref_across_alias_or_label <- identical(ref_var, var_name) && has_alias_name &&
+      !is.na(own_alias) && !is.na(ref_alias) &&
+      (!identical(own_alias, ref_alias) || (has_label && !is.na(own_label) && !is.na(ref_label_i) && !identical(own_label, ref_label_i)))
 
     target_rows <- if (has_alias_name && !is.na(own_alias)) data[["alias_name"]] == own_alias else rep(TRUE, nrow(data))
+    # labelがある場合、この制約はown_label(bound_rows$label)の行にだけ適用すべき。フィルタしないと、
+    # 同じaliasの他label(例: WBC自身の行)にまで「BLASTLE用の下限」が誤って適用されてしまう
+    if (has_label && !is.na(own_label)) {
+      target_rows <- target_rows & (data[["label"]] == own_label)
+    }
     if (!any(target_rows)) next
 
-    values <- if (is_cross_alias_self_ref) {
+    values <- if (is_self_ref_across_alias_or_label) {
       ref_target_rows <- if (has_label && !is.na(ref_label_i)) {
         data[["alias_name"]] == ref_alias & data[["label"]] == ref_label_i
       } else {
@@ -862,13 +875,16 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
   # 参照先シート、無ければ自分自身と同じalias_name(build_generation_constraints.Rのdate_ref_bounds
   # 構築時に補われている)
   ref_instances <- bind_rows(
-    presence_conditions %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
+    presence_conditions %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
     field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
-    age_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
-    date_ref_bounds %>% select(any_of(c("label", "ref_cdisc_variable", "ref_label", "ref_alias_name")))
+    age_bounds %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
+    date_ref_bounds %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_label", "ref_alias_name")))
   ) %>%
     filter(!is.na(ref_cdisc_variable)) %>%
     distinct()
+  if (!("alias_name" %in% names(ref_instances))) {
+    ref_instances[["alias_name"]] <- NA_character_
+  }
   if (!("label" %in% names(ref_instances))) {
     ref_instances[["label"]] <- NA_character_
   }
@@ -903,36 +919,42 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
       next
     }
     has_ref_alias <- all(c("alias_name", "label") %in% colnames(ref_data))
+    # 参照先がbuild_generic_domain由来(例: SV)の場合、alias_nameはあってもlabelが無い
+    # (繰り返し項目を持たないため)。has_ref_aliasはlabelも必須なのでこのケースではFALSEになるが、
+    # alias_name自体は参照先の絞り込みに使えるので別途保持しておく
+    has_ref_alias_only <- "alias_name" %in% colnames(ref_data)
 
     # 型をref_data側に合わせた全NA列を用意し、pinごとに該当行だけ値を埋めていく
     result_col <- ref_data[[ref_var]][rep(NA_integer_, nrow(data))]
 
-    pins <- ref_instances %>% filter(ref_cdisc_variable == ref_var) %>% distinct(label, ref_alias_name, ref_label)
+    pins <- ref_instances %>% filter(ref_cdisc_variable == ref_var) %>% distinct(alias_name, label, ref_alias_name, ref_label)
     for (i in seq_len(nrow(pins))) {
+      own_alias <- pins[["alias_name"]][i]
       pin_alias <- pins[["ref_alias_name"]][i]
       pin_label <- pins[["ref_label"]][i]
       own_label <- pins[["label"]][i]
 
-      # このpinを適用する対象行: dataがalias_nameを持ち、そのpinのref_alias_nameが
-      # data自身のalias_nameのいずれかと一致するならその行だけに絞る。一致しない(またはalias_name不明)なら
-      # 真に外部の固定参照とみなして全行を対象にする。
-      # さらにlabelでも絞り込む場合、優先するのはown_label(この条件が定義されているdata自身の
-      # インスタンス)。ref_cdisc_variable(例: RSORRES)がブロックごとに異なるref_labelを持つとき
-      # (例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロックを参照する)、own_labelが無いと
-      # 「pin_labelがたまたまdata自身のlabelの1つと一致するか」でしか判定できず、参照先と参照元の
-      # labelの語彙が違う(例: MHのlabelは047〜051、RSのlabelは034/035/036/...)場合に絞り込みが
-      # 常に失敗し、最後に処理したpinの値が全ブロックに上書きされてしまう(既知のバグ)。
-      # own_labelがあればそれを使い、無い場合(field_ref_bounds/age_bounds由来)は従来通り
-      # pin_labelがdata自身のlabel群に含まれるかで判定する(例: thrombophilia内のlabel="006"への
-      # pinを、同じalias_nameの他label(000〜005)に誤って適用しないため)。
-      # pin_label・own_labelいずれもdata自身のlabelと無関係な場合(例: PC(label=111〜114)がEC側の
-      # label="054"を参照するような、別prefixの別の繰り返し軸を参照するケース)は、label不一致で
-      # 全行が対象外になってしまうのを避けるため、alias_nameのみで絞り込む
-      target_rows <- if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
+      # 絞り込みはown_alias/own_label(この条件が定義されているdata自身のインスタンス)を最優先する。
+      # own_aliasが分かっている場合、それがdata自身のalias_nameのいずれかと一致するならその行だけに
+      # 絞る。一致しない場合(wave分割で別waveに分かれていて、このdataにown_aliasの行がそもそも無い)は
+      # 対象0件とする(全行を対象にするとdataに含まれる別aliasの行にまで誤って値を書き込んでしまう。
+      # 実際に発生したバグ: wave分割によりdate_ref_boundsが同じprefix内の全alias分を含むようになり、
+      # own_alias/pin_aliasのどちらも今回のdataに無いpinが多数生じ、最後に処理されたpinの値が
+      # 無関係なaliasの行にまで書き込まれていた)。own_aliasが無い場合(field_ref_bounds由来、
+      # 真に外部の固定参照)のみ、従来通りpin_aliasで判定するか、それも無ければ全行を対象にする
+      target_rows <- if (has_data_alias_name && !is.na(own_alias)) {
+        if (own_alias %in% data_alias_names) {
+          rows <- data[["alias_name"]] == own_alias
+          if (has_data_alias && !is.na(own_label)) {
+            rows <- rows & data[["label"]] == own_label
+          }
+          rows
+        } else {
+          rep(FALSE, nrow(data))
+        }
+      } else if (has_data_alias_name && !is.na(pin_alias) && pin_alias %in% data_alias_names) {
         rows <- data[["alias_name"]] == pin_alias
-        if (has_data_alias && !is.na(own_label) && own_label %in% data[["label"]][rows]) {
-          rows <- rows & data[["label"]] == own_label
-        } else if (has_data_alias && !is.na(pin_label) && pin_label %in% data[["label"]][rows]) {
+        if (has_data_alias && !is.na(pin_label) && pin_label %in% data[["label"]][rows]) {
           rows <- rows & data[["label"]] == pin_label
         }
         rows
@@ -947,6 +969,16 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
         # 参照先の特定のlabelインスタンスに固定する(参照元自身のlabelとは無関係)
         ref_slice <- ref_data %>%
           filter(alias_name == pin_alias, label == pin_label) %>%
+          select(USUBJID, !!ref_var) %>%
+          distinct(USUBJID, .keep_all = TRUE)
+        value_map <- set_names(ref_slice[[ref_var]], ref_slice[["USUBJID"]])
+        result_col[target_rows] <- value_map[data[["USUBJID"]][target_rows]]
+      } else if (!is.na(pin_alias) && has_ref_alias_only) {
+        # 参照先にlabelが無い(build_generic_domain由来、例: SV)場合、alias_nameだけで絞り込む。
+        # ここで絞り込まずUSUBJIDだけで結合すると、参照先ドメインの中で最初に出現したalias
+        # (実際に参照したいaliasとは無関係な、ビルド順が早いだけの別シート)の値を拾ってしまう
+        ref_slice <- ref_data %>%
+          filter(alias_name == pin_alias) %>%
           select(USUBJID, !!ref_var) %>%
           distinct(USUBJID, .keep_all = TRUE)
         value_map <- set_names(ref_slice[[ref_var]], ref_slice[["USUBJID"]])
@@ -1592,6 +1624,14 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
     if (nrow(min_row) > 0) {
       lower <- pmax(lower, ref_value_for(min_row[["ref_label"]], min_row[["ref_cdisc_variable"]]), na.rm = TRUE)
     }
+    # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+    # RFSTDTCと異なり全行に適用する(build_repeated_domain内の日付生成ループと同じ理由)。
+    # このchainに含まれるノード(例: WBCのように自分自身は他alias参照でchain対象外だが、
+    # 同一alias内の他labelから参照されているためregenerate_date_chain側でも再生成される変数)も、
+    # ここで再生成される際にBRTHDTCより前にならないようにする
+    if ("BRTHDTC" %in% colnames(data)) {
+      lower <- pmax(lower, as.numeric(as.Date(as.character(data[["BRTHDTC"]][mask]))), na.rm = TRUE)
+    }
     upper <- rep(as.numeric(Sys.Date()), sum(mask))
     if (!is.null(discon_lookup)) {
       discon_vals <- as.numeric(discon_lookup[data[["USUBJID"]][mask]])
@@ -2031,7 +2071,13 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
       discon_lookup <- set_names(as.Date(discon_map[["DISCONDTC"]]), discon_map[["USUBJID"]])
     }
     for (alias_val in unique(chain_bounds[["alias_name"]])) {
-      data <- regenerate_date_chain(data, alias_val, date_ref_bounds, chain_vars, registration_start_date, discon_lookup)
+      # date_ref_bounds(このドメイン全体分)ではなくchain_boundsを渡す。regenerate_date_chain内で
+      # cdisc_variable単独でしか絞り込んでいないと、alias_name==aliasNameValかつcdisc_variableが
+      # chain_varsに含まれるが実際は他ドメイン参照(ref_cdisc_variableがchain_vars外、例:
+      # WBCのLBDTCがSVSTDTCを参照)の行まで拾ってしまい、そのref先がこのalias内に存在しないため
+      # 値を解決できないままminRow相当が非NULLになり、本来効くはずのRFSTDTC等のデフォルト下限が
+      # 適用されなくなる(実際に発生したバグ: WBC/BLASTLEの等号制約が崩れた)
+      data <- regenerate_date_chain(data, alias_val, chain_bounds, chain_vars, registration_start_date, discon_lookup)
     }
   }
   # clamp_dates_to_discontinuation()はself_ref_edges(labelがあれば(alias_name, label)単位)で依存順に

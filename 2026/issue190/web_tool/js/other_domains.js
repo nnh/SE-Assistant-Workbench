@@ -292,10 +292,10 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
   // シート、無ければ自分自身と同じalias_name(build_generation_constraints.jsのdate_ref_bounds
   // 構築時に補われている)
   const refInstances = [
-    ...(presenceConditions || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
-    ...(fieldRefBounds || []).map((r) => ({ label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
-    ...(ageBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
-    ...(dateRefBounds || []).map((r) => ({ label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(presenceConditions || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(fieldRefBounds || []).map((r) => ({ ownAlias: null, label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
+    ...(ageBounds || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    ...(dateRefBounds || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
   ].filter((r) => r.ref_cdisc_variable != null);
 
   const hasDataAliasName = "alias_name" in data[0];
@@ -318,6 +318,10 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
     const refData = builtDomains[refPrefix];
     if (!(refVar in refData[0])) return;
     const hasRefAlias = "alias_name" in refData[0] && "label" in refData[0];
+    // 参照先がbuildGenericDomain由来(例: SV)の場合、alias_nameはあってもlabelが無い
+    // (繰り返し項目を持たないため)。hasRefAliasはlabelも必須なのでこのケースではfalseになるが、
+    // alias_name自体は参照先の絞り込みに使えるので別途保持しておく
+    const hasRefAliasOnly = "alias_name" in refData[0];
 
     const resultCol = new Array(data.length).fill(null);
 
@@ -326,33 +330,45 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
     refInstances
       .filter((r) => r.ref_cdisc_variable === refVar)
       .forEach((r) => {
-        const key = `${r.label}|${r.ref_alias_name}|${r.ref_label}`;
+        const key = `${r.ownAlias}|${r.label}|${r.ref_alias_name}|${r.ref_label}`;
         if (!pinKeys.has(key)) {
           pinKeys.add(key);
-          pins.push({ ownLabel: r.label, alias: r.ref_alias_name, label: r.ref_label });
+          pins.push({ ownAlias: r.ownAlias, ownLabel: r.label, alias: r.ref_alias_name, label: r.ref_label });
         }
       });
 
     pins.forEach((pin) => {
       const pinAlias = pin.alias;
       const pinLabel = pin.label;
+      const ownAlias = pin.ownAlias;
       const ownLabel = pin.ownLabel;
 
-      // 絞り込みはown_label(この条件が定義されているdata自身のインスタンス)を優先する。
-      // ref_cdisc_variable(例: RSORRES)がブロックごとに異なるref_labelを持つとき、own_labelが
-      // 無いと「pin_labelがたまたまdata自身のlabelの1つと一致するか」でしか判定できず、参照先と
-      // 参照元のlabelの語彙が違う(例: MHのlabelは047〜051、RSのlabelは034/035/036/...)場合に
-      // 絞り込みが常に失敗し、最後に処理したpinの値が全ブロックに上書きされてしまう(既知のバグ)。
-      // own_labelが無い場合(fieldRefBounds由来)は従来通りpin_labelで判定する
+      // 絞り込みはown_alias/own_label(この条件が定義されているdata自身のインスタンス)を最優先する。
+      // own_aliasが分かっている(=presence/age/date_ref_boundsのようにown_aliasを持つ)pinは、
+      // own_aliasがこのwave/呼び出しのdataに存在しない場合、その行はそもそもこのdataに存在しない
+      // (wave分割で別waveに分かれている)ので対象0件とする。ここでdata.map(() => true)のような
+      // 「全行対象」にフォールバックしてしまうと、このdataに含まれる別のalias(例: erwasp)向けの
+      // 値を、無関係な他alias向けのpin(例: prephase向け)が後から上書きしてしまう(実際に発生した
+      // バグ: wave分割によりdateRefBoundsが同じprefix内の全alias分を含むようになり、
+      // own_alias/pin_aliasのどちらも今回のdataに無いpinが多数生じ、最後に処理されたpinの値が
+      // 無関係なaliasの行にまで書き込まれていた)。own_aliasが無い場合(fieldRefBounds由来、真に
+      // 外部の固定参照)のみ、従来通りpin_alias/pin_labelで判定するか、それも無ければ全行を対象にする。
+      // own_labelが無いとpin_labelがたまたまdata自身のlabelの1つと一致するかでしか判定できず、
+      // 参照元と参照先のlabelの語彙が違う(例: MHのlabelは047〜051、RSのlabelは034/035/036/...)場合に
+      // 絞り込みが常に失敗し、最後に処理したpinの値が全ブロックに上書きされてしまう(既知のバグ)
       let targetRows;
-      if (hasDataAliasName && pinAlias != null && dataAliasNames.has(pinAlias)) {
-        targetRows = data.map((row) => row.alias_name === pinAlias);
-        if (hasDataAlias && ownLabel != null) {
-          const labelsInAlias = new Set(data.filter((row, i) => targetRows[i]).map((row) => row.label));
-          if (labelsInAlias.has(ownLabel)) {
+      if (ownAlias != null) {
+        if (hasDataAliasName && dataAliasNames.has(ownAlias)) {
+          targetRows = data.map((row) => row.alias_name === ownAlias);
+          if (hasDataAlias && ownLabel != null) {
             targetRows = data.map((row, i) => targetRows[i] && row.label === ownLabel);
           }
-        } else if (hasDataAlias && pinLabel != null) {
+        } else {
+          targetRows = data.map(() => false);
+        }
+      } else if (hasDataAliasName && pinAlias != null && dataAliasNames.has(pinAlias)) {
+        targetRows = data.map((row) => row.alias_name === pinAlias);
+        if (hasDataAlias && pinLabel != null) {
           const labelsInAlias = new Set(data.filter((row, i) => targetRows[i]).map((row) => row.label));
           if (labelsInAlias.has(pinLabel)) {
             targetRows = data.map((row, i) => targetRows[i] && row.label === pinLabel);
@@ -367,6 +383,21 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
         const valueMap = {};
         refData.forEach((row) => {
           if (row.alias_name === pinAlias && row.label === pinLabel && !(row.USUBJID in valueMap)) {
+            valueMap[row.USUBJID] = row[refVar];
+          }
+        });
+        data.forEach((row, i) => {
+          if (targetRows[i]) resultCol[i] = row.USUBJID in valueMap ? valueMap[row.USUBJID] : null;
+        });
+      } else if (pinAlias != null && hasRefAliasOnly) {
+        // 参照先にlabelが無い(buildGenericDomain由来、例: SV)場合、alias_nameだけで絞り込む。
+        // ここで絞り込まずUSUBJIDだけで結合すると、参照先ドメインの中で最初に出現したalias
+        // (実際に参照したいaliasとは無関係な、ビルド順が早いだけの別シート)の値を拾ってしまう
+        // (実際に発生したバグ: SVはalias_nameはあるがlabelを持たないため、従来はこの絞り込みが
+        // 一切効かず、常に別シートの値が誤って注入されていた)
+        const valueMap = {};
+        refData.forEach((row) => {
+          if (row.alias_name === pinAlias && !(row.USUBJID in valueMap)) {
             valueMap[row.USUBJID] = row[refVar];
           }
         });
@@ -505,12 +536,23 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal, exi
   boundRows.forEach((br) => {
     const refVar = br.ref_cdisc_variable;
     const ownAlias = br.alias_name != null ? br.alias_name : null;
+    const ownLabel = br.label != null ? br.label : null;
     const refAlias = br.ref_alias_name != null ? br.ref_alias_name : null;
     const refLabel = br.ref_label != null ? br.ref_label : null;
-    const isCrossAliasSelfRef = refVar === varName && hasAliasName && ownAlias != null && refAlias != null && ownAlias !== refAlias;
+    // 同じcdisc_variable名を参照する自己参照(refVar===varName)には、alias_nameが異なる場合(例: induction
+    // のSVSTDTCがprephaseのSVSTDTCを参照)だけでなく、同一alias内でlabelだけが異なる場合(例: BLASTLE(005)
+    // がWBC(006)のLBDTCを参照)も含める。後者を素通りさせて下のelse節(values = row[refVar]、つまり
+    // 自分自身の現在値)に落ちると、常に「自分自身と等しい」という無意味な比較になり、参照先(WBC)が
+    // 後続のclampで動いても追従できなくなる(実際に発生したバグ: WBC/BLASTLEの等号制約が崩れた)
+    const isSelfRefAcrossAliasOrLabel =
+      refVar === varName &&
+      hasAliasName &&
+      ownAlias != null &&
+      refAlias != null &&
+      (ownAlias !== refAlias || (hasLabel && ownLabel != null && refLabel != null && ownLabel !== refLabel));
 
     let values;
-    if (isCrossAliasSelfRef) {
+    if (isSelfRefAcrossAliasOrLabel) {
       const refMap = {};
       data.forEach((row) => {
         if (row.alias_name === refAlias && (refLabel == null || !hasLabel || row.label === refLabel)) {
@@ -535,6 +577,9 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal, exi
 
     data.forEach((row, i) => {
       if (hasAliasName && ownAlias != null && row.alias_name !== ownAlias) return;
+      // labelがある場合、この制約はown_label(br.label)の行にだけ適用すべき。フィルタしないと、
+      // 同じaliasの他label(例: WBC自身の行)にまで「BLASTLE用の下限」が誤って適用されてしまう
+      if (hasLabel && ownLabel != null && row.label !== ownLabel) return;
       const v = values[i];
       if (v == null) return;
       if (result[i] == null) {
@@ -945,6 +990,12 @@ function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, regis
         const refVal = refValueFor(row, minRow.ref_label, minRow.ref_cdisc_variable);
         if (refVal != null && refVal > lower) lower = refVal;
       }
+      // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
+      // RFSTDTCと異なり全行に適用する(buildRepeatedDomain内の日付生成ループと同じ理由)。
+      // このchainに含まれるノード(例: WBCのように自分自身は他alias参照でchain対象外だが、
+      // 同一alias内の他labelから参照されているためregenerateDateChain側でも再生成される変数)も、
+      // ここで再生成される際にBRTHDTCより前にならないようにする
+      if (row.BRTHDTC != null && row.BRTHDTC > lower) lower = row.BRTHDTC;
       let upper = today;
       const discon = disconByUsubjid ? disconByUsubjid[row.USUBJID] : null;
       if (discon != null && discon < upper) upper = discon;
@@ -1456,7 +1507,13 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
     }
     const chainAliasNames = [...new Set(chainBounds.map((r) => r.alias_name))];
     chainAliasNames.forEach((aliasVal) => {
-      data = regenerateDateChain(data, aliasVal, scopedDateRefBounds, chainVars, registrationStartDate, disconByUsubjid);
+      // scopedDateRefBoundsではなくchainBoundsを渡す。regenerateDateChain内でcdisc_variable単独でしか
+      // 絞り込んでいないと、alias_name===aliasValかつcdisc_variableがchainVarsに含まれるが実際は
+      // 他ドメイン参照(ref_cdisc_variableがchainVars外、例: WBCのLBDTCがSVSTDTCを参照)の行まで
+      // 拾ってしまい、そのref先がこのalias内に存在しないため値を解決できないままminRow相当が非nullに
+      // なり、本来効くはずのRFSTDTC等のデフォルト下限が適用されなくなる(実際に発生したバグ:
+      // WBC/BLASTLEの等号制約が崩れた)
+      data = regenerateDateChain(data, aliasVal, chainBounds, chainVars, registrationStartDate, disconByUsubjid);
     });
   }
   // clampDatesToDiscontinuation()はselfRefEdges(labelがあれば(alias_name, label)単位)で依存順に処理するため、

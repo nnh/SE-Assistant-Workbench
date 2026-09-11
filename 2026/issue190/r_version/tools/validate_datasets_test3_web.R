@@ -72,57 +72,52 @@ list2env(other_domains, envir = .GlobalEnv)
 # CM
 cm %>% filter(CMSPID != "sct1") %>% check_required_vars("CMOCCUR", domain_name = "CM")
 cm %>% filter(CMSPID == "sct1") %>% check_blank_vars("CMOCCUR", domain_name = "CM")
-cm_target_cols <- c("CMCAT", "CMOCCUR", "CMPRESP")
-tmp_cm <- cm %>% filter(CMTRT == "ANTIFUNGAL DRUG" & VISITNUM == 200)
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+# induction(VISITNUM=200)とearlyintensifi(VISITNUM=300)は、CMTRT/CMCATの組み合わせが完全に同一
+# (ANTIFUNGAL DRUG、薬剤コード6343444=ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)、
+# 薬剤コード6342406=FRESH-FROZEN HUMAN PLASMA、および8種のHEPARIN/抗凝固薬ブロック)のため、
+# VISITNUMをパラメータにしたtribble+pwalkでまとめて検証する
+cm_named_target_cols <- c("CMCAT", "CMOCCUR", "CMPRESP")
+cm_named_checks <- tribble(
+  ~visitnum, ~cmtrt, ~suffix,
+  200, "ANTIFUNGAL DRUG", "_1",
+  300, "ANTIFUNGAL DRUG", "_1",
+  200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
+  300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
+  200, "FRESH-FROZEN HUMAN PLASMA", "_3",
+  300, "FRESH-FROZEN HUMAN PLASMA", "_3"
+)
+pwalk(cm_named_checks, function(visitnum, cmtrt, suffix) {
+  tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum)
+  tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_named_target_cols))
+  str_c(cm_named_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+})
 
-tmp_cm <- cm %>% filter(CMTRT == "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)" & VISITNUM == 200)
-suffix <- "_2"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-cm_target_cols <- c("CMOCCUR", "CMPRESP")
-tmp_cm <- cm %>% filter(CMTRT == "UNFRACTIONATED HEPARIN" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "LOW MOLECULAR HEPARIN" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "HEPARINOID" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "OTHER ANTICOAGULANT" & VISITNUM == 200 & CMCAT == "FIRST PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "UNFRACTIONATED HEPARIN" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "LOW MOLECULAR HEPARIN" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "HEPARINOID" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
-
-tmp_cm <- cm %>% filter(CMTRT == "OTHER ANTICOAGULANT" & VISITNUM == 200 & CMCAT == "SECOND PREVENTION")
-suffix <- "_1"
-tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_target_cols))
-str_c(cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+cm_anticoag_target_cols <- c("CMOCCUR", "CMPRESP")
+cm_anticoag_checks <- tribble(
+  ~visitnum, ~cmtrt, ~cmcat,
+  200, "UNFRACTIONATED HEPARIN", "FIRST PREVENTION",
+  200, "LOW MOLECULAR HEPARIN", "FIRST PREVENTION",
+  200, "HEPARINOID", "FIRST PREVENTION",
+  200, "OTHER ANTICOAGULANT", "FIRST PREVENTION",
+  200, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
+  200, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
+  200, "HEPARINOID", "SECOND PREVENTION",
+  200, "OTHER ANTICOAGULANT", "SECOND PREVENTION",
+  300, "UNFRACTIONATED HEPARIN", "FIRST PREVENTION",
+  300, "LOW MOLECULAR HEPARIN", "FIRST PREVENTION",
+  300, "HEPARINOID", "FIRST PREVENTION",
+  300, "OTHER ANTICOAGULANT", "FIRST PREVENTION",
+  300, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
+  300, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
+  300, "HEPARINOID", "SECOND PREVENTION",
+  300, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
+)
+pwalk(cm_anticoag_checks, function(visitnum, cmtrt, cmcat) {
+  tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum & CMCAT == cmcat)
+  suffix <- "_1"
+  tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_anticoag_target_cols))
+  str_c(cm_anticoag_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+})
 
 # DM
 c("RFICDTC", "BRTHDTC", "SEX", "RACE", "RFSTDTC") %>% check_required_vars(dm, ., domain_name = "DM")
@@ -223,6 +218,36 @@ suffix <- "_2"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# erwaspシートはCRISANTASPASEの投与を2回分(寛解導入療法IA2,IA4=VISITNUM200、早期強化療法IB+L=VISITNUM300)
+# 記録するが、選択肢構成・固定値は2回分で共通のため、参照日付(ref_data、2列目がref変数)だけを
+# 呼び出し側で変えて共通化する
+check_erwasp_crisantaspase <- function(visitnum, suffix, ref_data) {
+  tmp_ec <- ec %>% filter(ECTRT == "CRISANTASPASE" & VISITNUM == visitnum)
+  c("ECOCCUR") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+  ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+  tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+  occur_col <- str_c("ECOCCUR", suffix)
+  adj_col <- str_c("ECADJ", suffix)
+  str_c(c("ECMOOD", "ECPRESP", "ECOCCUR"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+  tmp_ec_2 <- tmp_ec %>% filter(.data[[occur_col]] == "Y")
+  str_c(c("ECADJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec_2, "EC", .x, fixed_value_checks_csv_path))
+  c(adj_col, "ECSTDTC") %>% check_required_vars(tmp_ec_2, ., domain_name ="EC")
+
+  ref_var <- names(ref_data)[2]
+  tmp_ec_3 <- tmp_ec_2 %>% inner_join(ref_data, by="USUBJID")
+  tmp_ec_3 %>% check_date_after_var_before_today("ECSTDTC", ref_var, domain_name = "EC")
+  tmp_ec_2
+}
+
+# VISITNUM==200(field8/ECSTDTC)はinductionのSVSTDTC以降であることが期待される(ref('induction', 820))
+tmp_sv_2 <- sv %>% filter(SVSPID == "induction") %>% select(USUBJID, induction820=SVSTDTC)
+tmp_ec_erwasp_200 <- check_erwasp_crisantaspase(200, "_7", tmp_sv_2)
+
+# VISITNUM==300(field17/ECSTDTC)は同じerwaspシートのVISITNUM==200のECSTDTC以降であることが
+# 期待される(ref('erwasp', ...)、同一alias内でlabelを跨いだ日付連鎖)
+tmp_ec_erwasp_200_ref <- tmp_ec_erwasp_200 %>% select(USUBJID, erwasp000=ECSTDTC)
+invisible(check_erwasp_crisantaspase(300, "_8", tmp_ec_erwasp_200_ref))
 
 # FA(Findings About)関連チェックはtools/validate_datasets_test3_fa.Rに切り出してある
 source(here("tools/validate_datasets_test3_fa.R"))
@@ -379,11 +404,19 @@ str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh
 # PR
 pr %>% filter(PRSPID != "sct1") %>% check_required_vars("PROCCUR", domain_name = "PR")
 pr %>% filter(PRSPID == "sct1") %>% check_blank_vars("PROCCUR", domain_name = "PR")
+# induction(VISITNUM=200)とearlyintensifi(VISITNUM=300)は、Central Venous Catheter Placementの
+# 内容が完全に同一のため、VISITNUMをパラメータにしたtribble+pwalkでまとめて検証する
 pr_target_cols <- c("PRPRESP", "PROCCUR")
-tmp_pr <- pr %>% filter(PRTRT == "Central Venous Catheter Placement" & VISITNUM == 200)
-suffix <- "_1"
-tmp_pr <- tmp_pr %>% rename_with(~ str_c(.x, suffix), all_of(pr_target_cols))
-str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
+pr_checks <- tribble(
+  ~visitnum, ~prtrt, ~suffix,
+  200, "Central Venous Catheter Placement", "_1",
+  300, "Central Venous Catheter Placement", "_1"
+)
+pwalk(pr_checks, function(visitnum, prtrt, suffix) {
+  tmp_pr <- pr %>% filter(PRTRT == prtrt & VISITNUM == visitnum)
+  tmp_pr <- tmp_pr %>% rename_with(~ str_c(.x, suffix), all_of(pr_target_cols))
+  str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
+})
 
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
