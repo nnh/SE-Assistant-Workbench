@@ -219,6 +219,9 @@ target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
 tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES")
 tmp_fa <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(target_fa_cols))
 str_c(target_fa_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa, "FA", .x, fixed_value_checks_csv_path))
+tmp_sv <- sv %>% filter(SVSPID == "prephase") %>% select(USUBJID, prephase825=SVSTDTC)
+tmp_fa_2 <- tmp_fa %>% inner_join(tmp_sv, by="USUBJID")
+tmp_fa_2 %>% check_date_after_var_before_today("FADTC", "prephase825", domain_name = "FA")
 
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と
@@ -280,6 +283,15 @@ tmp_lb_2 %>% check_numeric_range("LBORRES", 0, 100, domain_name = "LB")
 tmp_lb_3 <- tmp_lb %>% inner_join(tmp_lb_2, by="USUBJID")
 tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
 
+check_lb_testcd_at_visit(lb, "MYBLALE", 200, "_12", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
+tmp_lb_2 <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 200)
+tmp_lb_2 %>% check_numeric_range("LBORRES", 0, 100, domain_name = "LB")
+# MYBLALEのLBDTCはFA(EARLYRES/Total Prednisolone Dose of 210 mg/m^2 or more)のFADTC(+1日、
+# オフセット自体は他の日付チェックと同様に厳密には反映せず>=で確認)以降であることが期待される
+tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES" & FAOBJ == "Total Prednisolone Dose of 210 mg/m^2 or more") %>% select(USUBJID, tmp_dtc=FADTC)
+tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_fa, by="USUBJID")
+tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
+
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
 c("MHSTDTC") %>% check_required_vars(tmp_mh, ., domain_name = "MH")
@@ -316,9 +328,9 @@ str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr
 # SV
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
 sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
-sv %>% check_date_after_var_before_today("SVSTDTC", "MHSTDTC", domain_name = "SV")
 
 tmp_sv <- sv %>% filter(SVSPID == "prephase")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "MHSTDTC", domain_name = "SV")
 sv_target_cols <- c("VISITNUM")
 suffix <- "_1"
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))

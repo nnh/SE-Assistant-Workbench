@@ -1397,6 +1397,15 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
   }
 
   has_alias_name <- "alias_name" %in% colnames(data)
+  has_label <- has_alias_name && "label" %in% colnames(data)
+  # labelがある場合(build_repeated_domain由来)は(alias_name, label)単位、無い場合
+  # (build_generic_domain由来)はalias_name単位をノードとして依存順序を組む。labelがある場合に
+  # alias_name単位のままだと、同一alias内で別labelを参照するケース(例: BLASTLE(005)がWBC(006)の
+  # 値を参照)を見分けられず、両方が同じclamp_rows()呼び出しの中で独立に再サンプルされて
+  # 値が食い違ってしまう
+  node_key_for <- function(alias_name_val, label_val) {
+    if (has_label) str_c(alias_name_val, "", label_val) else alias_name_val
+  }
 
   for (var_name in ordered_date_vars) {
     # target_rows(このvar_nameを持つ行のうち、今回の対象)について、discon超過・参照関係違反
@@ -1458,40 +1467,47 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       data
     }
 
-    # 同じcdisc_variable名を、別のalias_nameが参照している場合(例: inductionのSVSTDTCが
-    # prephaseのSVSTDTCを参照する)、参照先(prephase)を先に確定させてから参照元(induction)を
-    # 判定しないと、同じ呼び出しの中で参照先だけが後から再生成されて関係が崩れてしまう。
-    # そのため、そのようなalias_name間の依存がある場合だけ、依存関係順(参照されている側が先)に
-    # alias_nameごとに処理する。依存が無ければ従来通り全行まとめて処理する
+    # 同じcdisc_variable名を、別のノード(alias_name、labelがあれば(alias_name, label))が参照している
+    # 場合(例: inductionのSVSTDTCがprephaseのSVSTDTCを参照する、あるいは同一alias内でBLASTLE(005)が
+    # WBC(006)の値を参照する)、参照先を先に確定させてから参照元を判定しないと、同じ呼び出しの中で
+    # 参照先だけが後から再生成されて関係が崩れてしまう。そのため、そのようなノード間の依存がある場合だけ、
+    # 依存関係順(参照されている側が先)にノードごとに処理する。依存が無ければ従来通り全行まとめて処理する
     self_ref_edges <- if (!is.null(date_ref_bounds) && has_alias_name) {
       date_ref_bounds %>%
         filter(
           cdisc_variable == var_name, ref_cdisc_variable == var_name,
-          !is.na(alias_name), !is.na(ref_alias_name), alias_name != ref_alias_name
+          !is.na(alias_name), !is.na(ref_alias_name),
+          if (has_label) !(alias_name == ref_alias_name & label == ref_label) else alias_name != ref_alias_name
         ) %>%
-        distinct(alias_name, ref_alias_name)
+        transmute(
+          from_key = node_key_for(alias_name, label),
+          to_key = node_key_for(ref_alias_name, ref_label)
+        ) %>%
+        filter(from_key != to_key) %>%
+        distinct(from_key, to_key)
     } else {
-      tibble(alias_name = character(0), ref_alias_name = character(0))
+      tibble(from_key = character(0), to_key = character(0))
     }
 
     if (nrow(self_ref_edges) == 0) {
       data <- clamp_rows(data, rep(TRUE, nrow(data)))
     } else {
-      all_aliases <- unique(data[["alias_name"]])
-      ordered_aliases <- character(0)
-      remaining <- all_aliases
+      all_keys <- unique(node_key_for(data[["alias_name"]], if (has_label) data[["label"]] else NA))
+      ordered_keys <- character(0)
+      remaining <- all_keys
       while (length(remaining) > 0) {
-        unresolved <- self_ref_edges %>% filter(ref_alias_name %in% remaining) %>% pull(alias_name) %>% unique()
+        unresolved <- self_ref_edges %>% filter(to_key %in% remaining) %>% pull(from_key) %>% unique()
         ready <- setdiff(remaining, unresolved)
         if (length(ready) == 0) {
-          ordered_aliases <- c(ordered_aliases, remaining)
+          ordered_keys <- c(ordered_keys, remaining)
           break
         }
-        ordered_aliases <- c(ordered_aliases, ready)
+        ordered_keys <- c(ordered_keys, ready)
         remaining <- setdiff(remaining, ready)
       }
-      for (alias in ordered_aliases) {
-        data <- clamp_rows(data, data[["alias_name"]] == alias)
+      data_keys <- node_key_for(data[["alias_name"]], if (has_label) data[["label"]] else NA)
+      for (key in ordered_keys) {
+        data <- clamp_rows(data, data_keys == key)
       }
     }
   }
@@ -2011,27 +2027,20 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
       data <- regenerate_date_chain(data, alias_val, date_ref_bounds, chain_vars, registration_start_date, discon_lookup)
     }
   }
-  # chain_varsはcdisc_variable単位の判定のため、同じ変数名でもlabelを跨ぐ連鎖を持たない他のlabel
-  # (例: RSDTCのうち "baseline" alias以外の通常のvisit)まで丸ごとclampから除外してしまうと、
-  # そちらの中止日超過チェックが素通りしてしまう。clampにはchain_boundsで処理した(同一ドメイン内で
-  # labelを跨ぐ)行だけを除いたdate_ref_boundsを渡し、変数自体は除外せず全date_varsを対象にする。
-  # 他ドメイン参照(ref_cdisc_variableが自ドメインのdate_vars外)はchain_boundsで処理されないため、
-  # ここには残してclampのref_violation判定に任せる
-  date_ref_bounds_for_clamp <- if (!is.null(date_ref_bounds)) {
-    date_ref_bounds %>% filter(is.na(label) | is.na(ref_label) | label == ref_label | !(ref_cdisc_variable %in% date_vars))
-  } else {
-    date_ref_bounds
-  }
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp, existing_data)
+  # clamp_dates_to_discontinuation()はself_ref_edges(labelがあれば(alias_name, label)単位)で依存順に
+  # 処理するため、labelを跨ぐ連鎖(regenerate_date_chain()で既に処理済みの同一alias内のものも含む)を
+  # そのまま渡してよい。中止日超過などでchain regen後に値が再サンプルされる場合でも、
+  # 参照元・参照先の順序が正しく守られる
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data)
   # 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   # シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。
   # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
   # regenerate_date_chain()・clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
   data <- reorder_dates_by_sheet_seq(data, date_vars, spec, registration_start_date, discontinuation_date)
   # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
-  # 他ドメイン参照(date_ref_bounds_for_clamp)の下限/上限が再び崩れる場合がある。ここでもう一度
+  # 参照関係(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
   # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds_for_clamp, existing_data)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、

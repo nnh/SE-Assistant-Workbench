@@ -773,6 +773,12 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
   });
 
   const hasAliasName = "alias_name" in data[0];
+  const hasLabel = hasAliasName && "label" in data[0];
+  // labelがある場合(buildRepeatedDomain由来)は(alias_name, label)単位、無い場合(buildGenericDomain由来)は
+  // alias_name単位をノードとして依存順序を組む。labelがある場合にalias_name単位のままだと、
+  // 同一alias内で別labelを参照するケース(例: BLASTLE(005)がWBC(006)の値を参照)を
+  // 見分けられず、両方が同じclampRows()呼び出しの中で独立に再サンプルされて値が食い違ってしまう
+  const nodeKeyFor = (row) => (hasLabel ? `${row.alias_name}${row.label}` : row.alias_name);
 
   targetVars.forEach((varName) => {
     // targetRowsについて、discon超過・参照関係違反(min/max_ref。参照先の値はdataの"現在の"状態から
@@ -808,11 +814,14 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
       });
     };
 
-    // 同じcdisc_variable名を、別のalias_nameが参照している場合(例: inductionのSVSTDTCがprephaseの
-    // SVSTDTCを参照する)、参照先(prephase)を先に確定させてから参照元(induction)を判定しないと、
-    // 同じ呼び出しの中で参照先だけが後から再生成されて関係が崩れてしまう。そのため、そのような
-    // alias_name間の依存がある場合だけ、依存関係順(参照されている側が先)にalias_nameごとに処理する。
-    // 依存が無ければ従来通り全行まとめて処理する
+    // 同じcdisc_variable名を、別のノード(alias_name、labelがあれば(alias_name, label))が参照している
+    // 場合(例: inductionのSVSTDTCがprephaseのSVSTDTCを参照する、あるいは同一alias内でBLASTLE(005)が
+    // WBC(006)の値を参照する)、参照先を先に確定させてから参照元を判定しないと、同じ呼び出しの中で
+    // 参照先だけが後から再生成されて関係が崩れてしまう。そのため、そのようなノード間の依存がある場合だけ、
+    // 依存関係順(参照されている側が先)にノードごとに処理する。依存が無ければ従来通り全行まとめて処理する。
+    // labelがある場合は(alias_name, label)単位、無い場合はalias_name単位をノードとする(nodeKeyFor)。
+    // labelがある場合にalias_name単位のままだと、同一alias内の別labelを参照するケースを見分けられず、
+    // 参照元・参照先が同じclampRows()呼び出しに混ざって独立に再サンプルされ、値が食い違ってしまう
     const selfRefEdges = hasAliasName
       ? (dateRefBounds || [])
           .filter(
@@ -821,11 +830,16 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
               r.ref_cdisc_variable === varName &&
               r.alias_name != null &&
               r.ref_alias_name != null &&
-              r.alias_name !== r.ref_alias_name
+              (hasLabel
+                ? !(r.alias_name === r.ref_alias_name && r.label === r.ref_label)
+                : r.alias_name !== r.ref_alias_name)
           )
           .reduce((acc, r) => {
-            if (!acc.some((e) => e.aliasName === r.alias_name && e.refAliasName === r.ref_alias_name)) {
-              acc.push({ aliasName: r.alias_name, refAliasName: r.ref_alias_name });
+            const fromKey = hasLabel ? r.alias_name + "" + r.label : r.alias_name;
+            const toKey = hasLabel ? r.ref_alias_name + "" + r.ref_label : r.ref_alias_name;
+            if (fromKey === toKey) return acc;
+            if (!acc.some((e) => e.aliasName === fromKey && e.refAliasName === toKey)) {
+              acc.push({ aliasName: fromKey, refAliasName: toKey });
             }
             return acc;
           }, [])
@@ -834,7 +848,7 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
     if (selfRefEdges.length === 0) {
       clampRows(data.map(() => true));
     } else {
-      const allAliases = [...new Set(data.map((row) => row.alias_name))];
+      const allAliases = [...new Set(data.map((row) => nodeKeyFor(row)))];
       const orderedAliases = [];
       let remaining = allAliases;
       while (remaining.length > 0) {
@@ -850,8 +864,8 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
         orderedAliases.push(...ready);
         remaining = remaining.filter((a) => unresolved.has(a));
       }
-      orderedAliases.forEach((alias) => {
-        clampRows(data.map((row) => row.alias_name === alias));
+      orderedAliases.forEach((key) => {
+        clampRows(data.map((row) => nodeKeyFor(row) === key));
       });
     }
   });
@@ -1445,23 +1459,19 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
       data = regenerateDateChain(data, aliasVal, scopedDateRefBounds, chainVars, registrationStartDate, disconByUsubjid);
     });
   }
-  // scopedDateRefBoundsはcdisc_variable単位の判定のため、同じ変数名でもlabelを跨ぐ連鎖を持たない他のlabelまで
-  // clampが丸ごと除外してしまわないよう、clampにはchainBoundsで処理した(同一ドメイン内でlabelを跨ぐ)行だけを
-  // 除いたものを渡す。他ドメイン参照(refCdiscVariableが自ドメインのdateVars外)はchainBoundsで処理されないため、
-  // ここには残してclampのref違反判定に任せる
-  const dateRefBoundsForClamp = scopedDateRefBounds.filter(
-    (r) => r.label == null || r.ref_label == null || r.label === r.ref_label || !dateVars.includes(r.ref_cdisc_variable)
-  );
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp, existingData);
+  // clampDatesToDiscontinuation()はselfRefEdges(labelがあれば(alias_name, label)単位)で依存順に処理するため、
+  // labelを跨ぐ連鎖(regenerateDateChain()で既に処理済みの同一alias内のものも含む)をそのまま渡してよい。
+  // 中止日超過などでchain regen後に値が再サンプルされる場合でも、参照元・参照先の順序が正しく守られる
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   // シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。alias内の関係
   // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
   // clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
   data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
-  // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
-  // (dateRefBoundsForClamp)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
+  // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、参照関係
+  // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBoundsForClamp, existingData);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
 
   let codingCols = [];
   if (addCodingBlock) {
