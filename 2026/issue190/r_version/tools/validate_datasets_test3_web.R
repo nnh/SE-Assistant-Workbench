@@ -313,6 +313,10 @@ tmp_lb <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 200) %>% select(USUB
 tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_lb, by="USUBJID")
 tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
 
+# nudtのNUDT15(VISITNUM=200)。LBDTCに明示的なref()参照は無く、上のBRTHDTC以降チェック(全LB共通)以外の
+# 追加の日付チェックは不要
+check_lb_testcd_at_visit(lb, "NUDT15", 200, "_15", c("LBMETHOD"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
 c("MHSTDTC") %>% check_required_vars(tmp_mh, ., domain_name = "MH")
