@@ -901,8 +901,16 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
     });
   equalsGroups.forEach((g) => {
     const targetRows = targetRowsFor(g.ref_alias_name, g.ref_label, g.label, g.alias_name);
+    // expectedValuesが""(空欄)を含む場合(例: "field.blank?"由来の条件)、参照先列は他の
+    // presence_conditionsで既にnull化されていることがあり、その場合refValは""ではなくnull/undefinedに
+    // なっている。厳密なSet.hasだけで判定すると「空欄のはずが空欄と認識されない」まま誤ってNG扱いに
+    // なってしまうため、""が期待値に含まれる場合はnull/undefinedも空欄として一致させる
+    const blankOk = g.expectedValues.has("");
     data.forEach((row, i) => {
-      if (targetRows[i] && !g.expectedValues.has(row[g.ref_cdisc_variable])) {
+      if (!targetRows[i]) return;
+      const refVal = row[g.ref_cdisc_variable];
+      const isMatch = g.expectedValues.has(refVal) || (blankOk && (refVal == null || refVal === ""));
+      if (!isMatch) {
         row[g.cdisc_variable] = null;
       }
     });

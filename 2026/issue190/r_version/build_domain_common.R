@@ -475,7 +475,14 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
     ref_var <- equals_conditions[["ref_cdisc_variable"]][i]
     expected_values <- equals_conditions[["expected_values"]][[i]]
     target_rows <- target_rows_for(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i], equals_conditions[["label"]][i], equals_conditions[["alias_name"]][i])
-    mismatch <- target_rows & !(data[[ref_var]] %in% expected_values)
+    # expected_valuesが""(空欄)を含む場合(例: "field.blank?"由来の条件)、参照先列は他の
+    # presence_conditionsで既にNA化されていることがあり、その場合ref_varの値は""ではなくNAになっている。
+    # %in%だけで判定すると(NAは""と一致しないため)「空欄のはずが空欄と認識されない」まま誤って
+    # NG扱いになってしまうため、""が期待値に含まれる場合はNAも空欄として一致させる
+    blank_ok <- "" %in% expected_values
+    ref_vals <- data[[ref_var]]
+    is_match <- (ref_vals %in% expected_values) | (blank_ok & (is.na(ref_vals) | ref_vals == ""))
+    mismatch <- target_rows & !is_match
     data[[var_name]][mismatch] <- NA
   }
 

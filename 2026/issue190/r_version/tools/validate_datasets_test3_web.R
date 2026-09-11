@@ -292,6 +292,27 @@ tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES" & FAOBJ == "Total Prednisolone Do
 tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_fa, by="USUBJID")
 tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
 
+# evaluationtp1のMRDQV。LBORRESは固定値ではなく選択式(カテゴリ)のためcheck_lb_testcd_at_visit内の
+# required_varsチェックのみで対応する。LBDTCはinductionlabのMYBLALE(VISITNUM=200)のLBDTC以降であることが
+# 期待される(ref('inductionlab', 109))
+check_lb_testcd_at_visit(lb, "MRDQV", 250, "_13", c("LBMETHOD", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+tmp_lb_2 <- lb %>% filter(LBTESTCD == "MRDQV" & VISITNUM == 250)
+tmp_lb_2 %>% filter(LBSTAT == "NOT DONE") %>% select(LBREASND_13=LBREASND) %>% run_value_equals_checks_from_csv("LB", "LBREASND_13", fixed_value_checks_csv_path)
+tmp_lb_2 %>% filter(LBSTAT == "NOT DONE") %>% check_required_vars("LBREASND", domain_name = "LB")
+tmp_lb_2 %>% filter(LBSTAT != "NOT DONE") %>% check_blank_vars("LBREASND", domain_name = "LB")
+tmp_lb <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 200) %>% select(USUBJID, tmp_dtc=LBDTC)
+tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_lb, by="USUBJID")
+tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
+
+# evaluationtp1のMYBLALE(VISITNUM=250)。LBDTCはMRDQVと同様、inductionlabのMYBLALE(VISITNUM=200)の
+# LBDTC以降であることが期待される(ref('inductionlab', 109))
+check_lb_testcd_at_visit(lb, "MYBLALE", 250, "_14", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
+tmp_lb_2 <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 250)
+tmp_lb_2 %>% check_numeric_range("LBORRES", 0, 100, domain_name = "LB")
+tmp_lb <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 200) %>% select(USUBJID, tmp_dtc=LBDTC)
+tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_lb, by="USUBJID")
+tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
+
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
 c("MHSTDTC") %>% check_required_vars(tmp_mh, ., domain_name = "MH")
@@ -324,6 +345,36 @@ tmp_pr <- pr %>% filter(PRTRT == "Central Venous Catheter Placement" & VISITNUM 
 suffix <- "_1"
 tmp_pr <- tmp_pr %>% rename_with(~ str_c(.x, suffix), all_of(pr_target_cols))
 str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
+
+# RS
+c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
+rs_target_cols <- c("RSTEST", "RSCAT" ,"RSORRES")
+
+# evaluationtp1のOVRLRESP(VISITNUM=250)。RSDTCはinductionlabのMYBLALE(VISITNUM=200)以降であることが
+# 期待される(ref('inductionlab', 109))
+tmp_rs <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 250)
+if (nrow(tmp_rs) == 0) {
+  stop("RS error visitnum==250")
+}
+suffix <- "_1"
+tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(rs_target_cols))
+str_c(rs_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+tmp_lb <- lb %>% filter(LBTESTCD == "MYBLALE" & VISITNUM == 200) %>% select(USUBJID, tmp_dtc=LBDTC)
+tmp_rs_2 <- tmp_rs %>% inner_join(tmp_lb, by="USUBJID")
+tmp_rs_2 %>% check_date_after_var_before_today("RSDTC", "tmp_dtc", domain_name = "RS")
+
+# evaluationtp2のOVRLRESP(VISITNUM=350)。RSDTCはevaluationtp1自身のOVRLRESP(VISITNUM=250)のRSDTC
+# 以降であることが期待される(ref('evaluationtp1', 119)。inductionlab基準ではない)
+tmp_rs <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 350)
+if (nrow(tmp_rs) == 0) {
+  stop("RS error visitnum==350")
+}
+suffix <- "_2"
+tmp_rs <- tmp_rs %>% rename_with(~ str_c(.x, suffix), all_of(rs_target_cols))
+str_c(rs_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_rs, "RS", .x, fixed_value_checks_csv_path))
+tmp_rs_evaluationtp1 <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 250) %>% select(USUBJID, tmp_dtc=RSDTC)
+tmp_rs_2 <- tmp_rs %>% inner_join(tmp_rs_evaluationtp1, by="USUBJID")
+tmp_rs_2 %>% check_date_after_var_before_today("RSDTC", "tmp_dtc", domain_name = "RS")
 
 # SV
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
