@@ -214,6 +214,8 @@ check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
 
+tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES")
+
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と
 # 一致することを確認する。has_not_done_split=TRUEの場合、LBSTAT=="NOT DONE"で分岐し、
@@ -263,13 +265,16 @@ check_lb_testcd_at_visit(lb, "IAMP21", 100, "_9", c("LBMETHOD"), fixed_value_che
 check_lb_testcd_at_visit(lb, "CD19", 100, "_10", c("LBMETHOD", "LBSPEC"), fixed_value_checks_csv_path, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
 
 check_lb_testcd_at_visit(lb, "WBC", 200, "_1", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
-tmp_sv <- sv %>% filter(VISITNUM == 200) %>% select(USUBJID, SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "prephase") %>% select(USUBJID, SVSTDTC)
 tmp_lb <- lb %>% filter(LBTESTCD == "WBC" & VISITNUM == 200) %>% inner_join(tmp_sv, by="USUBJID")
-tmp_lb %>% check_date_after_var_before_today("LBDTC", "SVSTDTC")
+tmp_lb %>% check_date_after_var_before_today("LBDTC", "SVSTDTC", domain_name = "LB")
 
 check_lb_testcd_at_visit(lb, "BLASTLE", 200, "_11", c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
-tmp_lb <- lb %>% filter(LBTESTCD == "WBC" & VISITNUM == 200) %>% inner_join(tmp_sv, by="USUBJID")
+tmp_lb <- lb %>% filter(LBTESTCD == "WBC" & VISITNUM == 200) %>% select(USUBJID, tmp_dtc=LBDTC)
 tmp_lb_2 <- lb %>% filter(LBTESTCD == "BLASTLE" & VISITNUM == 200)
+tmp_lb_2 %>% check_numeric_range("LBORRES", 0, 100, domain_name = "LB")
+tmp_lb_3 <- tmp_lb %>% inner_join(tmp_lb_2, by="USUBJID")
+tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
 
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")

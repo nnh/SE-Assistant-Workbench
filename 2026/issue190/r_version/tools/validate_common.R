@@ -320,6 +320,31 @@ check_date_after_var_before_today <- function(data, date_var, ref_date_var, doma
   )
 }
 
+# data(1ドメイン分。USUBJID列が必要)のnum_var列(数値。文字列で入っていてもas.numeric()で変換して判定する)が、
+# min_val以上・max_val以下の範囲内かを確認する。数値に変換できない・NAの行は判定対象から除く
+# (値の有無自体はcheck_required_vars等の別チェックで見る)。domain_nameを指定するとメッセージの先頭に付く。
+# 範囲外がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
+check_numeric_range <- function(data, num_var, min_val, max_val, domain_name = NULL) {
+  label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
+  vals <- as.numeric(data[[num_var]])
+  valid <- !is.na(vals)
+
+  invalid <- valid & (vals < min_val | vals > max_val)
+  invalid_usubjid <- data[["USUBJID"]][invalid]
+
+  if (length(invalid_usubjid) > 0) {
+    stop(str_c(
+      label, num_var, "範囲チェック: ", length(invalid_usubjid), "件NG(", min_val, "以上・", max_val,
+      "以下の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
+    ))
+  }
+  cat(
+    label, num_var, "範囲チェック: OK(", num_var, "が", min_val, "以上・", max_val, "以下であることを確認、",
+    sum(valid), "件)\n",
+    sep = ""
+  )
+}
+
 # data(1ドメイン分。USUBJID列が必要)のvalue_var列の値が、全てallowed_values(例: 施設一覧CSVのcode列)に
 # 含まれているかを確認する(参照整合性チェック。例: DMのSITEIDがfacilities_dummy.csvのcodeの範囲内か)。
 # value_varが無い(NAまたは空文字列"")行は判定対象から除く。domain_nameを指定するとメッセージの先頭に付く。
