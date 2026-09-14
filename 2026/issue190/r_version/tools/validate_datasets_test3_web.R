@@ -953,6 +953,34 @@ pwalk(pr_checks, function(visitnum, prtrt, suffix) {
   str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
 })
 
+# osteonecrosis1のQS。QSTESTCD(IMOBIDX=Immobility Index/PNSEVIDX=Pain Severity Index)ごとに、
+# QSORRES(1〜4の順序尺度)自体がQSSTAT(空欄=実施済み)かつGRADE(FA GRADE、骨壊死のGrade。label=001の
+# FAORRES)が2以上のときだけ値を持つ(EDC仕様のvalidate_presence_if: "f16>=2&&STAT.blank?"、
+# f16はGRADE)。QSDTCはQSSTATが空欄、かつQSORRESに値がある(=上記条件を満たす)ときだけ値を持つ
+is_blank_val <- function(x) is.na(x) | x == ""
+check_qs_osteo_testcd <- function(qs, fa, qstestcd, suffix, fixed_value_checks_csv_path) {
+  target_qs_cols <- c("QSTEST", "QSCAT", "VISITNUM")
+  tmp_qs <- qs %>% filter(QSSPID == "osteonecrosis1" & QSTESTCD == qstestcd)
+  tmp_qs_2 <- tmp_qs %>% rename_with(~ str_c(.x, suffix), all_of(target_qs_cols))
+  str_c(target_qs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_qs_2, "QS", .x, fixed_value_checks_csv_path))
+
+  grade <- fa %>% filter(FASPID == "osteonecrosis1" & FATESTCD == "GRADE") %>% select(USUBJID, grade_orres = FAORRES)
+  tmp_qs_grade <- tmp_qs %>% left_join(grade, by = "USUBJID") %>%
+    mutate(grade_num = suppressWarnings(as.numeric(grade_orres)))
+  stat_done <- !(!is.na(tmp_qs_grade[["QSSTAT"]]) & tmp_qs_grade[["QSSTAT"]] == "NOT DONE")
+  grade_ge2 <- !is.na(tmp_qs_grade[["grade_num"]]) & tmp_qs_grade[["grade_num"]] >= 2
+
+  tmp_qs_grade %>% filter(stat_done & grade_ge2) %>% check_required_vars("QSORRES", domain_name = "QS")
+  tmp_qs_grade %>% filter(!(stat_done & grade_ge2)) %>% check_blank_vars("QSORRES", domain_name = "QS")
+  tmp_qs_grade %>% check_values_subset_of("QSORRES", c("1", "2", "3", "4"), domain_name = "QS")
+
+  orres_present <- !is_blank_val(tmp_qs_grade[["QSORRES"]])
+  tmp_qs_grade %>% filter(stat_done & orres_present) %>% check_required_vars("QSDTC", domain_name = "QS")
+  tmp_qs_grade %>% filter(!(stat_done & orres_present)) %>% check_blank_vars("QSDTC", domain_name = "QS")
+}
+check_qs_osteo_testcd(qs, fa, "IMOBIDX", "_1", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "PNSEVIDX", "_2", fixed_value_checks_csv_path)
+
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
 rs_target_cols <- c("RSTEST", "RSCAT" ,"RSORRES", "RSEVAL")

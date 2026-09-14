@@ -551,6 +551,37 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
     data[[var_name]][mismatch] <- NA
   }
 
+  # numeric_ge/numeric_le/numeric_gt/numeric_lt: ref_cdisc_variableの値を数値としてexpected_value(閾値)と
+  # 比較し、満たさない行をNA化する(validate_presence_ifの"fieldN>=数値"のような同一シート内の別
+  # フィールドとの数値不等号比較に対応。例: QSORRESの"f16>=2&&STAT.blank?"のうちf16>=2の部分)。
+  # age_gt等と同様、他のequals/not_blank条件がこの変数自身を参照している場合があるため先に適用する
+  numeric_cmp_conditions <- applicable %>%
+    filter(condition_type %in% c("numeric_ge", "numeric_le", "numeric_gt", "numeric_lt")) %>%
+    distinct(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label, condition_type, expected_value)
+  for (i in seq_len(nrow(numeric_cmp_conditions))) {
+    var_name <- numeric_cmp_conditions[["cdisc_variable"]][i]
+    ref_var <- numeric_cmp_conditions[["ref_cdisc_variable"]][i]
+    own_label <- numeric_cmp_conditions[["label"]][i]
+    own_alias_name <- numeric_cmp_conditions[["alias_name"]][i]
+    ref_label_i <- numeric_cmp_conditions[["ref_label"]][i]
+    ref_alias_name_i <- numeric_cmp_conditions[["ref_alias_name"]][i]
+    op <- numeric_cmp_conditions[["condition_type"]][i]
+    threshold <- suppressWarnings(as.numeric(numeric_cmp_conditions[["expected_value"]][i]))
+
+    target_rows <- own_target_rows(own_alias_name, own_label)
+    ref_vals <- suppressWarnings(as.numeric(resolve_ref_vals(ref_var, ref_alias_name_i, ref_label_i, own_alias_name, own_label)))
+    satisfied <- switch(op,
+      numeric_ge = ref_vals >= threshold,
+      numeric_le = ref_vals <= threshold,
+      numeric_gt = ref_vals > threshold,
+      numeric_lt = ref_vals < threshold,
+      rep(NA, length(ref_vals))
+    )
+    satisfied[is.na(satisfied)] <- FALSE
+    mismatch <- target_rows & !satisfied
+    data[[var_name]][mismatch] <- NA
+  }
+
   equals_conditions <- applicable %>%
     filter(condition_type == "equals") %>%
     group_by(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label) %>%

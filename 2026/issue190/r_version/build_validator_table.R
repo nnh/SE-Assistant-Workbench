@@ -317,6 +317,9 @@ and_field_ref_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:'([^']*)'|\"([^\"]*)\
 # (この形は「別フィールドの値をそのままコピーする」という意味で、build_generation_constraints.Rの
 # extract_field_equality_ref()による別のcopy機構で扱われるため、ここでは何もしない扱いにする)
 and_field_equality_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:field|f)([0-9]+)$"
+# fieldN>=数値(または fN>=数値)のように、同一シート内の別フィールドの値を数値として不等号比較する形。
+# 例: "f16>=2&&STAT.blank?"(骨壊死のGrade(field16)が2以上のときだけ、かつSTATが空欄のときだけ提示)
+and_field_numeric_cmp_pattern <- "^(?:field|f)([0-9]+)\\s*(>=|<=|>|<)\\s*(-?[0-9]+(?:\\.[0-9]+)?)$"
 
 # parse_and_clauses()で分割した1断片を種類ごとに分類する。対応する断片:
 #   - "STAT.blank?"/"STAT.present?"のような接尾辞述語 -> kind="predicate"
@@ -324,6 +327,7 @@ and_field_equality_pattern <- "^(?:field|f)([0-9]+)\\s*==\\s*(?:field|f)([0-9]+)
 #   - "fieldN==fieldM"のような、値側もフィールド参照のコピー条件 -> kind="field_equality_skip"
 #     (別のcopy機構(extract_field_equality_ref)で扱われるため、ここではpresence_conditions行を作らない)
 #   - "fieldN=='値'"のような同一シート内の別フィールド参照 -> kind="field_ref"
+#   - "fieldN>=数値"のような、同一シート内の別フィールドの値との数値不等号比較 -> kind="field_numeric_cmp"
 #   - "fieldN==2 || fieldN==3 || ..."のような、断片自体が同一フィールドに対するOR条件
 #     (例: (field22==2||field22==3||...) && (field348=='CR'||field348=='PR'))
 #     -> kind="field_ref_or"(parse_presence_or_conditions()を再利用し、複数のexpected_valueを持つ)
@@ -349,6 +353,10 @@ classify_and_clause <- function(clause) {
   m_field <- str_match(clause, and_field_ref_pattern)
   if (!is.na(m_field[1, 1])) {
     return(list(kind = "field_ref", ref_field = str_c("field", m_field[1, 2]), value = coalesce(m_field[1, 3], m_field[1, 4], m_field[1, 5])))
+  }
+  m_num <- str_match(clause, and_field_numeric_cmp_pattern)
+  if (!is.na(m_num[1, 1])) {
+    return(list(kind = "field_numeric_cmp", ref_field = str_c("field", m_num[1, 2]), operator = m_num[1, 3], threshold = as.numeric(m_num[1, 4])))
   }
   or_parsed <- parse_presence_or_conditions(clause)
   if (!is.null(or_parsed)) {

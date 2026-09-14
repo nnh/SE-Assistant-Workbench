@@ -201,11 +201,15 @@ const AND_FIELD_REF_RE = /^(?:field|f)([0-9]+)\s*==\s*(?:'([^']*)'|"([^"]*)"|([^
 // 一致するかのリテラル条件として誤解釈されてしまう(この形は「別フィールドの値をそのままコピーする」
 // という意味で、extractFieldEqualityRef()による別のcopy機構で扱われるため、ここでは何もしない扱いにする)
 const AND_FIELD_EQUALITY_RE = /^(?:field|f)([0-9]+)\s*==\s*(?:field|f)([0-9]+)$/;
+// fieldN>=数値(または fN>=数値)のように、同一シート内の別フィールドの値を数値として不等号比較する形。
+// 例: "f16>=2&&STAT.blank?"(骨壊死のGrade(field16)が2以上のときだけ、かつSTATが空欄のときだけ提示)
+const AND_FIELD_NUMERIC_CMP_RE = /^(?:field|f)([0-9]+)\s*(>=|<=|>|<)\s*(-?[0-9]+(?:\.[0-9]+)?)$/;
 
 // parseAndClauses()で分割した1断片を種類ごとに分類する(Rのclassify_and_clause()に対応)
 //   - "fieldN==fieldM"のような、値側もフィールド参照のコピー条件
 //     -> kind="field_equality_skip"(別のcopy機構(extractFieldEqualityRef)で扱われるため、
 //        ここではpresenceConditions行を作らない)
+//   - "fieldN>=数値"のような、同一シート内の別フィールドの値との数値不等号比較 -> kind="field_numeric_cmp"
 //   - "fieldN==2 || fieldN==3 || ..."のような、断片自体が同一フィールドに対するOR条件
 //     (例: (field22==2||field22==3||...) && (field348=='CR'||field348=='PR'))
 //     -> kind="field_ref_or"(parsePresenceOrConditions()を再利用し、複数のexpected_valueを持つ)
@@ -218,6 +222,8 @@ function classifyAndClause(clause) {
   if (mEq) return { kind: "field_equality_skip" };
   const mField = clause.match(AND_FIELD_REF_RE);
   if (mField) return { kind: "field_ref", refField: `field${mField[1]}`, value: mField[2] ?? mField[3] ?? mField[4] };
+  const mNum = clause.match(AND_FIELD_NUMERIC_CMP_RE);
+  if (mNum) return { kind: "field_numeric_cmp", refField: `field${mNum[1]}`, operator: mNum[2], threshold: Number(mNum[3]) };
   const orParsed = parsePresenceOrConditions(clause);
   if (orParsed) return { kind: "field_ref_or", refField: orParsed.field, values: orParsed.values };
   return null;
@@ -548,6 +554,28 @@ function buildAndPresenceConditions(validatorTable, fieldLookup) {
                 expected_value: expectedValue,
                 condition_type: "equals",
               });
+            });
+          });
+        } else if (clause.kind === "field_numeric_cmp") {
+          // fieldN>=数値のような、同一シート内の別フィールドの値との数値不等号比較(例:
+          // "f16>=2"(骨壊死のGradeが2以上))。equals/not_blankと異なりref側の値を数値として
+          // 閾値と比較する必要があるため、専用のcondition_type(numeric_ge/le/gt/lt)にする
+          const refMatches = lookupField(fieldLookup, vr.alias_name, clause.refField);
+          const numericOpToType = { ">=": "numeric_ge", "<=": "numeric_le", ">": "numeric_gt", "<": "numeric_lt" };
+          const numericConditionType = numericOpToType[clause.operator];
+          if (!numericConditionType) return;
+          refMatches.forEach((ref) => {
+            const refCdiscVariable = ref.field_type === "meddra" ? `${ref.prefix}LLTCD` : ref.cdisc_variable;
+            if (refCdiscVariable == null || refCdiscVariable === own.cdisc_variable) return;
+            rows.push({
+              cdisc_variable: own.cdisc_variable,
+              label: own.label,
+              alias_name: vr.alias_name,
+              ref_cdisc_variable: refCdiscVariable,
+              ref_alias_name: vr.alias_name,
+              ref_label: ref.label != null ? ref.label : null,
+              expected_value: String(clause.threshold),
+              condition_type: numericConditionType,
             });
           });
         }
@@ -992,6 +1020,32 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
           else if (pc.condition_type === "age_ge") satisfied = ageYears >= threshold;
           else if (pc.condition_type === "age_lt") satisfied = ageYears < threshold;
           else if (pc.condition_type === "age_le") satisfied = ageYears <= threshold;
+        }
+        if (!satisfied) {
+          row[pc.cdisc_variable] = null;
+        }
+      });
+    });
+
+  // numeric_ge/numeric_le/numeric_gt/numeric_lt: refCdiscVariableの値を数値としてexpectedValue(閾値)と
+  // 比較し、満たさない行をnullにする(validate_presence_ifの"fieldN>=数値"のような同一シート内の別
+  // フィールドとの数値不等号比較に対応。例: QSORRESの"f16>=2&&STAT.blank?"のうちf16>=2の部分)。
+  // age_gt等と同様、他のequals/not_blank条件がこの変数自身を参照している場合があるため先に適用する
+  applicable
+    .filter((pc) => ["numeric_ge", "numeric_le", "numeric_gt", "numeric_lt"].includes(pc.condition_type))
+    .forEach((pc) => {
+      const targetRows = ownTargetRows(pc.alias_name, pc.label);
+      const refVals = resolveRefVals(pc.ref_cdisc_variable, pc.ref_alias_name, pc.ref_label, pc.alias_name, pc.label);
+      const threshold = Number(pc.expected_value);
+      data.forEach((row, i) => {
+        if (!targetRows[i]) return;
+        const refNum = refVals[i] != null ? Number(refVals[i]) : NaN;
+        let satisfied = false;
+        if (!Number.isNaN(refNum)) {
+          if (pc.condition_type === "numeric_ge") satisfied = refNum >= threshold;
+          else if (pc.condition_type === "numeric_le") satisfied = refNum <= threshold;
+          else if (pc.condition_type === "numeric_gt") satisfied = refNum > threshold;
+          else if (pc.condition_type === "numeric_lt") satisfied = refNum < threshold;
         }
         if (!satisfied) {
           row[pc.cdisc_variable] = null;

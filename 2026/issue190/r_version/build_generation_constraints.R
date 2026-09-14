@@ -184,6 +184,31 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
               expected_value = clause[["values"]],
               condition_type = "equals"
             )
+          } else if (clause[["kind"]] == "field_numeric_cmp") {
+            # fieldN>=数値のような、同一シート内の別フィールドの値との数値不等号比較(例:
+            # "f16>=2"(骨壊死のGradeが2以上))。equals/not_blankと異なりref側の値を数値として
+            # 閾値と比較する必要があるため、専用のcondition_type(numeric_ge/le/gt/lt)にする
+            ref_var <- resolve_ref_cdisc_variable(alias_name, clause[["ref_field"]])
+            if (length(ref_var) == 0 || ref_var[1] == cdisc_variable) return(tibble())
+            ref_lbl <- field_to_label %>% filter(alias_name == .env$alias_name, field == clause[["ref_field"]]) %>% pull(label) %>% unname()
+            numeric_condition_type <- case_when(
+              clause[["operator"]] == ">=" ~ "numeric_ge",
+              clause[["operator"]] == "<=" ~ "numeric_le",
+              clause[["operator"]] == ">" ~ "numeric_gt",
+              clause[["operator"]] == "<" ~ "numeric_lt",
+              TRUE ~ NA_character_
+            )
+            if (is.na(numeric_condition_type)) return(tibble())
+            tibble(
+              cdisc_variable = cdisc_variable,
+              label = label,
+              alias_name = alias_name,
+              ref_cdisc_variable = ref_var[1],
+              ref_alias_name = alias_name,
+              ref_label = if (length(ref_lbl) > 0) ref_lbl[1] else NA_character_,
+              expected_value = as.character(clause[["threshold"]]),
+              condition_type = numeric_condition_type
+            )
           } else {
             tibble()
           }
