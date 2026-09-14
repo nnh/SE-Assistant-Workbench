@@ -87,6 +87,7 @@ cm_named_checks <- tribble(
   1200, "ANTIFUNGAL DRUG", "_1",
   1400, "ANTIFUNGAL DRUG", "_1",
   1500, "ANTIFUNGAL DRUG", "_1",
+  1700, "ANTIFUNGAL DRUG", "_1",
   1600, "ANTIFUNGAL DRUG", "_1",
   200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
@@ -397,6 +398,23 @@ ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
+# blin3のBLINATUMOMAB(VISITNUM=1700)。blin1/blin2と固定値が同一のためsuffix "_2"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "BLINATUMOMAB" & VISITNUM == 1700)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_2"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# blin3のMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=1700)。blin1/blin2と
+# 固定値(ECROUTE="INTRATHECAL"含む)が同一のためsuffix "_5"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 1700)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
 # hr2fisrt(VISITNUM=1100)の6薬剤。ECADJの6コード体系はsuffix "_2"と同一のため再利用する
 # (VINDESINE SULFATE/IFOSFAMIDEは新規薬剤名だが、固定値の構成自体は既存と同じ)
 hr2fisrt_ec_drugs <- c("VINDESINE SULFATE", "DEXAMETHASONE CIPECILATE", "DAUNORUBICIN HYDROCHLORIDE", "METHOTREXATE", "IFOSFAMIDE")
@@ -615,6 +633,7 @@ check_immuno_astctgr <- function(faspid) {
 }
 check_immuno_astctgr("immunomonitoring1")
 check_immuno_astctgr("immunomonitoring2")
+check_immuno_astctgr("immunomonitoring3")
 
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
@@ -1056,6 +1075,18 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "hr2second_svstdtc", dom
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
 suffix <- "_10"
 tmp_sv <- sv %>% filter(SVSPID == "hr1second")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# blin3のSVSTDTCはhr1fisrt自身のSVSTDTC以降であることが期待される(ref('hr1fisrt', ...)。
+# evaluationtp2でもblin2でもない)。VISITNUMは1700のため新しいsuffix "_11"を使う
+tmp_sv_2 <- sv %>% filter(SVSPID == "hr1fisrt") %>% select(USUBJID, hr1fisrt_svstdtc_2=SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "blin3") %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "hr1fisrt_svstdtc_2", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_11"
+tmp_sv <- sv %>% filter(SVSPID == "blin3")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
