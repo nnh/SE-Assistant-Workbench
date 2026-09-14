@@ -84,14 +84,17 @@ cm_named_checks <- tribble(
   900, "ANTIFUNGAL DRUG", "_1",
   1000, "ANTIFUNGAL DRUG", "_1",
   1100, "ANTIFUNGAL DRUG", "_1",
+  1200, "ANTIFUNGAL DRUG", "_1",
   200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   400, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   1100, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
+  1200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   200, "FRESH-FROZEN HUMAN PLASMA", "_3",
   300, "FRESH-FROZEN HUMAN PLASMA", "_3",
   400, "FRESH-FROZEN HUMAN PLASMA", "_3",
-  1100, "FRESH-FROZEN HUMAN PLASMA", "_3"
+  1100, "FRESH-FROZEN HUMAN PLASMA", "_3",
+  1200, "FRESH-FROZEN HUMAN PLASMA", "_3"
 )
 pwalk(cm_named_checks, function(visitnum, cmtrt, suffix) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum)
@@ -148,7 +151,15 @@ cm_anticoag_checks <- tribble(
   1100, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
   1100, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
   1100, "HEPARINOID", "SECOND PREVENTION",
-  1100, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
+  1100, "OTHER ANTICOAGULANT", "SECOND PREVENTION",
+  1200, "UNFRACTIONATED HEPARIN", "FIRST PREVENTION",
+  1200, "LOW MOLECULAR HEPARIN", "FIRST PREVENTION",
+  1200, "HEPARINOID", "FIRST PREVENTION",
+  1200, "OTHER ANTICOAGULANT", "FIRST PREVENTION",
+  1200, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
+  1200, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
+  1200, "HEPARINOID", "SECOND PREVENTION",
+  1200, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
 )
 pwalk(cm_anticoag_checks, function(visitnum, cmtrt, cmcat) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum & CMCAT == cmcat)
@@ -376,6 +387,34 @@ str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec
 # hr2fisrtのMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=1100)。
 # 固定値(ECROUTE="INTRATHECAL"含む)はsuffix "_5"と同一のため再利用する
 tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 1100)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hr1fisrt(VISITNUM=1200)の6薬剤。ECADJの6コード体系はsuffix "_2"と同一のため再利用する
+hr1fisrt_ec_drugs <- c("VINCRISTINE SULFATE", "DEXAMETHASONE CIPECILATE", "CYTARABINE", "METHOTREXATE", "CYCLOPHOSPHAMIDE HYDRATE")
+walk(hr1fisrt_ec_drugs, function(ectrt) {
+  tmp_ec <- ec %>% filter(ECTRT == ectrt & VISITNUM == 1200)
+  c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+  suffix <- "_2"
+  ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+  tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+  str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+})
+
+# hr1fisrtのL-ASPARAGINASE(VISITNUM=1200)。ECADJの11コード体系はsuffix "_4"と同一のため再利用する
+tmp_ec <- ec %>% filter(ECTRT == "L-ASPARAGINASE" & VISITNUM == 1200)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_4"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hr1fisrtのMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=1200)。
+# 固定値(ECROUTE="INTRATHECAL"含む)はsuffix "_5"と同一のため再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 1200)
 c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
 suffix <- "_5"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
@@ -707,7 +746,8 @@ pr_checks <- tribble(
   200, "Central Venous Catheter Placement", "_1",
   300, "Central Venous Catheter Placement", "_1",
   400, "Central Venous Catheter Placement", "_1",
-  1100, "Central Venous Catheter Placement", "_1"
+  1100, "Central Venous Catheter Placement", "_1",
+  1200, "Central Venous Catheter Placement", "_1"
 )
 pwalk(pr_checks, function(visitnum, prtrt, suffix) {
   tmp_pr <- pr %>% filter(PRTRT == prtrt & VISITNUM == visitnum)
@@ -844,6 +884,18 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", d
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
 suffix <- "_6"
 tmp_sv <- sv %>% filter(SVSPID == "hr2fisrt")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# hr1fisrtのSVSTDTCはhr2fisrt自身のSVSTDTC以降であることが期待される(ref('hr2fisrt', ...)。
+# evaluationtp2基準ではない)。VISITNUMは1200のため新しいsuffix "_7"を使う
+tmp_sv_2 <- sv %>% filter(SVSPID == "hr2fisrt") %>% select(USUBJID, hr2fisrt_svstdtc=SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "hr1fisrt") %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "hr2fisrt_svstdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_7"
+tmp_sv <- sv %>% filter(SVSPID == "hr1fisrt")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
