@@ -81,6 +81,7 @@ cm_named_checks <- tribble(
   ~visitnum, ~cmtrt, ~suffix,
   200, "ANTIFUNGAL DRUG", "_1",
   300, "ANTIFUNGAL DRUG", "_1",
+  900, "ANTIFUNGAL DRUG", "_1",
   200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   400, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
@@ -303,6 +304,23 @@ tmp_ec <- ec %>% filter(ECTRT == "ETOPOSIDE" & VISITNUM == 400)
 c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
 suffix <- "_2"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# blin1のBLINATUMOMAB(VISITNUM=900、新規薬剤)。固定値(ECADJの6コード体系)はsuffix "_2"と同一のため再利用する
+tmp_ec <- ec %>% filter(ECTRT == "BLINATUMOMAB" & VISITNUM == 900)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_2"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# blin1のMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=900)。VISITNUM=200/400と
+# 固定値(ECROUTE="INTRATHECAL"含む)が同一のためsuffix "_5"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 900)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
@@ -667,6 +685,18 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", d
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
 suffix <- "_3"
 tmp_sv <- sv %>% filter(SVSPID == "hr3fisrt")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# blin1のSVSTDTCはhdm系列と同様、evaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以降であることが
+# 期待される(ref('evaluationtp2', ...))。VISITNUMはhdm系列/hr3fisrtの400とは異なり900のため、
+# 新しいsuffix "_4"を使う
+tmp_sv <- sv %>% filter(SVSPID == "blin1") %>% inner_join(tmp_rs_evaluationtp2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_4"
+tmp_sv <- sv %>% filter(SVSPID == "blin1")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
