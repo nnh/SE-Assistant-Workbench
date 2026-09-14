@@ -82,12 +82,16 @@ cm_named_checks <- tribble(
   200, "ANTIFUNGAL DRUG", "_1",
   300, "ANTIFUNGAL DRUG", "_1",
   900, "ANTIFUNGAL DRUG", "_1",
+  1000, "ANTIFUNGAL DRUG", "_1",
+  1100, "ANTIFUNGAL DRUG", "_1",
   200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   400, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
+  1100, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   200, "FRESH-FROZEN HUMAN PLASMA", "_3",
   300, "FRESH-FROZEN HUMAN PLASMA", "_3",
-  400, "FRESH-FROZEN HUMAN PLASMA", "_3"
+  400, "FRESH-FROZEN HUMAN PLASMA", "_3",
+  1100, "FRESH-FROZEN HUMAN PLASMA", "_3"
 )
 pwalk(cm_named_checks, function(visitnum, cmtrt, suffix) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum)
@@ -136,7 +140,15 @@ cm_anticoag_checks <- tribble(
   400, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
   400, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
   400, "HEPARINOID", "SECOND PREVENTION",
-  400, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
+  400, "OTHER ANTICOAGULANT", "SECOND PREVENTION",
+  1100, "UNFRACTIONATED HEPARIN", "FIRST PREVENTION",
+  1100, "LOW MOLECULAR HEPARIN", "FIRST PREVENTION",
+  1100, "HEPARINOID", "FIRST PREVENTION",
+  1100, "OTHER ANTICOAGULANT", "FIRST PREVENTION",
+  1100, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
+  1100, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
+  1100, "HEPARINOID", "SECOND PREVENTION",
+  1100, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
 )
 pwalk(cm_anticoag_checks, function(visitnum, cmtrt, cmcat) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum & CMCAT == cmcat)
@@ -324,6 +336,52 @@ ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
+# blin2のBLINATUMOMAB(VISITNUM=1000)。blin1と固定値が同一のためsuffix "_2"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "BLINATUMOMAB" & VISITNUM == 1000)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_2"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# blin2のMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=1000)。blin1と固定値
+# (ECROUTE="INTRATHECAL"含む)が同一のためsuffix "_5"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 1000)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hr2fisrt(VISITNUM=1100)の6薬剤。ECADJの6コード体系はsuffix "_2"と同一のため再利用する
+# (VINDESINE SULFATE/IFOSFAMIDEは新規薬剤名だが、固定値の構成自体は既存と同じ)
+hr2fisrt_ec_drugs <- c("VINDESINE SULFATE", "DEXAMETHASONE CIPECILATE", "DAUNORUBICIN HYDROCHLORIDE", "METHOTREXATE", "IFOSFAMIDE")
+walk(hr2fisrt_ec_drugs, function(ectrt) {
+  tmp_ec <- ec %>% filter(ECTRT == ectrt & VISITNUM == 1100)
+  c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+  suffix <- "_2"
+  ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+  tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+  str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+})
+
+# hr2fisrtのL-ASPARAGINASE(VISITNUM=1100)。ECADJの11コード体系はsuffix "_4"と同一のため再利用する
+tmp_ec <- ec %>% filter(ECTRT == "L-ASPARAGINASE" & VISITNUM == 1100)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_4"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hr2fisrtのMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=1100)。
+# 固定値(ECROUTE="INTRATHECAL"含む)はsuffix "_5"と同一のため再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 1100)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
 # erwaspシートはCRISANTASPASEの投与を2回分(寛解導入療法IA2,IA4=VISITNUM200、早期強化療法IB+L=VISITNUM300)
 # 記録するが、選択肢構成・固定値は2回分で共通のため、参照日付(ref_data、2列目がref変数)だけを
 # 呼び出し側で変えて共通化する
@@ -379,19 +437,24 @@ check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
 
-# immunomonitoring1(BLIN群イムノモニタリング: BLIN 1サイクル目)のASTCTGR(ASTCT Consensus Grading)。
+# BLIN群イムノモニタリング各シート(immunomonitoring1/2/3)のASTCTGR(ASTCT Consensus Grading)。
 # GRADEパネル(FATESTCD=="GRADE")とは別のテストコードで、FAOBJがCytokine release syndrome/
 # Immune effector cell-associated neurotoxicity syndromeの2種類のみ、値域も0〜4(GRADEは0〜5)のため、
-# check_fa_grade_panel()を再利用せずcheck_fa_testcd_no_loc()を個別に呼ぶ
-tmp_fa <- fa %>% filter(FASPID == "immunomonitoring1" & VISITNUM == "900")
-check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Cytokine release syndrome", "_12", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Immune effector cell-associated neurotoxicity syndrome", "_13", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
-# check_fa_testcd_no_loc()はFAOBJでの絞り込みを内部で行うだけでFAOBJ自体の値は確認しないため、
-# 2種類のFAOBJがそれぞれ期待通りの文字列であることを別途確認する
-tmp_fa_astctgr <- tmp_fa %>% filter(FATESTCD == "ASTCTGR")
-suffix <- "_14"
-tmp_fa_astctgr <- tmp_fa_astctgr %>% rename_with(~ str_c(.x, suffix), "FAOBJ")
-str_c("FAOBJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_astctgr, "FA", .x, fixed_value_checks_csv_path))
+# check_fa_grade_panel()を再利用せずcheck_fa_testcd_no_loc()を個別に呼ぶ。固定値はシート間で共通のため
+# 関数化してsuffixを使い回す
+check_immuno_astctgr <- function(faspid) {
+  tmp_fa <- fa %>% filter(FASPID == faspid & VISITNUM == "900")
+  check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Cytokine release syndrome", "_12", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
+  check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Immune effector cell-associated neurotoxicity syndrome", "_13", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
+  # check_fa_testcd_no_loc()はFAOBJでの絞り込みを内部で行うだけでFAOBJ自体の値は確認しないため、
+  # 2種類のFAOBJがそれぞれ期待通りの文字列であることを別途確認する
+  tmp_fa_astctgr <- tmp_fa %>% filter(FATESTCD == "ASTCTGR")
+  suffix <- "_14"
+  tmp_fa_astctgr <- tmp_fa_astctgr %>% rename_with(~ str_c(.x, suffix), "FAOBJ")
+  str_c("FAOBJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_astctgr, "FA", .x, fixed_value_checks_csv_path))
+}
+check_immuno_astctgr("immunomonitoring1")
+check_immuno_astctgr("immunomonitoring2")
 
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
@@ -604,53 +667,34 @@ str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh
 "MHTERM" %>% check_required_vars(filter(mh, MHOCCUR=="Y"), ., domain_name="MH")
 
 # PC
-# hdm5のCONC(薬物濃度測定、PCTPTNUM=24/42/48/66の4時点)。実施の有無(PCSTAT)はhdm5自身のMETHOTREXATE
-# 投与有無(ECOCCUR、label 054)に連動し、投与していれば(ECOCCUR=="N")採血自体を行わない(PCSTAT="NOT DONE")。
-# PCDTCは1時点目がhdm5自身のSVSTDTC以降、2時点目以降は直前の時点のPCDTC以降であることが期待される
-# (同一alias内でlabelを跨ぐ日付連鎖)。PCCATはEDC仕様上field_type="drug"のフィールドで、
-# default_value("422240001")は薬剤コードとしてwho_drug_idfから薬剤名を引く仕様のため、
-# 実際に格納される値は薬剤名"METHOTREXATE"になる(コード文字列そのものではない)
+# hdm5/hr2fisrtのCONC(薬物濃度測定、PCTPTNUM=24/42/48/66の4時点)。実施の有無(PCSTAT)はそのシート自身の
+# METHOTREXATE投与有無(ECOCCUR)に連動し、投与していれば(ECOCCUR=="N")採血自体を行わない
+# (PCSTAT="NOT DONE")。PCDTCは1時点目がそのシート自身のSVSTDTC以降、2時点目以降は直前の時点のPCDTC
+# 以降であることが期待される(同一alias内でlabelを跨ぐ日付連鎖)。PCCATはEDC仕様上field_type="drug"の
+# フィールドで、default_value("422240001")は薬剤コードとしてwho_drug_idfから薬剤名を引く仕様のため、
+# 実際に格納される値は薬剤名"METHOTREXATE"になる(コード文字列そのものではない)。固定値・構造は
+# シート間で共通のため関数化してsuffixを使い回す
 pc_target_cols <- c("PCTEST", "PCCAT", "PCORRESU", "PCSPEC")
-tmp_sv <- sv %>% filter(SVSPID == "hdm5") %>% select(USUBJID, hdm5_svstdtc=SVSTDTC)
-
-tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 24)
-tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-suffix <- "_1"
-tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
-str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
-tmp_pc_24 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_sv, by = "USUBJID")
-tmp_pc_24 %>% check_date_after_var_before_today("PCDTC", "hdm5_svstdtc", domain_name = "PC")
-
-tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 24) %>% select(USUBJID, pcdtc_24 = PCDTC)
-tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 42)
-tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-suffix <- "_1"
-tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
-str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
-tmp_pc_42 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
-tmp_pc_42 %>% check_date_after_var_before_today("PCDTC", "pcdtc_24", domain_name = "PC")
-
-tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 42) %>% select(USUBJID, pcdtc_42 = PCDTC)
-tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 48)
-tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-suffix <- "_1"
-tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
-str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
-tmp_pc_48 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
-tmp_pc_48 %>% check_date_after_var_before_today("PCDTC", "pcdtc_42", domain_name = "PC")
-
-tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 48) %>% select(USUBJID, pcdtc_48 = PCDTC)
-tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 66)
-tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
-suffix <- "_1"
-tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
-str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
-tmp_pc_66 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
-tmp_pc_66 %>% check_date_after_var_before_today("PCDTC", "pcdtc_48", domain_name = "PC")
+check_pc_conc_chain <- function(pcspid) {
+  tmp_sv <- sv %>% filter(SVSPID == pcspid) %>% select(USUBJID, sv_dtc = SVSTDTC)
+  pctptnums <- c(24, 42, 48, 66)
+  ref_data <- tmp_sv
+  ref_var <- "sv_dtc"
+  for (tptnum in pctptnums) {
+    tmp_pc <- pc %>% filter(PCSPID == pcspid & PCTPTNUM == tptnum)
+    tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+    tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+    suffix <- "_1"
+    tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
+    str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
+    tmp_pc_2 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(ref_data, by = "USUBJID")
+    tmp_pc_2 %>% check_date_after_var_before_today("PCDTC", ref_var, domain_name = "PC")
+    ref_data <- pc %>% filter(PCSPID == pcspid & PCTPTNUM == tptnum) %>% select(USUBJID, tmp_dtc = PCDTC)
+    ref_var <- "tmp_dtc"
+  }
+}
+check_pc_conc_chain("hdm5")
+check_pc_conc_chain("hr2fisrt")
 
 # PR
 pr %>% filter(PRSPID != "sct1") %>% check_required_vars("PROCCUR", domain_name = "PR")
@@ -662,7 +706,8 @@ pr_checks <- tribble(
   ~visitnum, ~prtrt, ~suffix,
   200, "Central Venous Catheter Placement", "_1",
   300, "Central Venous Catheter Placement", "_1",
-  400, "Central Venous Catheter Placement", "_1"
+  400, "Central Venous Catheter Placement", "_1",
+  1100, "Central Venous Catheter Placement", "_1"
 )
 pwalk(pr_checks, function(visitnum, prtrt, suffix) {
   tmp_pr <- pr %>% filter(PRTRT == prtrt & VISITNUM == visitnum)
@@ -776,6 +821,29 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", d
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
 suffix <- "_4"
 tmp_sv <- sv %>% filter(SVSPID == "blin1")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# blin2のSVSTDTCはblin1自身のSVSTDTC以降であることが期待される(ref('blin1', ...)。
+# evaluationtp2基準ではない)。VISITNUMは1000のため新しいsuffix "_5"を使う
+tmp_sv_2 <- sv %>% filter(SVSPID == "blin1") %>% select(USUBJID, blin1_svstdtc=SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "blin2") %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "blin1_svstdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_5"
+tmp_sv <- sv %>% filter(SVSPID == "blin2")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# hr2fisrtのSVSTDTCはhdm系列と同様、evaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以降であることが
+# 期待される(ref('evaluationtp2', ...))。VISITNUMは1100のため新しいsuffix "_6"を使う
+tmp_sv <- sv %>% filter(SVSPID == "hr2fisrt") %>% inner_join(tmp_rs_evaluationtp2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_6"
+tmp_sv <- sv %>% filter(SVSPID == "hr2fisrt")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
