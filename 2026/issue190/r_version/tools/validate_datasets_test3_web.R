@@ -601,6 +601,11 @@ tmp_ec_erwasp_1100 <- check_erwasp_crisantaspase(1100, "_8", tmp_ec_erwasp_400_r
 tmp_ec_erwasp_1100_ref <- tmp_ec_erwasp_1100 %>% select(USUBJID, erwasp_1100=ECSTDTC)
 invisible(check_erwasp_crisantaspase(1200, "_8", tmp_ec_erwasp_1100_ref))
 
+# erwasp_jacls02srのCRISANTASPASE(VISITNUM=1900)。ECADJの11コード体系・固定値はsuffix "_8"と
+# 同一のため再利用する。他のerwasp系シートのようなチェーンの続きではなく単独のlabelのため、
+# ref_dataを渡さず日付チェックを省略する
+invisible(check_erwasp_crisantaspase(1900, "_8"))
+
 # reinduction1(VISITNUM=1900)のEC。VINCRISTINE SULFATE/PREDNISOLONE SODIUM SUCCINATE/PIRARUBICINは
 # ECADJが6コード体系(suffix "_2"と同一)、L-ASPARAGINASEは11コード体系(suffix "_4"と同一)、
 # METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(髄注)はECROUTE="INTRATHECAL"付きの
