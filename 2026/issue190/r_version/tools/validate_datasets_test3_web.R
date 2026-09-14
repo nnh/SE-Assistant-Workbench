@@ -377,6 +377,24 @@ tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name =
 # 追加の日付チェックは不要
 check_lb_testcd_at_visit(lb, "NUDT15", 200, "_15", c("LBMETHOD"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
 
+# pcrmrdtp2のMRDQV(VISITNUM=350)。LBORRESのカテゴリはevaluationtp1のMRDQVと同一。LBDTCは
+# evaluationtp1のOVRLRESP(VISITNUM=250)のRSDTC以降(ref('evaluationtp1', 119))、かつ
+# evaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以前(ref('evaluationtp2', 21))であることが期待される
+check_lb_testcd_at_visit(lb, "MRDQV", 350, "_16", c("LBMETHOD", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = TRUE)
+tmp_lb_2 <- lb %>% filter(LBTESTCD == "MRDQV" & VISITNUM == 350)
+tmp_lb_2 %>% filter(LBSTAT == "NOT DONE") %>% select(LBREASND_16=LBREASND) %>% run_value_equals_checks_from_csv("LB", "LBREASND_16", fixed_value_checks_csv_path)
+tmp_lb_2 %>% filter(LBSTAT == "NOT DONE") %>% check_required_vars("LBREASND", domain_name = "LB")
+tmp_lb_2 %>% filter(LBSTAT != "NOT DONE") %>% check_blank_vars("LBREASND", domain_name = "LB")
+tmp_rs_min <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 250) %>% select(USUBJID, tmp_dtc_min=RSDTC)
+tmp_rs_max <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 350) %>% select(USUBJID, tmp_dtc_max=RSDTC)
+tmp_lb_3 <- tmp_lb_2 %>% inner_join(tmp_rs_min, by="USUBJID") %>% inner_join(tmp_rs_max, by="USUBJID")
+tmp_lb_3 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc_min", domain_name = "LB")
+tmp_lb_4 <- tmp_lb_3 %>% filter(!is.na(LBDTC) & LBDTC > tmp_dtc_max)
+if (nrow(tmp_lb_4) > 0) {
+  stop(str_c("LB: LBDTC範囲チェック: ", nrow(tmp_lb_4), "件NG(evaluationtp2のRSDTC以前ではない。USUBJID: ", paste(tmp_lb_4[["USUBJID"]], collapse = ", "), ")"))
+}
+cat("LB: LBDTC範囲チェック: OK(LBDTCがevaluationtp2のRSDTC以前であることを確認、", nrow(tmp_lb_3), "件)\n", sep = "")
+
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
 c("MHSTDTC") %>% check_required_vars(tmp_mh, ., domain_name = "MH")
@@ -420,7 +438,7 @@ pwalk(pr_checks, function(visitnum, prtrt, suffix) {
 
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
-rs_target_cols <- c("RSTEST", "RSCAT" ,"RSORRES")
+rs_target_cols <- c("RSTEST", "RSCAT" ,"RSORRES", "RSEVAL")
 
 # evaluationtp1のOVRLRESP(VISITNUM=250)。RSDTCはinductionlabのMYBLALE(VISITNUM=200)以降であることが
 # 期待される(ref('inductionlab', 109))
@@ -471,3 +489,13 @@ suffix <- "_2"
 tmp_sv <- sv %>% filter(SVSPID == "earlyintensifi")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+
+# hdmのSVSTDTCはevaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以降であることが期待される
+# (ref('evaluationtp2', ...))
+tmp_rs_evaluationtp2 <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 350) %>% select(USUBJID, evaluationtp2_rsdtc=RSDTC)
+tmp_sv <- sv %>% filter(SVSPID == "hdm") %>% inner_join(tmp_rs_evaluationtp2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", domain_name = "SV")
+suffix <- "_3"
+tmp_sv <- sv %>% filter(SVSPID == "hdm")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")

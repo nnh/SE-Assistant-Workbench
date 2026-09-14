@@ -1191,9 +1191,12 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
     return data;
   }
 
-  data.forEach((row) => {
-    delete row.alias_name;
-  });
+  // alias_nameはここでは落とさない。finalize=trueはこのprefix自身の最後のwaveというだけで、
+  // 他のleftover prefix(例: SV)がこのprefix(例: RS)をより後のwaveでalias単位に参照する場合が
+  // あるため、buildOtherDomains側の最終ステップ(builtDomainsを返り値に変換する直前)で全prefix
+  // まとめて落とすまで保持しておく必要がある(実際に発生したバグ: RSが一度きりのwaveでfinalize=true
+  // になりここでalias_nameを落としてしまい、後からRSをalias単位で参照するSV(hdm等)の
+  // injectCrossDomainRefsが参照先aliasを絞り込めず、別aliasの値を誤って拾ってしまっていた)
 
   // 列順を STUDYID/DOMAIN/USUBJID/prefixSEQ/prefixSPID -> meddra項目 -> コーディングブロック -> その他 に整理する
   const frontCols = ["STUDYID", "DOMAIN", "USUBJID", seqVar, spidVar, ...meddraVars, ...codingCols];

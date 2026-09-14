@@ -1832,8 +1832,13 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     return(data)
   }
 
-  data <- data %>% select(-alias_name)
-
+  # alias_nameはここでは落とさない。finalize=TRUEはこのprefix自身の最後のwaveというだけで、
+  # 他のleftover_prefix(例: SV)がこのprefix(例: RS)をより後のwaveでalias単位に参照する場合が
+  # あるため、build_other_domains側の最終ステップ(built_domainsを返り値に変換する直前)で
+  # 全prefixまとめて落とすまで保持しておく必要がある(実際に発生したバグ: RSが一度きりのwaveで
+  # finalize=TRUEになりここでalias_nameを落としてしまい、後からRSをalias単位で参照する
+  # SV(hdm等)のinject_cross_domain_refsが参照先aliasを絞り込めず、別aliasの値を誤って
+  # 拾ってしまっていた)
   data %>%
     reorder_domain_columns(front_cols = c(domain_front_cols(prefix), meddra_vars, coding_cols))
 }
