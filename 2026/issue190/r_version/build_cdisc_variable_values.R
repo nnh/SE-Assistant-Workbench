@@ -7,10 +7,12 @@ build_cdisc_sheet_config_table <- function(sheet) {
     sheet$field_items %>%
       # field_type=="select"(EDC上のプルダウン)は、以降の選択肢処理(populate_radio_button_fields()等)で
       # radio_buttonと同じ「単一選択のコードリスト」として扱う。ここで正規化しておくことで、
-      # 個々の判定箇所(field_type %in% c("radio_button", "check_box"))を毎回書き換えずに済む
+      # 個々の判定箇所(field_type %in% c("radio_button", "check_box"))を毎回書き換えずに済む。
+      # field_type=="datetime"も同様、時刻要素は無視してdateと同じ日付生成パイプラインで扱う
+      # (個々の日付判定箇所を書き換えずに済む)
       map_dfr(~ tibble(
         field = .$name, default_value = .$default_value, is_invisible = .$is_invisible,
-        field_type = if (identical(.$field_type, "select")) "radio_button" else .$field_type
+        field_type = if (identical(.$field_type, "select")) "radio_button" else if (identical(.$field_type, "datetime")) "date" else .$field_type
       ))
   }
 

@@ -101,6 +101,12 @@ cm_hdm_target_cols <- c("CMCAT", "CMOCCUR")
 tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_hdm_target_cols))
 str_c(cm_hdm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
 
+# 同じ組み合わせ(ANTIFUNGAL DRUG, VISITNUM=400)にはhdm以外にhdm2/hdm5/hr3fisrtも該当し、
+# こちらはCMPRESPフィールドを持つ(値は"Y")ため、hdmを除外した上でCMPRESP_1を別途チェックする
+tmp_cm <- cm %>% filter(CMTRT == "ANTIFUNGAL DRUG" & VISITNUM == 400 & CMSPID != "hdm")
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), "CMPRESP")
+str_c("CMPRESP", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
 cm_anticoag_target_cols <- c("CMOCCUR", "CMPRESP")
 cm_anticoag_checks <- tribble(
   ~visitnum, ~cmtrt, ~cmcat,
@@ -229,7 +235,7 @@ tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
 # hdmのMETHOTREXATE(VISITNUM=400)。VISITNUM=150のMETHOTREXATEと固定値は同一だが、ECROUTEフィールドが
-# 無いため対象外とする
+# 無いため対象外とする(ECTRT/VISITNUMだけで絞り込んでいるため、hdm2/hdm5の同名ブロックもまとめて検証される)
 tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE" & VISITNUM == 400)
 c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
 suffix <- "_2"
@@ -239,10 +245,20 @@ str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec
 
 # hdmのMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=400)。VISITNUM=200と
 # 固定値(ECROUTE="INTRATHECAL"含む)が同一のためsuffix "_5"を再利用する
+# (ECTRT/VISITNUMだけで絞り込んでいるため、hdm2/hdm5の同名ブロックもまとめて検証される)
 tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 400)
 c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
 suffix <- "_5"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hdm2のMERCAPTOPURINE HYDRATE(VISITNUM=400)。VISITNUM=300のMERCAPTOPURINE HYDRATEと固定値が
+# 同一のためsuffix "_2"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "MERCAPTOPURINE HYDRATE" & VISITNUM == 400)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_2"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
@@ -446,6 +462,55 @@ str_c(mh_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_mh
 
 "MHTERM" %>% check_required_vars(filter(mh, MHOCCUR=="Y"), ., domain_name="MH")
 
+# PC
+# hdm5のCONC(薬物濃度測定、PCTPTNUM=24/42/48/66の4時点)。実施の有無(PCSTAT)はhdm5自身のMETHOTREXATE
+# 投与有無(ECOCCUR、label 054)に連動し、投与していれば(ECOCCUR=="N")採血自体を行わない(PCSTAT="NOT DONE")。
+# PCDTCは1時点目がhdm5自身のSVSTDTC以降、2時点目以降は直前の時点のPCDTC以降であることが期待される
+# (同一alias内でlabelを跨ぐ日付連鎖)。PCCATはEDC仕様上field_type="drug"のフィールドで、
+# default_value("422240001")は薬剤コードとしてwho_drug_idfから薬剤名を引く仕様のため、
+# 実際に格納される値は薬剤名"METHOTREXATE"になる(コード文字列そのものではない)
+pc_target_cols <- c("PCTEST", "PCCAT", "PCORRESU", "PCSPEC")
+tmp_sv <- sv %>% filter(SVSPID == "hdm5") %>% select(USUBJID, hdm5_svstdtc=SVSTDTC)
+
+tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 24)
+tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+suffix <- "_1"
+tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
+str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
+tmp_pc_24 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_sv, by = "USUBJID")
+tmp_pc_24 %>% check_date_after_var_before_today("PCDTC", "hdm5_svstdtc", domain_name = "PC")
+
+tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 24) %>% select(USUBJID, pcdtc_24 = PCDTC)
+tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 42)
+tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+suffix <- "_1"
+tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
+str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
+tmp_pc_42 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
+tmp_pc_42 %>% check_date_after_var_before_today("PCDTC", "pcdtc_24", domain_name = "PC")
+
+tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 42) %>% select(USUBJID, pcdtc_42 = PCDTC)
+tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 48)
+tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+suffix <- "_1"
+tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
+str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
+tmp_pc_48 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
+tmp_pc_48 %>% check_date_after_var_before_today("PCDTC", "pcdtc_42", domain_name = "PC")
+
+tmp_pc_ref <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 48) %>% select(USUBJID, pcdtc_48 = PCDTC)
+tmp_pc <- pc %>% filter(PCSPID == "hdm5" & PCTPTNUM == 66)
+tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% check_required_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+tmp_pc %>% filter(PCSTAT == "NOT DONE") %>% check_blank_vars(c("PCORRES", "PCDTC"), domain_name = "PC")
+suffix <- "_1"
+tmp_pc <- tmp_pc %>% rename_with(~ str_c(.x, suffix), all_of(pc_target_cols))
+str_c(pc_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pc, "PC", .x, fixed_value_checks_csv_path))
+tmp_pc_66 <- tmp_pc %>% filter(PCSTAT != "NOT DONE") %>% inner_join(tmp_pc_ref, by = "USUBJID")
+tmp_pc_66 %>% check_date_after_var_before_today("PCDTC", "pcdtc_48", domain_name = "PC")
+
 # PR
 pr %>% filter(PRSPID != "sct1") %>% check_required_vars("PROCCUR", domain_name = "PR")
 pr %>% filter(PRSPID == "sct1") %>% check_blank_vars("PROCCUR", domain_name = "PR")
@@ -525,4 +590,27 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", d
 suffix <- "_3"
 tmp_sv <- sv %>% filter(SVSPID == "hdm")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# hdm2のSVSTDTCはhdmと同様、evaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以降であることが
+# 期待される(ref('evaluationtp2', ...))
+tmp_sv <- sv %>% filter(SVSPID == "hdm2") %>% inner_join(tmp_rs_evaluationtp2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_3"
+tmp_sv <- sv %>% filter(SVSPID == "hdm2")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# hdm5のSVSTDTCはhdm/hdm2と同様、evaluationtp2のOVRLRESP(VISITNUM=350)のRSDTC以降であることが
+# 期待される(ref('evaluationtp2', ...))
+tmp_sv <- sv %>% filter(SVSPID == "hdm5") %>% inner_join(tmp_rs_evaluationtp2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_3"
+tmp_sv <- sv %>% filter(SVSPID == "hdm5")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")

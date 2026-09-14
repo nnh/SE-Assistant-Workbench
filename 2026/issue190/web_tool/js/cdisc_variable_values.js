@@ -30,8 +30,9 @@ function buildCdiscSheetConfigTable(sheet) {
         // field_type=="select"(EDC上のプルダウン)は、以降の選択肢処理(populateGenericChoiceFields()等)で
         // radioButtonと同じ「単一選択のコードリスト」として扱う。ここで正規化しておくことで、
         // 個々の判定箇所(fieldType === "radio_button" || fieldType === "check_box")を毎回書き換えずに済む
-        // (Rのbuild_cdisc_variable_values.Rに対応)
-        field_type: item.field_type === "select" ? "radio_button" : item.field_type,
+        // (Rのbuild_cdisc_variable_values.Rに対応)。field_type=="datetime"も同様、時刻要素は無視して
+        // dateと同じ日付生成パイプラインで扱う(個々の日付判定箇所を書き換えずに済む)
+        field_type: item.field_type === "select" ? "radio_button" : item.field_type === "datetime" ? "date" : item.field_type,
         default_value: item.default_value,
         is_invisible: !!item.is_invisible,
         option_name: item.option_name || null,
