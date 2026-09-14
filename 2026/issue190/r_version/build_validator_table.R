@@ -241,6 +241,26 @@ parse_age_condition <- function(value) {
   )
 }
 
+# age(ref('sheet1', N1), ref('sheet2', N2)) OP 閾値 のような、別シートの2つの日付フィールドの
+# 年齢差でこのフィールド自身の提示可否をゲーティングする条件(validate_presence_if)を解釈する。
+# 上記のage(fN, fM)(同一シート内、フィールド自身の値をage_boundsで直接束縛する用途)とは別に、
+# ref('sheet', N)形式(別シート参照、フィールド自身とは無関係な2つの日付の年齢差で提示可否を
+# ゲーティングする用途。例: FASTATがage(初発診断日, 生年月日)>39のときだけ提示される)を扱う。
+# &&で他条件と組み合わさっている場合は非対応(NULL)
+age_ref_condition_pattern <- "^\\(?\\s*age\\(\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*,\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\)\\s*(>=|<=|>|<)\\s*([0-9]+(?:\\.[0-9]+)?)\\s*\\)?$"
+
+parse_age_ref_condition <- function(value) {
+  m <- str_match(value, age_ref_condition_pattern)
+  if (is.na(m[1, 1])) {
+    return(NULL)
+  }
+  list(
+    ref1_alias_name = m[1, 2], ref1_field = str_c("field", m[1, 3]),
+    ref2_alias_name = m[1, 4], ref2_field = str_c("field", m[1, 5]),
+    operator = m[1, 6], threshold = as.numeric(m[1, 7])
+  )
+}
+
 # validator_type=="formula" & validator_key=="validate_formula_if"の場合、
 # 上記のage()条件から、自分自身(field_name)以外のもう一方のフィールド(参照先の日付)と下限/上限年齢を取り出す。
 # field_nameがage()の2引数のどちらとも一致しない場合はNULL(未対応)

@@ -168,6 +168,26 @@ function extractAgeCondition(fieldName, validatorKey, value) {
   return { ageRefField: otherField, minAge: parsed.minAge, maxAge: parsed.maxAge };
 }
 
+// age(ref('sheet1', N1), ref('sheet2', N2)) OP 閾値 のような、別シートの2つの日付フィールドの
+// 年齢差でこのフィールド自身の提示可否をゲーティングする条件(validate_presence_if)を解釈する。
+// 上記のage(fN, fM)(同一シート内、フィールド自身の値をageBoundsで直接束縛する用途)とは別に、
+// ref('sheet', N)形式(別シート参照、フィールド自身とは無関係な2つの日付の年齢差で提示可否を
+// ゲーティングする用途。例: FASTATがage(初発診断日, 生年月日)>39のときだけ提示される)を扱う。
+// &&で他条件と組み合わさっている場合は非対応(null)(Rのparse_age_ref_condition()に対応)
+const AGE_REF_CONDITION_RE = /^\(?\s*age\(\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*,\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\)\s*(>=|<=|>|<)\s*([0-9]+(?:\.[0-9]+)?)\s*\)?$/;
+function parseAgeRefCondition(value) {
+  const m = value.match(AGE_REF_CONDITION_RE);
+  if (!m) return null;
+  return {
+    ref1AliasName: m[1],
+    ref1Field: `field${m[2]}`,
+    ref2AliasName: m[3],
+    ref2Field: `field${m[4]}`,
+    operator: m[5],
+    threshold: Number(m[6]),
+  };
+}
+
 // value(例: (STAT.blank?) && (ref('registration', 4)=='F'))を"&&"で分割し、各断片の括弧を除いた文字列にする
 function parseAndClauses(value) {
   if (!value.includes("&&")) return null;
@@ -385,6 +405,51 @@ function buildPredicatePresenceConditions(validatorTable, fieldLookup) {
         ref_label: null,
         expected_value: vr.presence_predicate_type === "blank" ? "" : null,
         condition_type: vr.presence_predicate_type === "blank" ? "equals" : "not_blank",
+      });
+    });
+  });
+  return rows;
+}
+
+// age(ref('sheet1', N1), ref('sheet2', N2)) OP 閾値 の単独条件(validate_presence_if。例: FASTATが
+// age(初発診断日, 生年月日)>39のときだけ提示される)を、presenceConditions行
+// (condition_type="age_gt"/"age_ge"/"age_lt"/"age_le")として追加する。通常のequals/not_blankと
+// 異なり参照先が2つ(ref_cdisc_variable/ref2_cdisc_variable)あるため、applyPresenceConditions側で
+// 専用の年齢比較処理を行う(Rのage_ref_presence_conditionsに対応)
+const AGE_OPERATOR_TO_CONDITION_TYPE = { ">": "age_gt", ">=": "age_ge", "<": "age_lt", "<=": "age_le" };
+function buildAgeRefPresenceConditions(validatorTable, fieldLookup) {
+  const rows = [];
+  const seen = new Set();
+  validatorTable.forEach((vr) => {
+    if (vr.validator_key !== "validate_presence_if" || vr.age_ref_field != null || vr.value == null) return;
+    const key = `${vr.alias_name}|${vr.field_name}|${vr.value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const parsed = parseAgeRefCondition(vr.value);
+    if (!parsed) return;
+    const conditionType = AGE_OPERATOR_TO_CONDITION_TYPE[parsed.operator];
+    if (!conditionType) return;
+    const ownMatches = lookupField(fieldLookup, vr.alias_name, vr.field_name);
+    const ref1Matches = lookupField(fieldLookup, parsed.ref1AliasName, parsed.ref1Field);
+    const ref2Matches = lookupField(fieldLookup, parsed.ref2AliasName, parsed.ref2Field);
+    if (ref1Matches.length === 0 || ref2Matches.length === 0) return;
+    const ref1 = ref1Matches[0];
+    const ref2 = ref2Matches[0];
+    if (ref1.cdisc_variable == null || ref2.cdisc_variable == null) return;
+    ownMatches.forEach((own) => {
+      if (own.cdisc_variable == null) return;
+      rows.push({
+        cdisc_variable: own.cdisc_variable,
+        label: own.label,
+        alias_name: vr.alias_name,
+        ref_cdisc_variable: ref1.cdisc_variable,
+        ref_alias_name: parsed.ref1AliasName,
+        ref_label: ref1.label != null ? ref1.label : null,
+        ref2_cdisc_variable: ref2.cdisc_variable,
+        ref2_alias_name: parsed.ref2AliasName,
+        ref2_label: ref2.label != null ? ref2.label : null,
+        expected_value: String(parsed.threshold),
+        condition_type: conditionType,
       });
     });
   });
@@ -767,6 +832,7 @@ function buildGenerationConstraints(validatorTable, dfCdisc, fieldReferenceTable
     ...buildEqualsPresenceConditions(validatorTable, fieldLookup),
     ...buildPredicatePresenceConditions(validatorTable, fieldLookup),
     ...buildAndPresenceConditions(validatorTable, fieldLookup),
+    ...buildAgeRefPresenceConditions(validatorTable, fieldLookup),
     ...buildFieldEqualityCopyConditions(validatorTable, fieldLookup),
   ];
   if (fieldReferenceTable && fieldReferenceTable.length > 0) {
@@ -800,29 +866,52 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
   const hasLabel = hasAliasName && columns.has("label");
   const dataAliasNames = hasAliasName ? new Set(data.map((r) => r.alias_name)) : new Set();
 
-  // ownAliasName/ownLabelが指定されている場合、cdisc_variable自身のインスタンス(data自身のalias_name・label)
-  // でも絞り込む。labelはシートをまたいで重複しうる(例: 別々のシートがどちらも"006"というlabel番号を使う)ため、
-  // ownAliasNameも必ず合わせて絞り込むことで、同じlabel番号を使う無関係な別シートの行を誤って巻き込まないようにする
-  function targetRowsFor(refAliasName, refLabel, ownLabel, ownAliasName) {
+  // ゲーティング対象(row[cdisc_variable]をnull化するかもしれない行)は、あくまで自分自身の
+  // (alias_name, label)で決める。参照先(ref_alias_name, ref_label)がown側と異なるlabelを指す場合、
+  // 両方を同時に満たす行は存在しない(labelは1行につき1つの値しか持たない)ため、参照先条件を
+  // ゲーティング対象の絞り込みに混ぜてはいけない(実際に発生したバグ: 同一alias内で別labelを参照する
+  // equals条件(例: GRADEがOCCURのFAORRES=="Y"を参照)が、参照先labelと自分自身labelの両方を
+  // 満たす行を探そうとして常に0件になり、条件が一切適用されないまま素通りしていた)
+  function ownTargetRows(ownAliasName, ownLabel) {
     return data.map((row) => {
-      let match;
-      if (hasAliasName && refAliasName != null && dataAliasNames.has(refAliasName)) {
-        match = row.alias_name === refAliasName;
-        if (match && hasLabel && refLabel != null) {
-          const labelExistsWithinAlias = data.some((r) => r.alias_name === refAliasName && r.label === refLabel);
-          if (labelExistsWithinAlias) match = match && row.label === refLabel;
-        }
-      } else {
-        match = true;
-      }
-      if (hasAliasName && ownAliasName != null) {
-        match = match && row.alias_name === ownAliasName;
-      }
-      if (hasLabel && ownLabel != null) {
-        match = match && row.label === ownLabel;
-      }
+      let match = true;
+      if (hasAliasName && ownAliasName != null) match = match && row.alias_name === ownAliasName;
+      if (hasLabel && ownLabel != null) match = match && row.label === ownLabel;
       return match;
     });
+  }
+
+  // refAliasName/refLabelがdata自身の実際の行の組み合わせ(refAliasName内に実在するlabel)と
+  // 一致するかどうか。一致しない場合、真に外部(別prefix)の固定参照であり、injectCrossDomainRefs()が
+  // 既にUSUBJID単位で正しい値をrefVar列としてその行(ownAlias/ownLabelの行)に結合済みなので、
+  // そのままrow[refVar]を読めばよい。ここでさらに同じdata内をUSUBJIDベースで検索し直すと、
+  // refLabelが一致する行が1件も無い場合にrefLookupが空のままになり全行nullになる、あるいは
+  // 同じUSUBJIDの他の行(inject時のpin対象外だった行)を誤って拾ってしまう(実際に発生したバグ:
+  // CM(baseline)のCMTRT(SPDEVID2〜5)がSC(baseline)のSCORRES(label=003)を参照する際、CM自身には
+  // label="003"の行が存在しないため、refLookupが空になりCMTRTが常にnull化されていた)
+  function refRowExists(refAliasName, refLabel) {
+    if (!hasAliasName || refAliasName == null || !dataAliasNames.has(refAliasName)) return false;
+    if (refLabel == null) return true;
+    if (!hasLabel) return false;
+    return data.some((r) => r.alias_name === refAliasName && r.label === refLabel);
+  }
+
+  // 参照先の値を行ごとに解決する。参照先が自分自身と同じ(alias_name, label)(=同じ行)であれば
+  // row[refVar]をそのまま読めばよいが、同一alias内で別labelを参照する場合や他ドメイン(既に
+  // injectCrossDomainRefsで結合済みの列)の場合は、参照先の値をUSUBJIDで対応付けて引く必要がある
+  function resolveRefVals(refVar, refAliasName, refLabel, ownAliasName, ownLabel) {
+    const refIsOwnRow =
+      (refAliasName == null || refAliasName === ownAliasName) && (refLabel == null || refLabel === ownLabel);
+    if (refIsOwnRow || !hasUsubjid || !refRowExists(refAliasName, refLabel)) {
+      return data.map((row) => row[refVar]);
+    }
+    const refLookup = new Map();
+    data.forEach((r) => {
+      let match = r.alias_name === refAliasName;
+      if (match && refLabel != null) match = r.label === refLabel;
+      if (match) refLookup.set(r.USUBJID, r[refVar]);
+    });
+    return data.map((row) => (refLookup.has(row.USUBJID) ? refLookup.get(row.USUBJID) : null));
   }
 
   // copy: 先に適用する(同じcdisc_variableに他のゲーティング条件も併せて存在する場合、
@@ -879,6 +968,37 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
       }
     });
 
+  // age_gt/age_ge/age_lt/age_le: age(ref1, ref2)(2つの日付の経過年数)がoperator/expected_value(閾値)を
+  // 満たさない行をnullにする(validate_presence_ifのage(ref('sheet',N), ref('sheet',M)) OP 閾値に対応)。
+  // copyと同様、他のequals/not_blank条件がこの変数自身を参照している場合がある(例: FASTATのage_gt条件で
+  // null化された後の値をFAORRESのequals条件("FASTATが空欄のときだけ値を持つ")が読む)ため、
+  // equals/not_blankより先に適用する。ref_cdisc_variable/ref2_cdisc_variableという2つの参照先を持つ点が
+  // 通常のequals/not_blankと異なるため、専用の処理にする
+  applicable
+    .filter((pc) => ["age_gt", "age_ge", "age_lt", "age_le"].includes(pc.condition_type) && columns.has(pc.ref2_cdisc_variable))
+    .forEach((pc) => {
+      const targetRows = ownTargetRows(pc.alias_name, pc.label);
+      const date1Vals = resolveRefVals(pc.ref_cdisc_variable, pc.ref_alias_name, pc.ref_label, pc.alias_name, pc.label);
+      const date2Vals = resolveRefVals(pc.ref2_cdisc_variable, pc.ref2_alias_name, pc.ref2_label, pc.alias_name, pc.label);
+      const threshold = Number(pc.expected_value);
+      data.forEach((row, i) => {
+        if (!targetRows[i]) return;
+        const d1 = date1Vals[i] != null ? new Date(date1Vals[i]) : null;
+        const d2 = date2Vals[i] != null ? new Date(date2Vals[i]) : null;
+        let satisfied = false;
+        if (d1 != null && d2 != null && !Number.isNaN(d1.getTime()) && !Number.isNaN(d2.getTime())) {
+          const ageYears = (d1.getTime() - d2.getTime()) / (365.25 * 86400000);
+          if (pc.condition_type === "age_gt") satisfied = ageYears > threshold;
+          else if (pc.condition_type === "age_ge") satisfied = ageYears >= threshold;
+          else if (pc.condition_type === "age_lt") satisfied = ageYears < threshold;
+          else if (pc.condition_type === "age_le") satisfied = ageYears <= threshold;
+        }
+        if (!satisfied) {
+          row[pc.cdisc_variable] = null;
+        }
+      });
+    });
+
   // equals: (cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label)でグループ化し、
   // 期待値集合のいずれにも一致しない行をnullにする
   const equalsGroups = new Map();
@@ -899,8 +1019,43 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
       }
       equalsGroups.get(key).expectedValues.add(pc.expected_value);
     });
-  equalsGroups.forEach((g) => {
-    const targetRows = targetRowsFor(g.ref_alias_name, g.ref_label, g.label, g.alias_name);
+  // equalsGroups同士に依存関係がある場合(例: GRADEのFAORRESがOCCURのFAORRES(別label)を参照し、
+  // OCCUR自身のFAORRESも別のequals条件(FASTATベース)でnull化される)、参照先を先にnull化して
+  // からでないと、参照元がまだ確定していない(生成直後の)値を読んでしまう。Map挿入順(=
+  // presence_conditions配列の順序、シート定義の並び順に依存する不定な順序)のまま処理すると、
+  // 参照先が後から処理されるケースで誤判定が起きる(実際に発生したバグ: GRADEがOCCURより先に
+  // 処理されると、OCCURのFAORRESがまだnull化される前のランダムな初期値のままGRADE側の判定に
+  // 使われてしまい、本来nullにすべきGRADEの値が残ってしまっていた)。そのため、あるgroupの
+  // 参照先(ref_alias_name, ref_label, ref_cdisc_variable)が別のgroupの対象
+  // (alias_name, label, cdisc_variable)と一致する場合は、そちらを先に処理するようトポロジカル順に
+  // 並べ替える
+  const groupNodeKey = (alias, label, v) => `${alias}::${label}::${v}`;
+  const groupList = [...equalsGroups.values()];
+  const targetKeyToIndex = new Map();
+  groupList.forEach((g, i) => {
+    targetKeyToIndex.set(groupNodeKey(g.alias_name, g.label, g.cdisc_variable), i);
+  });
+  const dependsOn = groupList.map((g, i) => {
+    const refKey = groupNodeKey(g.ref_alias_name, g.ref_label, g.ref_cdisc_variable);
+    const depIndex = targetKeyToIndex.get(refKey);
+    return depIndex != null && depIndex !== i ? depIndex : null;
+  });
+  const orderedGroups = [];
+  const visited = new Array(groupList.length).fill(false);
+  const visiting = new Array(groupList.length).fill(false);
+  const visit = (i) => {
+    if (visited[i] || visiting[i]) return;
+    visiting[i] = true;
+    if (dependsOn[i] != null) visit(dependsOn[i]);
+    visiting[i] = false;
+    visited[i] = true;
+    orderedGroups.push(groupList[i]);
+  };
+  groupList.forEach((_, i) => visit(i));
+
+  orderedGroups.forEach((g) => {
+    const targetRows = ownTargetRows(g.alias_name, g.label);
+    const refVals = resolveRefVals(g.ref_cdisc_variable, g.ref_alias_name, g.ref_label, g.alias_name, g.label);
     // expectedValuesが""(空欄)を含む場合(例: "field.blank?"由来の条件)、参照先列は他の
     // presence_conditionsで既にnull化されていることがあり、その場合refValは""ではなくnull/undefinedに
     // なっている。厳密なSet.hasだけで判定すると「空欄のはずが空欄と認識されない」まま誤ってNG扱いに
@@ -908,7 +1063,7 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
     const blankOk = g.expectedValues.has("");
     data.forEach((row, i) => {
       if (!targetRows[i]) return;
-      const refVal = row[g.ref_cdisc_variable];
+      const refVal = refVals[i];
       const isMatch = g.expectedValues.has(refVal) || (blankOk && (refVal == null || refVal === ""));
       if (!isMatch) {
         row[g.cdisc_variable] = null;
@@ -924,9 +1079,10 @@ function applyPresenceConditions(data, presenceConditions, cdiscVariableToPrefix
       const key = `${pc.cdisc_variable}|${pc.ref_cdisc_variable}|${pc.ref_alias_name}|${pc.ref_label}|${pc.alias_name}|${pc.label}`;
       if (notBlankSeen.has(key)) return;
       notBlankSeen.add(key);
-      const targetRows = targetRowsFor(pc.ref_alias_name, pc.ref_label, pc.label, pc.alias_name);
+      const targetRows = ownTargetRows(pc.alias_name, pc.label);
+      const refVals = resolveRefVals(pc.ref_cdisc_variable, pc.ref_alias_name, pc.ref_label, pc.alias_name, pc.label);
       data.forEach((row, i) => {
-        const refVal = row[pc.ref_cdisc_variable];
+        const refVal = refVals[i];
         const isBlank = refVal == null || refVal === "";
         if (targetRows[i] && isBlank) {
           row[pc.cdisc_variable] = null;

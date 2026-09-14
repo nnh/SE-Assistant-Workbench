@@ -192,6 +192,58 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
 
   presence_conditions <- bind_rows(presence_conditions, and_presence_conditions)
 
+  # age(ref('sheet1', N1), ref('sheet2', N2)) OP 閾値 の単独条件(validate_presence_if。例: FASTATが
+  # age(初発診断日, 生年月日)>39のときだけ提示される)を、presence_conditions行
+  # (condition_type="age_gt"/"age_ge"/"age_lt"/"age_le")として追加する。通常のequals/not_blankと
+  # 異なり参照先が2つ(ref_cdisc_variable/ref2_cdisc_variable)あるため、apply_presence_conditions側で
+  # 専用の年齢比較処理を行う
+  age_ref_condition_rows <- validator_table %>%
+    filter(validator_key == "validate_presence_if", is.na(age_ref_field), !is.na(value)) %>%
+    distinct(alias_name, field_name, value) %>%
+    left_join(field_to_cdisc_variable, by = c("alias_name", "field_name" = "field")) %>%
+    left_join(field_to_label, by = c("alias_name", "field_name" = "field")) %>%
+    filter(!is.na(cdisc_variable))
+
+  age_ref_presence_conditions <- age_ref_condition_rows %>%
+    pmap_dfr(function(alias_name, field_name, value, cdisc_variable, label) {
+      parsed <- parse_age_ref_condition(value)
+      if (is.null(parsed)) {
+        return(tibble())
+      }
+      ref1_var <- resolve_ref_cdisc_variable(parsed[["ref1_alias_name"]], parsed[["ref1_field"]])
+      ref2_var <- resolve_ref_cdisc_variable(parsed[["ref2_alias_name"]], parsed[["ref2_field"]])
+      if (length(ref1_var) == 0 || length(ref2_var) == 0) {
+        return(tibble())
+      }
+      condition_type <- case_when(
+        parsed[["operator"]] == ">" ~ "age_gt",
+        parsed[["operator"]] == ">=" ~ "age_ge",
+        parsed[["operator"]] == "<" ~ "age_lt",
+        parsed[["operator"]] == "<=" ~ "age_le",
+        TRUE ~ NA_character_
+      )
+      if (is.na(condition_type)) {
+        return(tibble())
+      }
+      ref1_lbl <- field_to_label %>% filter(alias_name == parsed[["ref1_alias_name"]], field == parsed[["ref1_field"]]) %>% pull(label) %>% unname()
+      ref2_lbl <- field_to_label %>% filter(alias_name == parsed[["ref2_alias_name"]], field == parsed[["ref2_field"]]) %>% pull(label) %>% unname()
+      tibble(
+        cdisc_variable = cdisc_variable,
+        label = label,
+        alias_name = alias_name,
+        ref_cdisc_variable = ref1_var[1],
+        ref_alias_name = parsed[["ref1_alias_name"]],
+        ref_label = if (length(ref1_lbl) > 0) ref1_lbl[1] else NA_character_,
+        ref2_cdisc_variable = ref2_var[1],
+        ref2_alias_name = parsed[["ref2_alias_name"]],
+        ref2_label = if (length(ref2_lbl) > 0) ref2_lbl[1] else NA_character_,
+        expected_value = as.character(parsed[["threshold"]]),
+        condition_type = condition_type
+      )
+    })
+
+  presence_conditions <- bind_rows(presence_conditions, age_ref_presence_conditions)
+
   # validator_type=="formula"の式(例: (f2==10052464||...)&&(f2==f19))に、リテラル値を伴わない
   # フィールド同士の等号比較(fN==fM)が含まれる場合、周囲がOR/ANDの入れ子で複雑でも、その部分だけを
   # 「このフィールドはもう一方のフィールドの値をそのままコピーする」という意味の

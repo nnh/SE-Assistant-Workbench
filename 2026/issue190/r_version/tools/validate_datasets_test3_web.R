@@ -635,6 +635,61 @@ check_immuno_astctgr("immunomonitoring1")
 check_immuno_astctgr("immunomonitoring2")
 check_immuno_astctgr("immunomonitoring3")
 
+# osteonecrosis1のFA。OCCUR(骨壊死の有無、label000)とGRADE(重症度、label001。OCCUR=="Y"のときのみ)の
+# 2段階構成で、GRADEの実施可否がFASTATではなくOCCUR自身のFAORRESに連動するため、
+# check_fa_grade_panel()(FATESTCD=="GRADE"のみの79項目パネル用)にもcheck_fa_testcd_no_loc()の
+# NOT DONE型(FASTATで実施可否が決まる前提)にも当てはまらず、個別に書く
+tmp_fa <- fa %>% filter(FASPID == "osteonecrosis1" & VISITNUM == "1800")
+
+tmp_fa_occur <- tmp_fa %>% filter(FATESTCD == "OCCUR")
+tmp_fa_occur %>% filter(FASTAT != "NOT DONE") %>% check_required_vars(c("FAORRES", "FADTC"), domain_name = "FA")
+tmp_fa_occur %>% filter(FASTAT == "NOT DONE") %>% check_blank_vars(c("FAORRES", "FADTC"), domain_name = "FA")
+
+# FASTAT(field10)自体の必須条件: validate_presence_ifがage(初発診断日(MH MHCAT=="PRIMARY DIAGNOSIS"の
+# MHSTDTC), 生年月日(DM BRTHDTC))>39。すなわち初発診断日時点の年齢が39歳を超える被験者だけFASTATに
+# 値が入りうる(コード定義は"NOT DONE"の1択のみなので、該当すれば必ず"NOT DONE"、非該当なら必ず空欄になる)。
+# 実データの年齢を計算し、この条件が正しく反映されているか確認する
+diagnosis_age <- mh %>%
+  filter(MHCAT == "PRIMARY DIAGNOSIS") %>%
+  select(USUBJID, diag_dtc = MHSTDTC) %>%
+  inner_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID") %>%
+  mutate(diagnosis_age = as.numeric(as.Date(diag_dtc) - as.Date(BRTHDTC)) / 365.25)
+tmp_fa_occur_age <- tmp_fa_occur %>% inner_join(diagnosis_age, by = "USUBJID")
+mismatch_should_be_blank <- tmp_fa_occur_age %>% filter(diagnosis_age <= 39 & !(is.na(FASTAT) | FASTAT == ""))
+mismatch_should_be_not_done <- tmp_fa_occur_age %>% filter(diagnosis_age > 39 & (is.na(FASTAT) | FASTAT != "NOT DONE"))
+if (nrow(mismatch_should_be_blank) > 0 || nrow(mismatch_should_be_not_done) > 0) {
+  stop(str_c(
+    "FA: FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: NG(",
+    "39歳以下でFASTATが空欄でない: ", nrow(mismatch_should_be_blank), "件(",
+    paste(mismatch_should_be_blank[["USUBJID"]], collapse = ", "), ")、",
+    "39歳超でFASTATが\"NOT DONE\"でない: ", nrow(mismatch_should_be_not_done), "件(",
+    paste(mismatch_should_be_not_done[["USUBJID"]], collapse = ", "), "))"
+  ))
+}
+cat(
+  "FA: FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: OK(対象",
+  nrow(tmp_fa_occur_age), "件中、39歳超: ", sum(tmp_fa_occur_age[["diagnosis_age"]] > 39), "件)\n",
+  sep = ""
+)
+
+suffix <- "_15"
+tmp_fa_occur_2 <- tmp_fa_occur %>% rename_with(~ str_c(.x, suffix), "FATEST")
+str_c("FATEST", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_2, "FA", .x, fixed_value_checks_csv_path))
+# FAORRESの値チェックはFASTAT!="NOT DONE"(実施済み)の行だけを対象にする
+tmp_fa_occur_done <- tmp_fa_occur_2 %>% filter(FASTAT != "NOT DONE") %>% rename_with(~ str_c(.x, suffix), "FAORRES")
+str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_done, "FA", .x, fixed_value_checks_csv_path))
+
+tmp_fa_grade <- tmp_fa %>% filter(FATESTCD == "GRADE")
+suffix <- "_16"
+tmp_fa_grade_2 <- tmp_fa_grade %>% rename_with(~ str_c(.x, suffix), c("FATEST", "FACAT"))
+str_c(c("FATEST", "FACAT"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_2, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa_occur_ref <- tmp_fa_occur %>% select(USUBJID, occur_orres = FAORRES)
+tmp_fa_grade_3 <- tmp_fa_grade_2 %>% inner_join(tmp_fa_occur_ref, by="USUBJID")
+tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% check_required_vars("FAORRES", domain_name = "FA")
+tmp_fa_grade_3 %>% filter(occur_orres != "Y") %>% check_blank_vars("FAORRES", domain_name = "FA")
+tmp_fa_grade_y <- tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
+str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_y, "FA", .x, fixed_value_checks_csv_path))
+
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
 tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES")

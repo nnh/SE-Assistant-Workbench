@@ -35,6 +35,8 @@ function buildCdiscVariableToPrefix(cdiscVariableValues) {
 function buildCrossPrefixEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
   const pairs = [
     ...(presenceConditions || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
+    // age_gt/age_ge/age_lt/age_le型のpresence_conditionsはref2_cdisc_variable(もう一方の参照先)も持つ
+    ...(presenceConditions || []).map((r) => [r.cdisc_variable, r.ref2_cdisc_variable]),
     ...(fieldRefBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
     ...(ageBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
     ...(dateRefBounds || []).map((r) => [r.cdisc_variable, r.ref_cdisc_variable]),
@@ -99,6 +101,9 @@ function topoSortPrefixesWithLeftover(prefixes, edges) {
 function buildAliasLevelEdges(presenceConditions, fieldRefBounds, cdiscVariableToPrefix, ageBounds, dateRefBounds) {
   const rows = [
     ...(presenceConditions || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.ref_alias_name })),
+    // age_gt/age_ge/age_lt/age_le型のpresence_conditionsはref2_cdisc_variable/ref2_alias_name(もう一方の
+    // 参照先)も持つ
+    ...(presenceConditions || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref2_cdisc_variable, refAliasName: r.ref2_alias_name })),
     // fieldRefBounds(formula参照)は必ず同一シート内の参照のため、refAliasNameは自分自身と同じ
     ...(fieldRefBounds || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.alias_name })),
     ...(ageBounds || []).map((r) => ({ aliasName: r.alias_name, cdiscVariable: r.cdisc_variable, refCdiscVariable: r.ref_cdisc_variable, refAliasName: r.ref_alias_name })),
@@ -293,6 +298,8 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
   // 構築時に補われている)
   const refInstances = [
     ...(presenceConditions || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
+    // age_gt/age_ge/age_lt/age_le型のpresence_conditionsはref2_cdisc_variable(もう一方の参照先)も持つ
+    ...(presenceConditions || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref2_cdisc_variable, ref_alias_name: r.ref2_alias_name, ref_label: r.ref2_label })),
     ...(fieldRefBounds || []).map((r) => ({ ownAlias: null, label: null, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: null, ref_label: null })),
     ...(ageBounds || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
     ...(dateRefBounds || []).map((r) => ({ ownAlias: r.alias_name, label: r.label, ref_cdisc_variable: r.ref_cdisc_variable, ref_alias_name: r.ref_alias_name, ref_label: r.ref_label })),
@@ -1310,16 +1317,26 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
 
   // BRTHDTC(生年月日)より前の日付が生成されないよう、dmから直接結合しておく。乳児コホート等では
   // BRTHDTCがregistrationStartDate/RFSTDTCより後になり得るため、明示的なref()参照の有無によらず
-  // 常に適用すべき下限(生物学的制約)として扱う。追加した列は他のinjectedColsと同様、最後に取り除く
-  if (dm[0] && "BRTHDTC" in dm[0] && !(data[0] && "BRTHDTC" in data[0])) {
-    const brthdtcByUsubjid = {};
-    dm.forEach((row) => {
-      if (!(row.USUBJID in brthdtcByUsubjid)) brthdtcByUsubjid[row.USUBJID] = row.BRTHDTC;
-    });
-    data.forEach((row) => {
-      row.BRTHDTC = row.USUBJID in brthdtcByUsubjid ? brthdtcByUsubjid[row.USUBJID] : null;
-    });
-    dateInjectedCols = [...dateInjectedCols, "BRTHDTC"];
+  // 常に適用すべき下限(生物学的制約)として扱う。追加した列は他のinjectedColsと同様、最後に取り除く。
+  // BRTHDTCが既に列として存在する場合(直前のinjectCrossDomainRefs()が、dateRefBoundsで特定の
+  // alias/labelだけを対象にBRTHDTCを部分的に結合済みのケース。例: FAのbaselineアリアスのFADTCが
+  // BRTHDTCを下限参照している場合、そのaliasの行だけ埋まる)は、そのまま素通りすると他のalias
+  // (例: osteonecrosis1)の行がBRTHDTC未設定のまま残ってしまう。列自体は残しつつ、
+  // 未充填(null/undefined)の行だけUSUBJID単位で埋める
+  if (dm[0] && "BRTHDTC" in dm[0]) {
+    const hasBrthdtcCol = data[0] && "BRTHDTC" in data[0];
+    if (!hasBrthdtcCol || data.some((row) => row.BRTHDTC == null)) {
+      const brthdtcByUsubjid = {};
+      dm.forEach((row) => {
+        if (!(row.USUBJID in brthdtcByUsubjid)) brthdtcByUsubjid[row.USUBJID] = row.BRTHDTC;
+      });
+      data.forEach((row) => {
+        if (row.BRTHDTC == null) {
+          row.BRTHDTC = row.USUBJID in brthdtcByUsubjid ? brthdtcByUsubjid[row.USUBJID] : null;
+        }
+      });
+      if (!hasBrthdtcCol) dateInjectedCols = [...dateInjectedCols, "BRTHDTC"];
+    }
   }
 
   const existingColumns = new Set(Object.keys(data[0] || {}));

@@ -394,16 +394,13 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
   # (data自身のalias_name・label)でも絞り込む。labelはシートをまたいで重複しうる(例: 別々のシートが
   # どちらも"006"というlabel番号を使う)ため、own_alias_nameも必ず合わせて絞り込むことで、
   # 同じlabel番号を使う無関係な別シートの行を誤って巻き込まないようにする
-  target_rows_for <- function(ref_alias_name, ref_label = NA_character_, own_label = NA_character_, own_alias_name = NA_character_) {
-    rows <- if (has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names) {
-      r <- data[["alias_name"]] == ref_alias_name
-      if (has_data_alias && !is.na(ref_label) && ref_label %in% data[["label"]][r]) {
-        r <- r & data[["label"]] == ref_label
-      }
-      r
-    } else {
-      rep(TRUE, nrow(data))
-    }
+  # own_target_rows: ゲーティング対象(値をNA化する側)の行を、自分自身のalias_name/labelだけで絞り込む。
+  # resolve_ref_vals: 参照先(ref)の値を、ref_alias_name/ref_labelが自分自身と異なる場合は
+  # USUBJID単位でref側の行から引き直す(同一alias内の別labelを参照するequals/not_blank条件で、
+  # 「対象行かつ参照元行」を同時に満たす行を求めようとすると該当行が存在せず常に空集合になってしまう
+  # 旧target_rows_forの不具合を避けるため、対象行の判定と参照値の解決を分離する)
+  own_target_rows <- function(own_alias_name = NA_character_, own_label = NA_character_) {
+    rows <- rep(TRUE, nrow(data))
     if (has_data_alias_name && !is.na(own_alias_name)) {
       rows <- rows & data[["alias_name"]] == own_alias_name
     }
@@ -411,6 +408,34 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
       rows <- rows & data[["label"]] == own_label
     }
     rows
+  }
+
+  # ref_alias_name/ref_labelがdata自身の実際の行の組み合わせ(ref_alias_name内に実在するlabel)と
+  # 一致しない場合、真に外部(別prefix)の固定参照であり、inject_cross_domain_refs()が既にUSUBJID
+  # 単位で正しい値をref_var列としてその行(own_alias/own_labelの行)に結合済みなので、そのまま
+  # data[[ref_var]]を読めばよい。ここでさらに同じdata内をUSUBJIDベースで検索し直すと、同じUSUBJIDの
+  # 他の行(inject時のpin対象外だった行。例: ゲーティング条件を持たない別labelの行はref_varが
+  # NAのまま)を誤って拾ってしまう(実際に発生したバグ: CM(baseline)のCMTRT(SPDEVID2〜5)が
+  # SC(baseline)のSCORRES(label=003)を参照する際、CM自身にはlabel="003"の行が存在しないため、
+  # alias_name一致の全行(SPDEVID=1の行も含む)から検索してしまい、SCORRES未注入(NA)のlabel="010"行が
+  # 名前重複により先にマッチしてCMTRTが常にNA化されていた)
+  ref_row_exists <- function(ref_alias_name, ref_label) {
+    has_data_alias_name && !is.na(ref_alias_name) && ref_alias_name %in% data_alias_names &&
+      (is.na(ref_label) || (has_data_alias && ref_label %in% data[["label"]][data[["alias_name"]] == ref_alias_name]))
+  }
+
+  resolve_ref_vals <- function(ref_var, ref_alias_name = NA_character_, ref_label = NA_character_, own_alias_name = NA_character_, own_label = NA_character_) {
+    ref_is_own_row <- (is.na(ref_alias_name) || identical(ref_alias_name, own_alias_name)) &&
+      (is.na(ref_label) || identical(ref_label, own_label))
+    if (ref_is_own_row || !("USUBJID" %in% colnames(data)) || !ref_row_exists(ref_alias_name, ref_label)) {
+      return(data[[ref_var]])
+    }
+    ref_rows <- data[["alias_name"]] == ref_alias_name
+    if (has_data_alias && !is.na(ref_label)) {
+      ref_rows <- ref_rows & data[["label"]] == ref_label
+    }
+    ref_lookup <- set_names(data[[ref_var]][ref_rows], data[["USUBJID"]][ref_rows])
+    unname(ref_lookup[data[["USUBJID"]]])
   }
 
   # copyは先に適用する。同じcdisc_variableにequals/not_blankのゲーティング条件も併せて
@@ -479,21 +504,109 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
     }
   }
 
+  # age_gt/age_ge/age_lt/age_le: age(ref1, ref2)(2つの日付の経過年数)がoperator/expected_value(閾値)を
+  # 満たさない行をNA化する(validate_presence_ifのage(ref('sheet',N), ref('sheet',M)) OP 閾値に対応)。
+  # copyと同様、他のequals/not_blank条件がこの変数自身を参照している場合がある(例: FASTATのage_gt条件で
+  # NA化された後の値をFAORRESのequals条件("FASTATが空欄のときだけ値を持つ")が読む)ため、
+  # equals/not_blankより先に適用する。ref_cdisc_variable/ref2_cdisc_variableという2つの参照先を持つ点が
+  # 通常のequals/not_blankと異なるため、専用の処理にする
+  if (!("ref2_cdisc_variable" %in% names(applicable))) {
+    applicable[["ref2_cdisc_variable"]] <- NA_character_
+  }
+  if (!("ref2_alias_name" %in% names(applicable))) {
+    applicable[["ref2_alias_name"]] <- NA_character_
+  }
+  if (!("ref2_label" %in% names(applicable))) {
+    applicable[["ref2_label"]] <- NA_character_
+  }
+  age_conditions <- applicable %>%
+    filter(condition_type %in% c("age_gt", "age_ge", "age_lt", "age_le"), ref2_cdisc_variable %in% colnames(data)) %>%
+    distinct(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, ref2_cdisc_variable, ref2_alias_name, ref2_label, alias_name, label, condition_type, expected_value)
+  for (i in seq_len(nrow(age_conditions))) {
+    var_name <- age_conditions[["cdisc_variable"]][i]
+    own_label <- age_conditions[["label"]][i]
+    own_alias_name <- age_conditions[["alias_name"]][i]
+    ref_var <- age_conditions[["ref_cdisc_variable"]][i]
+    ref_label_i <- age_conditions[["ref_label"]][i]
+    ref_alias_name_i <- age_conditions[["ref_alias_name"]][i]
+    ref2_var <- age_conditions[["ref2_cdisc_variable"]][i]
+    ref2_label_i <- age_conditions[["ref2_label"]][i]
+    ref2_alias_name_i <- age_conditions[["ref2_alias_name"]][i]
+    op <- age_conditions[["condition_type"]][i]
+    threshold <- suppressWarnings(as.numeric(age_conditions[["expected_value"]][i]))
+
+    target_rows <- own_target_rows(own_alias_name, own_label)
+    date1 <- as.Date(resolve_ref_vals(ref_var, ref_alias_name_i, ref_label_i, own_alias_name, own_label))
+    date2 <- as.Date(resolve_ref_vals(ref2_var, ref2_alias_name_i, ref2_label_i, own_alias_name, own_label))
+    age_years <- as.numeric(date1 - date2) / 365.25
+    satisfied <- switch(op,
+      age_gt = age_years > threshold,
+      age_ge = age_years >= threshold,
+      age_lt = age_years < threshold,
+      age_le = age_years <= threshold,
+      rep(NA, length(age_years))
+    )
+    satisfied[is.na(satisfied)] <- FALSE
+    mismatch <- target_rows & !satisfied
+    data[[var_name]][mismatch] <- NA
+  }
+
   equals_conditions <- applicable %>%
     filter(condition_type == "equals") %>%
     group_by(cdisc_variable, ref_cdisc_variable, ref_alias_name, ref_label, alias_name, label) %>%
     summarise(expected_values = list(unique(expected_value)), .groups = "drop")
-  for (i in seq_len(nrow(equals_conditions))) {
+
+  # equals条件同士に依存関係がある場合(あるcdisc_variable/alias_name/labelの組がグループAの対象で
+  # あると同時にグループBの参照先でもある場合)、Aを先に処理してから値を確定させないと、
+  # Bがまだゲーティング前のAの初期乱数値を参照してしまう(挿入順=source配列の並び順のままでは
+  # 依存順序が保証されない)。そのため、対象(target)と参照(ref)のキーが一致するグループ間に
+  # 依存エッジを張り、DFSでトポロジカル順に並べ替えてから適用する
+  group_node_key <- function(alias, label, v) {
+    str_c(if (is.na(alias)) "" else alias, "::", if (is.na(label)) "" else label, "::", if (is.na(v)) "" else v)
+  }
+  n_groups <- nrow(equals_conditions)
+  target_keys <- map_chr(seq_len(n_groups), function(i) {
+    group_node_key(equals_conditions[["alias_name"]][i], equals_conditions[["label"]][i], equals_conditions[["cdisc_variable"]][i])
+  })
+  ref_keys <- map_chr(seq_len(n_groups), function(i) {
+    group_node_key(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i], equals_conditions[["ref_cdisc_variable"]][i])
+  })
+  target_key_to_index <- set_names(seq_len(n_groups), target_keys)
+  depends_on <- map_int(seq_len(n_groups), function(i) {
+    idx <- unname(target_key_to_index[ref_keys[i]])
+    if (!is.na(idx) && idx != i) idx else NA_integer_
+  })
+
+  visited <- rep(FALSE, n_groups)
+  visiting <- rep(FALSE, n_groups)
+  ordered_idx <- integer(0)
+  visit <- function(i) {
+    if (visited[i] || visiting[i]) {
+      return(invisible(NULL))
+    }
+    visiting[i] <<- TRUE
+    if (!is.na(depends_on[i])) visit(depends_on[i])
+    visiting[i] <<- FALSE
+    visited[i] <<- TRUE
+    ordered_idx <<- c(ordered_idx, i)
+  }
+  for (i in seq_len(n_groups)) visit(i)
+
+  for (i in ordered_idx) {
     var_name <- equals_conditions[["cdisc_variable"]][i]
     ref_var <- equals_conditions[["ref_cdisc_variable"]][i]
     expected_values <- equals_conditions[["expected_values"]][[i]]
-    target_rows <- target_rows_for(equals_conditions[["ref_alias_name"]][i], equals_conditions[["ref_label"]][i], equals_conditions[["label"]][i], equals_conditions[["alias_name"]][i])
+    own_label <- equals_conditions[["label"]][i]
+    own_alias_name <- equals_conditions[["alias_name"]][i]
+    ref_label_i <- equals_conditions[["ref_label"]][i]
+    ref_alias_name_i <- equals_conditions[["ref_alias_name"]][i]
+    target_rows <- own_target_rows(own_alias_name, own_label)
+    ref_vals <- resolve_ref_vals(ref_var, ref_alias_name_i, ref_label_i, own_alias_name, own_label)
     # expected_valuesが""(空欄)を含む場合(例: "field.blank?"由来の条件)、参照先列は他の
     # presence_conditionsで既にNA化されていることがあり、その場合ref_varの値は""ではなくNAになっている。
     # %in%だけで判定すると(NAは""と一致しないため)「空欄のはずが空欄と認識されない」まま誤って
     # NG扱いになってしまうため、""が期待値に含まれる場合はNAも空欄として一致させる
     blank_ok <- "" %in% expected_values
-    ref_vals <- data[[ref_var]]
     is_match <- (ref_vals %in% expected_values) | (blank_ok & (is.na(ref_vals) | ref_vals == ""))
     mismatch <- target_rows & !is_match
     data[[var_name]][mismatch] <- NA
@@ -505,8 +618,13 @@ apply_presence_conditions <- function(data, presence_conditions, cdisc_variable_
   for (i in seq_len(nrow(not_blank_conditions))) {
     var_name <- not_blank_conditions[["cdisc_variable"]][i]
     ref_var <- not_blank_conditions[["ref_cdisc_variable"]][i]
-    target_rows <- target_rows_for(not_blank_conditions[["ref_alias_name"]][i], not_blank_conditions[["ref_label"]][i], not_blank_conditions[["label"]][i], not_blank_conditions[["alias_name"]][i])
-    mismatch <- target_rows & (is.na(data[[ref_var]]) | data[[ref_var]] == "")
+    own_label <- not_blank_conditions[["label"]][i]
+    own_alias_name <- not_blank_conditions[["alias_name"]][i]
+    ref_label_i <- not_blank_conditions[["ref_label"]][i]
+    ref_alias_name_i <- not_blank_conditions[["ref_alias_name"]][i]
+    target_rows <- own_target_rows(own_alias_name, own_label)
+    ref_vals <- resolve_ref_vals(ref_var, ref_alias_name_i, ref_label_i, own_alias_name, own_label)
+    mismatch <- target_rows & (is.na(ref_vals) | ref_vals == "")
     data[[var_name]][mismatch] <- NA
   }
 
@@ -721,8 +839,12 @@ build_cross_prefix_edges <- function(presence_conditions, field_ref_bounds, cdis
   if (is.null(date_ref_bounds)) {
     date_ref_bounds <- tibble(cdisc_variable = character(0), ref_cdisc_variable = character(0))
   }
+  if (!("ref2_cdisc_variable" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_cdisc_variable"]] <- NA_character_
+  }
   bind_rows(
     presence_conditions %>% select(cdisc_variable, ref_cdisc_variable),
+    presence_conditions %>% select(cdisc_variable, ref2_cdisc_variable) %>% rename(ref_cdisc_variable = ref2_cdisc_variable),
     field_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable),
     age_bounds %>% select(cdisc_variable, ref_cdisc_variable),
     date_ref_bounds %>% select(cdisc_variable, ref_cdisc_variable)
@@ -792,8 +914,17 @@ build_alias_level_edges <- function(presence_conditions, field_ref_bounds, cdisc
   if (!("alias_name" %in% colnames(field_ref_bounds))) {
     field_ref_bounds <- field_ref_bounds %>% mutate(alias_name = NA_character_)
   }
+  if (!("ref2_cdisc_variable" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_cdisc_variable"]] <- NA_character_
+  }
+  if (!("ref2_alias_name" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_alias_name"]] <- NA_character_
+  }
   bind_rows(
     presence_conditions %>% select(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name),
+    presence_conditions %>%
+      select(alias_name, cdisc_variable, ref2_cdisc_variable, ref2_alias_name) %>%
+      rename(ref_cdisc_variable = ref2_cdisc_variable, ref_alias_name = ref2_alias_name),
     # field_ref_bounds(formula参照)は必ず同一シート内の参照のため、ref_alias_nameは自分自身と同じ
     field_ref_bounds %>% transmute(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name = alias_name),
     age_bounds %>% select(alias_name, cdisc_variable, ref_cdisc_variable, ref_alias_name),
@@ -866,6 +997,18 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
   if (is.null(date_ref_bounds)) {
     date_ref_bounds <- tibble(ref_cdisc_variable = character(0))
   }
+  # age_gt/age_ge/age_lt/age_le型のpresence_conditions(build_generation_constraints.Rのage_ref_presence_
+  # conditions)は、通常のref_cdisc_variableに加えてref2_cdisc_variable(もう一方の参照先)を持つ。
+  # 無ければ全行NAの列として補い、下記のref_instancesでref2側も別途pinとして扱えるようにする
+  if (!("ref2_cdisc_variable" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_cdisc_variable"]] <- NA_character_
+  }
+  if (!("ref2_alias_name" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_alias_name"]] <- NA_character_
+  }
+  if (!("ref2_label" %in% names(presence_conditions))) {
+    presence_conditions[["ref2_label"]] <- NA_character_
+  }
   # labelは、この参照条件が定義されている側(dataになる予定のドメイン自身)のインスタンス(label)。
   # 同じref_cdisc_variable(例: RSORRES)でも、参照元のlabelブロックごとに参照先のref_labelが
   # 異なる場合(例: MHの5つのSPDEVIDブロックが、それぞれ別のRSブロック(034/035/036/...)を参照する)、
@@ -876,6 +1019,9 @@ inject_cross_domain_refs <- function(data, presence_conditions, field_ref_bounds
   # 構築時に補われている)
   ref_instances <- bind_rows(
     presence_conditions %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
+    presence_conditions %>%
+      select(any_of(c("alias_name", "label", "ref2_cdisc_variable", "ref2_alias_name", "ref2_label"))) %>%
+      rename(ref_cdisc_variable = ref2_cdisc_variable, ref_alias_name = ref2_alias_name, ref_label = ref2_label),
     field_ref_bounds %>% select(any_of("ref_cdisc_variable")),
     age_bounds %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_alias_name", "ref_label"))),
     date_ref_bounds %>% select(any_of(c("alias_name", "label", "ref_cdisc_variable", "ref_label", "ref_alias_name")))
@@ -1896,10 +2042,21 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # BRTHDTC(生年月日)より前の日付が生成されないよう、dmから直接結合しておく。乳児コホート等では
   # BRTHDTCがregistration_start_date/RFSTDTCより後になり得るため、明示的なref()参照の有無に
   # よらず常に適用すべき下限(生物学的制約)として扱う。追加した列は他のinjected_colsと同様、
-  # 最後に取り除く
-  if ("BRTHDTC" %in% colnames(dm) && !("BRTHDTC" %in% colnames(data))) {
-    data <- data %>% left_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID")
-    date_injected_cols <- c(date_injected_cols, "BRTHDTC")
+  # 最後に取り除く。
+  # BRTHDTCが既に列として存在する場合(直前のinject_cross_domain_refs()が、date_ref_boundsで
+  # 特定のalias/labelだけを対象にBRTHDTCを部分的に結合済みのケース。例: FAのbaselineアリアス
+  # のFADTCがBRTHDTCを下限参照している場合、そのaliasの行だけ埋まる)は、そのまま素通りすると
+  # 他のalias(例: osteonecrosis1)の行がBRTHDTC=NAのまま残ってしまう。列自体は残しつつ、
+  # 未充填(NA)の行だけUSUBJID単位で埋める
+  if ("BRTHDTC" %in% colnames(dm)) {
+    if (!("BRTHDTC" %in% colnames(data))) {
+      data <- data %>% left_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID")
+      date_injected_cols <- c(date_injected_cols, "BRTHDTC")
+    } else if (anyNA(data[["BRTHDTC"]])) {
+      brthdtc_map <- set_names(dm[["BRTHDTC"]], dm[["USUBJID"]])
+      missing_brthdtc <- is.na(data[["BRTHDTC"]])
+      data[["BRTHDTC"]][missing_brthdtc] <- unname(brthdtc_map[data[["USUBJID"]][missing_brthdtc]])
+    }
   }
 
   target_vars <- compute_target_vars(data %>% select(-alias_name, -label), spec)
