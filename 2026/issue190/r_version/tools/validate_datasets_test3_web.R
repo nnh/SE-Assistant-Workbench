@@ -92,6 +92,15 @@ pwalk(cm_named_checks, function(visitnum, cmtrt, suffix) {
   str_c(cm_named_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
 })
 
+# hdmのANTIFUNGAL DRUG(VISITNUM=400)。CMCAT/CMOCCURの固定値はVISITNUM 200/300と同一のためsuffix "_1"を
+# 再利用するが、この行にはCMPRESPフィールドが存在しないため、cm_named_checksには含めずCMCAT/CMOCCURのみ
+# 個別にチェックする
+tmp_cm <- cm %>% filter(CMTRT == "ANTIFUNGAL DRUG" & VISITNUM == 400)
+suffix <- "_1"
+cm_hdm_target_cols <- c("CMCAT", "CMOCCUR")
+tmp_cm <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(cm_hdm_target_cols))
+str_c(cm_hdm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm, "CM", .x, fixed_value_checks_csv_path))
+
 cm_anticoag_target_cols <- c("CMOCCUR", "CMPRESP")
 cm_anticoag_checks <- tribble(
   ~visitnum, ~cmtrt, ~cmcat,
@@ -216,6 +225,24 @@ tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SU
 c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
 suffix <- "_2"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hdmのMETHOTREXATE(VISITNUM=400)。VISITNUM=150のMETHOTREXATEと固定値は同一だが、ECROUTEフィールドが
+# 無いため対象外とする
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE" & VISITNUM == 400)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_2"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# hdmのMETHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(VISITNUM=400)。VISITNUM=200と
+# 固定値(ECROUTE="INTRATHECAL"含む)が同一のためsuffix "_5"を再利用する
+tmp_ec <- ec %>% filter(ECTRT == "METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 400)
+c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+suffix <- "_5"
+ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
 
