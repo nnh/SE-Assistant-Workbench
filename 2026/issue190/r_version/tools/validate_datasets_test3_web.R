@@ -379,6 +379,20 @@ check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
 
+# immunomonitoring1(BLIN群イムノモニタリング: BLIN 1サイクル目)のASTCTGR(ASTCT Consensus Grading)。
+# GRADEパネル(FATESTCD=="GRADE")とは別のテストコードで、FAOBJがCytokine release syndrome/
+# Immune effector cell-associated neurotoxicity syndromeの2種類のみ、値域も0〜4(GRADEは0〜5)のため、
+# check_fa_grade_panel()を再利用せずcheck_fa_testcd_no_loc()を個別に呼ぶ
+tmp_fa <- fa %>% filter(FASPID == "immunomonitoring1" & VISITNUM == "900")
+check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Cytokine release syndrome", "_12", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
+check_fa_testcd_no_loc(tmp_fa, "ASTCTGR", "Immune effector cell-associated neurotoxicity syndrome", "_13", fixed_value_checks_csv_path, has_blfl = FALSE, has_orres_in_target = TRUE)
+# check_fa_testcd_no_loc()はFAOBJでの絞り込みを内部で行うだけでFAOBJ自体の値は確認しないため、
+# 2種類のFAOBJがそれぞれ期待通りの文字列であることを別途確認する
+tmp_fa_astctgr <- tmp_fa %>% filter(FATESTCD == "ASTCTGR")
+suffix <- "_14"
+tmp_fa_astctgr <- tmp_fa_astctgr %>% rename_with(~ str_c(.x, suffix), "FAOBJ")
+str_c("FAOBJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_astctgr, "FA", .x, fixed_value_checks_csv_path))
+
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
 tmp_fa <- fa %>% filter(FATESTCD == "EARLYRES")
@@ -499,6 +513,71 @@ if (nrow(tmp_lb_4) > 0) {
   stop(str_c("LB: LBDTC範囲チェック: ", nrow(tmp_lb_4), "件NG(evaluationtp2のRSDTC以前ではない。USUBJID: ", paste(tmp_lb_4[["USUBJID"]], collapse = ", "), ")"))
 }
 cat("LB: LBDTC範囲チェック: OK(LBDTCがevaluationtp2のRSDTC以前であることを確認、", nrow(tmp_lb_3), "件)\n", sep = "")
+
+# immunomonitoring1(BLIN群イムノモニタリング: BLIN 1サイクル目)のNEUTLE/EOSLE/BASOLE/MONOLE/LYMLE/WBCを
+# VISITNUM 500/600/700/800/900の5時点で測定する。各testcdの固定値(LBTEST/LBCAT/LBORRESU/LBSPEC)は
+# 時点によらず共通のため、testcdごとに1つのsuffixを5時点で使い回すtribble+pwalkでまとめて検証する
+immuno1_lb_checks <- tribble(
+  ~lbtestcd, ~visitnum, ~suffix,
+  "NEUTLE", 500, "_17",
+  "NEUTLE", 600, "_17",
+  "NEUTLE", 700, "_17",
+  "NEUTLE", 800, "_17",
+  "NEUTLE", 900, "_17",
+  "EOSLE", 500, "_18",
+  "EOSLE", 600, "_18",
+  "EOSLE", 700, "_18",
+  "EOSLE", 800, "_18",
+  "EOSLE", 900, "_18",
+  "BASOLE", 500, "_19",
+  "BASOLE", 600, "_19",
+  "BASOLE", 700, "_19",
+  "BASOLE", 800, "_19",
+  "BASOLE", 900, "_19",
+  "MONOLE", 500, "_20",
+  "MONOLE", 600, "_20",
+  "MONOLE", 700, "_20",
+  "MONOLE", 800, "_20",
+  "MONOLE", 900, "_20",
+  "LYMLE", 500, "_21",
+  "LYMLE", 600, "_21",
+  "LYMLE", 700, "_21",
+  "LYMLE", 800, "_21",
+  "LYMLE", 900, "_21",
+  "WBC", 500, "_22",
+  "WBC", 600, "_22",
+  "WBC", 700, "_22",
+  "WBC", 800, "_22",
+  "WBC", 900, "_22"
+)
+pwalk(immuno1_lb_checks, function(lbtestcd, visitnum, suffix) {
+  check_lb_testcd_at_visit(lb, lbtestcd, visitnum, suffix, c("LBORRESU", "LBSPEC"), fixed_value_checks_csv_path, has_blfl = FALSE, has_not_done_split = TRUE, check_orres_value_when_done = FALSE)
+})
+
+# NEUTLE/EOSLE/BASOLE/MONOLE/LYMLEはLeukocytes中の割合(%)のため、0〜100の範囲であることを確認する
+# (WBCは実数のカウント値のため対象外)
+lb %>%
+  filter(LBSPID == "immunomonitoring1" & LBTESTCD %in% c("NEUTLE", "EOSLE", "BASOLE", "MONOLE", "LYMLE") & LBSTAT != "NOT DONE") %>%
+  check_numeric_range("LBORRES", 0, 100, domain_name = "LB")
+
+# WBCはカウント値のため上限は設けず、0以上であることのみ確認する
+lb %>%
+  filter(LBSPID == "immunomonitoring1" & LBTESTCD == "WBC" & LBSTAT != "NOT DONE") %>%
+  check_numeric_range("LBORRES", 0, domain_name = "LB")
+
+# EDC仕様のref()を確認したところ、各時点(VISITNUM 600以降)の6項目(WBC+NEUTLE/EOSLE/BASOLE/MONOLE/LYMLE)は
+# いずれも「同じ時点のWBC」ではなく「直前の時点のWBC」のLBDTCを共通の起点として参照している
+# (例: VISITNUM=600の6項目は全てVISITNUM=500のWBCのLBDTCを参照。同一時点内の項目同士に依存関係は無い)。
+# 先頭の時点(500)には参照が無いためチェック対象外
+immuno1_visits <- c(500, 600, 700, 800, 900)
+walk(2:length(immuno1_visits), function(i) {
+  prev_v <- immuno1_visits[i - 1]
+  cur_v <- immuno1_visits[i]
+  tmp_ref <- lb %>% filter(LBSPID == "immunomonitoring1" & LBTESTCD == "WBC" & VISITNUM == prev_v) %>% select(USUBJID, tmp_dtc = LBDTC)
+  tmp_lb <- lb %>% filter(LBSPID == "immunomonitoring1" & LBTESTCD %in% c("WBC", "NEUTLE", "EOSLE", "BASOLE", "MONOLE", "LYMLE") & VISITNUM == cur_v & LBSTAT != "NOT DONE")
+  tmp_lb_2 <- tmp_lb %>% inner_join(tmp_ref, by = "USUBJID")
+  tmp_lb_2 %>% check_date_after_var_before_today("LBDTC", "tmp_dtc", domain_name = "LB")
+})
 
 # MH
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS")
