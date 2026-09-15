@@ -69,6 +69,21 @@ list2env(other_domains, envir = .GlobalEnv)
 
 # test3個別チェック
 
+# CE
+# relapse(再発報告)シートのCE(再発の種類・再発日)。presenceのゲート元であるfield141(再発の有無、
+# Y/N)はCDISC変数にマッピングされていないフィールドのため、presence_conditionsには反映されず
+# (validate_formula_if/presence_ifの"f141==1"部分は解決不能で無視される)、実データ上CETERM/CEDTCは
+# 常に必須になっている(EDC仕様上の意図とは異なる可能性があるが、現状の生成ロジックに合わせて検証する)
+tmp_ce <- ce %>% filter(CELNKGRP == "RELAPSE")
+c("CETERM", "CEDTC") %>% check_required_vars(tmp_ce, ., domain_name = "CE")
+suffix <- "_1"
+target_ce_cols <- c("CETERM")
+tmp_ce <- tmp_ce %>% rename_with(~ str_c(.x, suffix), all_of(target_ce_cols))
+str_c(target_ce_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ce, "CE", .x, fixed_value_checks_csv_path))
+tmp_ce_diag <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, diag_dtc = MHSTDTC)
+tmp_ce %>% inner_join(tmp_ce_diag, by = "USUBJID") %>%
+  check_date_after_var_before_today("CEDTC", "diag_dtc", domain_name = "CE")
+
 # CM
 cm %>% filter(CMSPID != "sct1") %>% check_required_vars("CMOCCUR", domain_name = "CM")
 cm %>% filter(CMSPID == "sct1") %>% check_blank_vars("CMOCCUR", domain_name = "CM")
@@ -1034,6 +1049,26 @@ if (nrow(tmp_lb_4) > 0) {
   stop(str_c("LB: LBDTC範囲チェック: ", nrow(tmp_lb_4), "件NG(evaluationtp2のRSDTC以前ではない。USUBJID: ", paste(tmp_lb_4[["USUBJID"]], collapse = ", "), ")"))
 }
 cat("LB: LBDTC範囲チェック: OK(LBDTCがevaluationtp2のRSDTC以前であることを確認、", nrow(tmp_lb_3), "件)\n", sep = "")
+
+# relapse(再発報告)シートのCD19(LB)。VISITNUMを持たないためcheck_lb_testcd_at_visit()は使えず、
+# LBSPID=="relapse"で直接絞り込む。LBORRESは"f141==1&&STAT.blank?"がpresence条件だが、f141は
+# CDISC変数にマッピングされていないフィールドのためSTAT.blank?部分のみが実際に反映されている
+# (CEのCETERM/CEDTCと同様、現状の生成ロジックに合わせて検証する)
+tmp_lb_relapse <- lb %>% filter(LBSPID == "relapse")
+lb_relapse_target_cols <- c("LBTEST", "LBCAT", "LBSPEC", "LBMETHOD", "LBORRES")
+suffix <- "_23"
+lb_relapse_target_cols <- c("LBTEST", "LBCAT", "LBSPEC", "LBMETHOD")
+tmp_lb_relapse_2 <- tmp_lb_relapse %>% rename_with(~ str_c(.x, suffix), all_of(lb_relapse_target_cols))
+str_c(lb_relapse_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb_relapse_2, "LB", .x, fixed_value_checks_csv_path))
+lb_relapse_target_cols <- c("LBORRES")
+tmp_lb_relapse_2 <- tmp_lb_relapse %>% rename_with(~ str_c(.x, suffix), all_of(lb_relapse_target_cols))
+tmp_lb_relapse_done <- tmp_lb_relapse_2 %>% filter(LBSTAT != "NOT DONE")
+tmp_lb_relapse_not_done <- tmp_lb_relapse_2 %>% filter(LBSTAT == "NOT DONE")
+str_c(lb_relapse_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_lb_relapse_done, "LB", .x, fixed_value_checks_csv_path))
+c("LBORRES_23", "LBDTC") %>% check_required_vars(tmp_lb_relapse_done, ., domain_name = "LB")
+c("LBORRES_23", "LBDTC") %>% check_blank_vars(tmp_lb_relapse_not_done, ., domain_name = "LB")
+tmp_lb_relapse_done %>% inner_join(tmp_ce_diag, by = "USUBJID") %>%
+  check_date_after_var_before_today("LBDTC", "diag_dtc", domain_name = "LB")
 
 # immunomonitoring1(BLIN群イムノモニタリング: BLIN 1サイクル目)のNEUTLE/EOSLE/BASOLE/MONOLE/LYMLE/WBCを
 # VISITNUM 500/600/700/800/900の5時点で測定する。各testcdの固定値(LBTEST/LBCAT/LBORRESU/LBSPEC)は
