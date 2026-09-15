@@ -72,6 +72,17 @@ list2env(other_domains, envir = .GlobalEnv)
 # CM
 cm %>% filter(CMSPID != "sct1") %>% check_required_vars("CMOCCUR", domain_name = "CM")
 cm %>% filter(CMSPID == "sct1") %>% check_blank_vars("CMOCCUR", domain_name = "CM")
+
+tmp_cm <- cm %>% filter(CMSPID == "sct1")
+c("CMTRT", "CMSTDTC") %>% check_required_vars(tmp_cm, ., domain_name = "CM")
+sct1_cm_target_cols <- c("CMTRT", "CMCAT", "VISITNUM")
+suffix <- "_4"
+tmp_cm_2 <- tmp_cm %>% rename_with(~ str_c(.x, suffix), all_of(sct1_cm_target_cols))
+str_c(sct1_cm_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_cm_2, "CM", .x, fixed_value_checks_csv_path))
+tmp_sv_2 <- sv %>% filter(SVSPID == "blin2") %>% select(USUBJID, blin2_svstdtc=SVSTDTC)
+tmp_cm_3 <- tmp_cm %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_cm_3 %>% check_date_after_var_before_today("CMSTDTC", "blin2_svstdtc", domain_name = "CM")
+
 # induction(VISITNUM=200)とearlyintensifi(VISITNUM=300)は、CMTRT/CMCATの組み合わせが完全に同一
 # (ANTIFUNGAL DRUG、薬剤コード6343444=ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)、
 # 薬剤コード6342406=FRESH-FROZEN HUMAN PLASMA、および8種のHEPARIN/抗凝固薬ブロック)のため、
@@ -1059,6 +1070,17 @@ check_pc_conc_chain("hr2fisrt")
 # PR
 pr %>% filter(PRSPID != "sct1") %>% check_required_vars("PROCCUR", domain_name = "PR")
 pr %>% filter(PRSPID == "sct1") %>% check_blank_vars("PROCCUR", domain_name = "PR")
+
+tmp_pr <- pr %>% filter(PRSPID == "sct1")
+c("PRCAT", "PRTRT", "PRSTDTC") %>% check_required_vars(tmp_pr, ., domain_name = "PR")
+sct1_pr_target_cols <- c("VISITNUM", "PRTRT", "PRCAT")
+suffix <- "_2"
+tmp_pr_2 <- tmp_pr %>% rename_with(~ str_c(.x, suffix), all_of(sct1_pr_target_cols))
+str_c(sct1_pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr_2, "PR", .x, fixed_value_checks_csv_path))
+tmp_cm_sct1 <- cm %>% filter(CMSPID == "sct1") %>% select(USUBJID, sct1_cmstdtc=CMSTDTC)
+tmp_pr_3 <- tmp_pr %>% inner_join(tmp_cm_sct1, by="USUBJID")
+tmp_pr_3 %>% check_date_after_var_before_today("PRSTDTC", "sct1_cmstdtc", domain_name = "PR")
+
 # induction(VISITNUM=200)とearlyintensifi(VISITNUM=300)は、Central Venous Catheter Placementの
 # 内容が完全に同一のため、VISITNUMをパラメータにしたtribble+pwalkでまとめて検証する
 pr_target_cols <- c("PRPRESP", "PROCCUR")
@@ -1140,6 +1162,9 @@ tmp_rs_evaluationtp1 <- rs %>% filter(RSTESTCD == "OVRLRESP" & VISITNUM == 250) 
 tmp_rs_2 <- tmp_rs %>% inner_join(tmp_rs_evaluationtp1, by="USUBJID")
 tmp_rs_2 %>% check_date_after_var_before_today("RSDTC", "tmp_dtc", domain_name = "RS")
 
+# SC
+c("SCTESTCD", "SCTEST") %>% walk(~ run_value_equals_checks_from_csv(sc, "SC", .x, fixed_value_checks_csv_path))
+"SCORRES" %>% check_required_vars(sc, ., domain_name = "SC")
 # SV
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
 sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
