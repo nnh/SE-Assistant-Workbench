@@ -163,6 +163,10 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
     # identical()がnames属性の違いだけでFALSEになってしまう(値としては同じでも別物と判定される)
     # のを防ぐため、比較・キーとして使う前に必ず名前を落とす
     ref_var <- unname(bound_rows[["ref_cdisc_variable"]][i])
+    # ref('sheet_alias', N)+150.days / -28.daysのような符号付き日数オフセット
+    # (extract_date_cross_ref_offset_days()由来)。無指定(NA)の場合は0として扱う
+    offset_days_i <- if ("offset_days" %in% colnames(bound_rows)) unname(bound_rows[["offset_days"]][i]) else NA_real_
+    if (is.na(offset_days_i)) offset_days_i <- 0
     own_alias <- if ("alias_name" %in% colnames(bound_rows)) unname(bound_rows[["alias_name"]][i]) else NA_character_
     own_label <- if ("label" %in% colnames(bound_rows)) unname(bound_rows[["label"]][i]) else NA_character_
     ref_alias <- if ("ref_alias_name" %in% colnames(bound_rows)) unname(bound_rows[["ref_alias_name"]][i]) else NA_character_
@@ -214,6 +218,7 @@ resolve_date_ref_bound_vals <- function(data, date_ref_bounds, var_name, bound_t
     } else {
       as.Date(as.character(data[[ref_var]]))
     }
+    if (offset_days_i != 0) values <- values + offset_days_i
     result[target_rows] <- combine(result[target_rows], values[target_rows], na.rm = TRUE)
   }
   if (all(is.na(result))) NULL else result
@@ -1578,7 +1583,7 @@ reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, r
 # この矛盾を解消する。中止日情報が無い(NAまたはdiscontinuation_dateに無い)被験者は対象外
 # (今まで通り登録開始日〜今日の範囲のまま)。registration_start_date > 中止日の場合(通常は
 # 起こらないはずだが念のため)は中止日そのものにする
-clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds = NULL, existing_data = NULL) {
+clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds = NULL, existing_data = NULL, presence_conditions = NULL) {
   if (is.null(discontinuation_date) || nrow(discontinuation_date) == 0 || !("USUBJID" %in% colnames(data))) {
     return(data)
   }
@@ -1668,18 +1673,68 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       if ("BRTHDTC" %in% colnames(data)) {
         lower <- pmax(lower, as.Date(as.character(data[["BRTHDTC"]][over])), na.rm = TRUE)
       }
-      # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
-      discon_over_vals <- discon[over]
-      upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(current[over]), as.character(pmax(discon_over_vals, reg_start))))
       if (!is.null(min_ref_vals)) {
         lower <- pmax(lower, min_ref_vals[over], na.rm = TRUE)
       }
+      # discon(中止日)が無い被験者は中止日による上限は課さず、参照先の日付関係のみを尊重する
+      discon_over_vals <- discon[over]
+      # hard_upper: 実際に許容できる上限(中止日、無ければ今日)。max_ref_valsがあればさらに絞る。
+      # 通常の再クランプでは(discon無し時)upperの初期値をcurrent(置き換え前の既存値)にしており、
+      # ref_violationがmin側で発生した行はcurrent<lower(=min_ref_vals)が前提のため、upper<lowerは
+      # 「今日/中止日を超えて本当に有効な範囲が無い」ことを意味しない(単に既存値を置き換えようと
+      # しているだけ)。真に有効な範囲が無いかどうかはhard_upperとlowerで判定する
+      hard_upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(rep(Sys.Date(), sum(over))), as.character(pmax(discon_over_vals, reg_start))))
       if (!is.null(max_ref_vals)) {
-        upper <- pmin(upper, max_ref_vals[over], na.rm = TRUE)
+        hard_upper <- pmin(hard_upper, max_ref_vals[over], na.rm = TRUE)
       }
-      upper <- pmax(upper, lower)
-      new_dates <- lower + floor(runif(sum(over), 0, as.numeric(upper - lower) + 1))
-      data[[var_name]][over] <- as.character(new_dates)
+      # min_ref_vals(date_ref_boundsの明示的なmin_date参照)が実際に効いてlowerを押し上げている行
+      # だけ「有効な範囲が無い」と判定する。RFSTDTC/BRTHDTCのデフォルト下限だけでhard_upperを超える
+      # 場合(例: 登録日が中止日より後という、この日付項目固有の参照とは無関係な実データ上の事情)は
+      # 対象にせず、従来通りhard_upperまで切り詰める
+      has_min_ref <- if (!is.null(min_ref_vals)) !is.na(min_ref_vals[over]) else rep(FALSE, sum(over))
+      # 有効な日付範囲が存在しない行(オフセット付き参照の参照先が生成順序上まだ結合されておらず、
+      # 生成時点では下限が緩く見えていたが、後段でクロスドメイン参照が解決されて厳しい下限が判明し、
+      # それが今日/中止日を超えてしまった)は、無理に未来日等で上書きせず未入力(NA)に戻す。
+      # presenceの起点となっている同じ行の他フィールド(例: FAORRES)があれば、そちらもNAにして
+      # 連鎖的に後段のapply_presence_conditions()で下位項目も未入力扱いになるようにする
+      infeasible <- (hard_upper < lower) & has_min_ref
+      if (any(infeasible)) {
+        infeasible_mask <- over
+        infeasible_mask[over] <- infeasible
+        data[[var_name]][infeasible_mask] <- NA_character_
+        if (!is.null(presence_conditions)) {
+          drivers <- presence_conditions %>%
+            filter(cdisc_variable == var_name, condition_type == "not_blank", !is.na(ref_cdisc_variable))
+          if (nrow(drivers) > 0) {
+            for (j in seq_len(nrow(drivers))) {
+              drv <- drivers[j, ]
+              row_mask <- infeasible_mask
+              if ("alias_name" %in% colnames(drv) && !is.na(drv[["alias_name"]]) && "alias_name" %in% colnames(data)) {
+                row_mask <- row_mask & (data[["alias_name"]] == drv[["alias_name"]])
+              }
+              if ("label" %in% colnames(drv) && !is.na(drv[["label"]]) && "label" %in% colnames(data)) {
+                row_mask <- row_mask & (data[["label"]] == drv[["label"]])
+              }
+              if (drv[["ref_cdisc_variable"]] %in% colnames(data)) {
+                data[[drv[["ref_cdisc_variable"]]]][row_mask] <- NA
+              }
+            }
+          }
+        }
+        lower <- lower[!infeasible]
+        hard_upper <- hard_upper[!infeasible]
+        discon_over_vals <- discon_over_vals[!infeasible]
+        over <- over & !infeasible_mask
+      }
+      if (length(lower) > 0) {
+        # 通常のケース(有効な範囲は存在する): 上限はhard_upperを超えない範囲で、可能な限り既存値
+        # (current)を尊重する(discon超過のみが理由の場合、既存値に近い日付に再サンプルするため)
+        upper <- as.Date(ifelse(is.na(discon_over_vals), as.character(current[over]), as.character(hard_upper)))
+        upper <- pmin(upper, hard_upper)
+        upper <- pmax(upper, lower)
+        new_dates <- lower + floor(runif(length(lower), 0, as.numeric(upper - lower) + 1))
+        data[[var_name]][over] <- as.character(new_dates)
+      }
       data
     }
 
@@ -1799,7 +1854,9 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
       lower <- pmax(lower, as.numeric(as.Date(as.character(data[["RFSTDTC"]][mask]))), na.rm = TRUE)
     }
     if (nrow(min_row) > 0) {
-      lower <- pmax(lower, ref_value_for(min_row[["ref_label"]], min_row[["ref_cdisc_variable"]]), na.rm = TRUE)
+      # ref('sheet_alias', N)+N.days/-N.daysの符号付き日数オフセット(offset_days。無指定ならNA=0)
+      min_offset <- coalesce(min_row[["offset_days"]][1], 0)
+      lower <- pmax(lower, ref_value_for(min_row[["ref_label"]], min_row[["ref_cdisc_variable"]]) + min_offset, na.rm = TRUE)
     }
     # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
     # RFSTDTCと異なり全行に適用する(build_repeated_domain内の日付生成ループと同じ理由)。
@@ -1815,7 +1872,8 @@ regenerate_date_chain <- function(data, alias_name_val, date_ref_bounds, chain_v
       upper <- ifelse(is.na(discon_vals), upper, pmin(upper, discon_vals))
     }
     if (nrow(max_row) > 0) {
-      upper <- pmin(upper, ref_value_for(max_row[["ref_label"]], max_row[["ref_cdisc_variable"]]), na.rm = TRUE)
+      max_offset <- coalesce(max_row[["offset_days"]][1], 0)
+      upper <- pmin(upper, ref_value_for(max_row[["ref_label"]], max_row[["ref_cdisc_variable"]]) + max_offset, na.rm = TRUE)
     }
     upper <- pmax(upper, lower)
     new_dates <- as.Date(floor(runif(sum(mask), lower, upper + 1)), origin = "1970-01-01")
@@ -1942,7 +2000,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
   data <- data %>%
     populate_radio_button_fields(spec, target_vars, numeric_bounds) %>%
     populate_date_fields(spec, target_vars, registration_start_date, date_ref_bounds, existing_data) %>%
-    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data) %>%
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data, presence_conditions) %>%
     # 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
     # alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
     # (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
@@ -1950,7 +2008,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
     # 他ドメイン参照(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
     # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
-    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data) %>%
+    clamp_dates_to_discontinuation(date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data, presence_conditions) %>%
     populate_dose_fields(target_vars) %>%
     populate_dummy_fields(target_vars)
 
@@ -2123,25 +2181,26 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
 
     # var_nameにvalidate_date_after_or_equal_to/validate_date_before_or_equal_to(他フィールド参照)が
     # あり、かつ参照先が既に生成済み(このforループの前の反復で追加された列)なら、そのfield名(列名)を
-    # 使う。無ければNAのままにし、mutate内では従来通りの一律の範囲で生成する
-    date_min_ref <- if (!is.null(date_ref_bounds)) {
+    # 使う。無ければNAのままにし、mutate内では従来通りの一律の範囲で生成する。offset_days
+    # (ref('sheet_alias', N)+150.days等の符号付き日数オフセット、無指定ならNA)も併せて取り出す
+    date_min_bound_row <- if (!is.null(date_ref_bounds)) {
       date_ref_bounds %>%
         filter(cdisc_variable == var_name, bound_type == "min_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
+        distinct(ref_cdisc_variable, offset_days)
     } else {
-      character(0)
+      tibble(ref_cdisc_variable = character(0), offset_days = numeric(0))
     }
-    date_min_ref <- if (length(date_min_ref) > 0) date_min_ref[1] else NA_character_
-    date_max_ref <- if (!is.null(date_ref_bounds)) {
+    date_min_ref <- if (nrow(date_min_bound_row) > 0) date_min_bound_row[["ref_cdisc_variable"]][1] else NA_character_
+    date_min_offset <- if (nrow(date_min_bound_row) > 0) coalesce(date_min_bound_row[["offset_days"]][1], 0) else 0
+    date_max_bound_row <- if (!is.null(date_ref_bounds)) {
       date_ref_bounds %>%
         filter(cdisc_variable == var_name, bound_type == "max_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
+        distinct(ref_cdisc_variable, offset_days)
     } else {
-      character(0)
+      tibble(ref_cdisc_variable = character(0), offset_days = numeric(0))
     }
-    date_max_ref <- if (length(date_max_ref) > 0) date_max_ref[1] else NA_character_
+    date_max_ref <- if (nrow(date_max_bound_row) > 0) date_max_bound_row[["ref_cdisc_variable"]][1] else NA_character_
+    date_max_offset <- if (nrow(date_max_bound_row) > 0) coalesce(date_max_bound_row[["offset_days"]][1], 0) else 0
 
     lookup <- var_spec %>%
       group_by(alias_name, label) %>%
@@ -2186,7 +2245,9 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
             # (例: EC複数回投与の2回目以降)、行によっては参照先(前labelの値)が実際に存在するため、
             # そのような行ではRFSTDTCを加えず参照値のみ尊重する。参照値が無い行(連鎖の先頭等)だけ
             # RFSTDTCを補う
-            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) else rep(as.Date(NA), nn)
+            # ref('sheet_alias', N)+N.days/-N.daysの符号付き日数オフセット(date_min_offset/
+            # date_max_offset。無指定なら0)を参照先の値に加味してから下限/上限として使う
+            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) + date_min_offset else rep(as.Date(NA), nn)
             lower <- pmax(rep(as.Date(registration_start_date), nn), ref_vals, na.rm = TRUE)
             if ("RFSTDTC" %in% colnames(data)) {
               no_explicit_ref <- is.na(ref_vals)
@@ -2201,7 +2262,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
               lower <- pmax(lower, brthdtc_vals, na.rm = TRUE)
             }
             upper <- rep(Sys.Date(), nn)
-            if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]), na.rm = TRUE)
+            if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]) + date_max_offset, na.rm = TRUE)
             upper <- pmax(upper, lower)
             as.character(as.Date(floor(runif(nn, as.numeric(lower), as.numeric(upper) + 1)), origin = "1970-01-01"))
           }
@@ -2235,6 +2296,38 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
       }) %>%
       ungroup() %>%
       select(-field_type, -default_value, -codes, -is_invisible_any, -is_required_any)
+  }
+
+  # オフセット付き参照(例: ref('sct1',16)+150.days)等により、下限が上限(今日)を超えてしまい、
+  # 上の生成で未来日のまま埋められてしまった日付項目(=有効な日付が実在しない)を未入力に戻す。
+  # あわせて、この変数のpresenceを「同じ行の他フィールドが値を持つこと」で条件づけている
+  # presence_conditions(not_blank条件、例: "ORRES.present?"→この日付項目の下限参照元)があれば、
+  # そのref_cdisc_variable(presenceの起点、例: FAORRES)も同じ行でNAにする。これにより後段の
+  # apply_presence_conditions()で連鎖的に下位項目(GRADE等)も正しく未入力扱いになる
+  {
+    date_vars_for_future_check <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(colnames(data))
+    for (v in date_vars_for_future_check) {
+      future_mask <- !is.na(data[[v]]) & as.Date(data[[v]]) > Sys.Date()
+      if (!any(future_mask)) next
+      data[[v]][future_mask] <- NA_character_
+      drivers <- presence_conditions %>%
+        filter(cdisc_variable == v, condition_type == "not_blank", !is.na(ref_cdisc_variable))
+      if (nrow(drivers) > 0) {
+        for (j in seq_len(nrow(drivers))) {
+          drv <- drivers[j, ]
+          row_mask <- future_mask
+          if ("alias_name" %in% colnames(drv) && !is.na(drv[["alias_name"]]) && "alias_name" %in% colnames(data)) {
+            row_mask <- row_mask & (data[["alias_name"]] == drv[["alias_name"]])
+          }
+          if ("label" %in% colnames(drv) && !is.na(drv[["label"]]) && "label" %in% colnames(data)) {
+            row_mask <- row_mask & (data[["label"]] == drv[["label"]])
+          }
+          if (drv[["ref_cdisc_variable"]] %in% colnames(data)) {
+            data[[drv[["ref_cdisc_variable"]]]][row_mask] <- NA
+          }
+        }
+      }
+    }
   }
 
   date_vars <- spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique() %>% intersect(target_vars)
@@ -2277,7 +2370,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # 処理するため、labelを跨ぐ連鎖(regenerate_date_chain()で既に処理済みの同一alias内のものも含む)を
   # そのまま渡してよい。中止日超過などでchain regen後に値が再サンプルされる場合でも、
   # 参照元・参照先の順序が正しく守られる
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data, presence_conditions)
   # 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   # シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。
   # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
@@ -2286,7 +2379,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
   # 参照関係(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
   # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
-  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data)
+  data <- clamp_dates_to_discontinuation(data, date_vars, registration_start_date, discontinuation_date, date_ref_bounds, existing_data, presence_conditions)
 
   # meddra型の変数がある場合、コーディングブロック(LLT〜SOC)を追加する。
   # field_type=="meddra"に該当しない行(そのlabelにmeddra型の変数が無い行)は、
@@ -2386,24 +2479,24 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
   for (var_name in linked_vars) {
     var_spec <- linked_spec %>% filter(cdisc_variable == var_name)
 
-    date_min_ref <- if (!is.null(date_ref_bounds)) {
+    date_min_bound_row <- if (!is.null(date_ref_bounds)) {
       date_ref_bounds %>%
         filter(cdisc_variable == var_name, bound_type == "min_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
+        distinct(ref_cdisc_variable, offset_days)
     } else {
-      character(0)
+      tibble(ref_cdisc_variable = character(0), offset_days = numeric(0))
     }
-    date_min_ref <- if (length(date_min_ref) > 0) date_min_ref[1] else NA_character_
-    date_max_ref <- if (!is.null(date_ref_bounds)) {
+    date_min_ref <- if (nrow(date_min_bound_row) > 0) date_min_bound_row[["ref_cdisc_variable"]][1] else NA_character_
+    date_min_offset <- if (nrow(date_min_bound_row) > 0) coalesce(date_min_bound_row[["offset_days"]][1], 0) else 0
+    date_max_bound_row <- if (!is.null(date_ref_bounds)) {
       date_ref_bounds %>%
         filter(cdisc_variable == var_name, bound_type == "max_date", ref_cdisc_variable %in% colnames(data)) %>%
-        pull(ref_cdisc_variable) %>%
-        unique()
+        distinct(ref_cdisc_variable, offset_days)
     } else {
-      character(0)
+      tibble(ref_cdisc_variable = character(0), offset_days = numeric(0))
     }
-    date_max_ref <- if (length(date_max_ref) > 0) date_max_ref[1] else NA_character_
+    date_max_ref <- if (nrow(date_max_bound_row) > 0) date_max_bound_row[["ref_cdisc_variable"]][1] else NA_character_
+    date_max_offset <- if (nrow(date_max_bound_row) > 0) coalesce(date_max_bound_row[["offset_days"]][1], 0) else 0
 
     lookup <- var_spec %>%
       group_by(alias_name) %>%
@@ -2445,8 +2538,9 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
             # 一律のseq()ではなく行ごとにrunif()で生成する。この変数にlabelを跨ぐ連鎖参照がある場合
             # (例: EC複数回投与の2回目以降)、行によっては参照先(前labelの値)が実際に存在するため、
             # そのような行ではRFSTDTCを加えず参照値のみ尊重する。参照値が無い行(連鎖の先頭等)だけ
-            # RFSTDTCを補う
-            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) else rep(as.Date(NA), nn)
+            # RFSTDTCを補う。ref('sheet_alias', N)+N.days/-N.daysの符号付き日数オフセット
+            # (date_min_offset/date_max_offset。無指定なら0)を参照先の値に加味してから下限/上限として使う
+            ref_vals <- if (!is.na(date_min_ref)) as.Date(.data[[date_min_ref]]) + date_min_offset else rep(as.Date(NA), nn)
             lower <- pmax(rep(as.Date(registration_start_date), nn), ref_vals, na.rm = TRUE)
             if ("RFSTDTC" %in% colnames(data)) {
               no_explicit_ref <- is.na(ref_vals)
@@ -2454,7 +2548,7 @@ populate_linked_blocks <- function(data, cdisc_variable_values, exclude_prefix, 
               lower[no_explicit_ref] <- pmax(lower[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
             }
             upper <- rep(Sys.Date(), nn)
-            if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]), na.rm = TRUE)
+            if (!is.na(date_max_ref)) upper <- pmin(upper, as.Date(.data[[date_max_ref]]) + date_max_offset, na.rm = TRUE)
             upper <- pmax(upper, lower)
             as.character(as.Date(floor(runif(nn, as.numeric(lower), as.numeric(upper) + 1)), origin = "1970-01-01"))
           }

@@ -546,6 +546,9 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal, exi
   const result = new Array(data.length).fill(null);
   boundRows.forEach((br) => {
     const refVar = br.ref_cdisc_variable;
+    // ref('sheet_alias', N)+N.days/-N.daysの符号付き日数オフセット(extractDateCrossRefOffsetDays()由来。
+    // 無指定ならnull=0として扱う)
+    const offsetDays = br.offset_days != null ? br.offset_days : 0;
     const ownAlias = br.alias_name != null ? br.alias_name : null;
     const ownLabel = br.label != null ? br.label : null;
     const refAlias = br.ref_alias_name != null ? br.ref_alias_name : null;
@@ -584,6 +587,9 @@ function resolveDateRefBoundVals(data, dateRefBounds, varName, boundTypeVal, exi
       values = data.map((row) => (row.USUBJID in refMap ? refMap[row.USUBJID] : null));
     } else {
       values = data.map((row) => row[refVar]);
+    }
+    if (offsetDays !== 0) {
+      values = values.map((v) => (v != null ? addDaysToDateString(v, offsetDays) : v));
     }
 
     data.forEach((row, i) => {
@@ -814,13 +820,14 @@ function addSeq(data, seqVar) {
 // 同じ行の他日付フィールド(先に処理済み)との参照関係(ECSTDTC<=ECENDTC等)が崩れている行も再サンプル対象にする
 // (参照先の値が先の反復で更新されている可能性があるため)。呼び出し側でlabelを跨ぐ行(label!=ref_label)を
 // あらかじめ除いたdateRefBoundsを渡すこと(同じ行内の参照である前提のため)
-function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBounds, existingData) {
+function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, dateRefBounds, existingData, presenceConditions) {
   if (!discontinuationDate || discontinuationDate.length === 0 || !data[0] || !("USUBJID" in data[0])) {
     return data;
   }
   const targetVars = sortDateVarsByDependency(dateVars.filter((v) => v in data[0]), dateRefBounds);
   if (targetVars.length === 0) return data;
 
+  const today = new Date().toISOString().slice(0, 10);
   const disconByUsubjid = {};
   discontinuationDate.forEach((r) => {
     if (r.DISCONDTC != null && !(r.USUBJID in disconByUsubjid)) {
@@ -863,8 +870,36 @@ function clampDatesToDiscontinuation(data, dateVars, registrationStartDate, disc
         // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
         // RFSTDTCと異なり全行に適用する(buildRepeatedDomain内の日付生成ループと同じ理由)
         if (row.BRTHDTC != null && row.BRTHDTC > lower) lower = row.BRTHDTC;
-        let upper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : current;
-        if (maxVal != null && maxVal < upper) upper = maxVal;
+        // hardUpper: 実際に許容できる上限(中止日、無ければ今日)。maxValがあればさらに絞る。
+        // 通常の再クランプでは(discon未指定時)upperの初期値をcurrent(置き換え前の既存値)にしており、
+        // ref_violationがmin側で発生した行はcurrent<lower(=minVal)が前提のため、upper<lowerは
+        // 「今日/中止日を超えて本当に有効な範囲が無い」ことを意味しない(単に既存値を置き換えようと
+        // しているだけ)。真に有効な範囲が無いかどうかはhardUpperとlowerで判定する
+        let hardUpper = discon != null ? (discon > registrationStartDate ? discon : registrationStartDate) : today;
+        if (maxVal != null && maxVal < hardUpper) hardUpper = maxVal;
+        // minVal(date_ref_boundsの明示的なmin_date参照)が実際に効いてlowerを押し上げているときだけ
+        // 「有効な範囲が無い」と判定する。RFSTDTC/BRTHDTCのデフォルト下限だけでhardUpperを超える場合
+        // (例: 登録日が中止日より後という別の既存の実データ上の事情)は、この日付項目固有の問題では
+        // ないため対象にせず、従来通りhardUpperまで切り詰める(下のelse節に委ねる)
+        if (hardUpper < lower && minVal != null) {
+          // 有効な日付範囲が存在しない場合(オフセット付き参照等により、参照先の値(+オフセット)が
+          // 今日/中止日を超えてしまう。例: 移植150日後が評価日の下限だが、移植からまだ150日経っていない)、
+          // 無理に未来日等で上書きせず未入力(null)に戻す。presenceの起点となっている同じ行の他フィールド
+          // (例: FAORRES)があれば、そちらもnullにして連鎖的に後段のapply_presence_conditions()で
+          // 下位項目も未入力扱いになるようにする
+          row[varName] = null;
+          (presenceConditions || []).forEach((pc) => {
+            if (pc.cdisc_variable !== varName || pc.condition_type !== "not_blank" || pc.ref_cdisc_variable == null) return;
+            if (pc.alias_name != null && pc.alias_name !== row.alias_name) return;
+            if (pc.label != null && pc.label !== row.label) return;
+            row[pc.ref_cdisc_variable] = null;
+          });
+          return;
+        }
+        // 通常のケース(有効な範囲は存在する): 上限はhardUpperを超えない範囲で、可能な限り既存値
+        // (current)を尊重する(discon超過のみが理由の場合、既存値に近い日付に再サンプルするため)
+        let upper = discon != null ? hardUpper : current;
+        if (upper > hardUpper) upper = hardUpper;
         if (upper < lower) upper = lower;
         row[varName] = randomDateBetween(lower, upper);
       });
@@ -998,7 +1033,8 @@ function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, regis
       // その変数本来の意味を壊してしまうため)
       if (minRow == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
       if (minRow != null) {
-        const refVal = refValueFor(row, minRow.ref_label, minRow.ref_cdisc_variable);
+        let refVal = refValueFor(row, minRow.ref_label, minRow.ref_cdisc_variable);
+        if (refVal != null && minRow.offset_days) refVal = addDaysToDateString(refVal, minRow.offset_days);
         if (refVal != null && refVal > lower) lower = refVal;
       }
       // BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
@@ -1011,7 +1047,8 @@ function regenerateDateChain(data, aliasNameVal, dateRefBounds, chainVars, regis
       const discon = disconByUsubjid ? disconByUsubjid[row.USUBJID] : null;
       if (discon != null && discon < upper) upper = discon;
       if (maxRow != null) {
-        const refVal = refValueFor(row, maxRow.ref_label, maxRow.ref_cdisc_variable);
+        let refVal = refValueFor(row, maxRow.ref_label, maxRow.ref_cdisc_variable);
+        if (refVal != null && maxRow.offset_days) refVal = addDaysToDateString(refVal, maxRow.offset_days);
         if (refVal != null && refVal < upper) upper = refVal;
       }
       if (upper < lower) upper = lower;
@@ -1130,7 +1167,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   data = populateGenericChoiceFields(data, spec, numericBounds);
   data = populateGenericDateFields(data, spec, registrationStartDate, scopedDateRefBounds, existingData);
   const dateVars = [...new Set(spec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData, presenceConditions);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
   // alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
   // (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
@@ -1138,7 +1175,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
   // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData, presenceConditions);
   data = populateDoseFields(data, spec);
   data = populateGenericDummyFields(data, spec);
   const seqVar = `${prefix}SEQ`;
@@ -1431,8 +1468,11 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
           let lower = registrationStartDate;
           // 明示的なmin_date参照(dateMinRow)があっても、labelを跨ぐ連鎖等で行によっては参照先の値が
           // まだ無い(例: EC複数回投与の1回目=連鎖の先頭)ことがある。そのような行にだけRFSTDTCを
-          // デフォルト下限として補う(参照値がある行では、その変数本来の意味を尊重してRFSTDTCは加えない)
-          const refVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          // デフォルト下限として補う(参照値がある行では、その変数本来の意味を尊重してRFSTDTCは加えない)。
+          // ref('sheet_alias', N)+N.days/-N.daysの符号付き日数オフセット(dateMinRow.offset_days。
+          // 無指定ならnull=0として扱う)を参照先の値に加味する
+          const rawMinRefVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          const refVal = rawMinRefVal != null && dateMinRow.offset_days ? addDaysToDateString(rawMinRefVal, dateMinRow.offset_days) : rawMinRefVal;
           if (refVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
           if (refVal != null && refVal > lower) {
             lower = refVal;
@@ -1442,11 +1482,33 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
           // 後になり得るため、それらのデフォルト下限だけでは生年月日より前の日付が生成されてしまう)
           if (row.BRTHDTC != null && row.BRTHDTC > lower) lower = row.BRTHDTC;
           let upper = today;
-          if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
-            upper = row[dateMaxRow.ref_cdisc_variable];
+          const rawMaxRefVal = dateMaxRow != null ? row[dateMaxRow.ref_cdisc_variable] : null;
+          const maxRefVal = rawMaxRefVal != null && dateMaxRow.offset_days ? addDaysToDateString(rawMaxRefVal, dateMaxRow.offset_days) : rawMaxRefVal;
+          if (maxRefVal != null && maxRefVal < upper) {
+            upper = maxRefVal;
           }
-          if (upper < lower) upper = lower;
-          row[varName] = randomDateBetween(lower, upper);
+          // refVal(date_ref_boundsの明示的なmin_date参照)が実際に効いてlowerを押し上げているときだけ
+          // 「有効な範囲が無い」と判定する。RFSTDTC/BRTHDTCのデフォルト下限だけで今日を超える場合
+          // (この日付項目固有の参照とは無関係な実データ上の事情)は対象にせず、従来通り今日に切り詰める
+          if (upper < lower && refVal != null) {
+            // 有効な日付範囲が存在しない(オフセット付き参照等により下限が上限(今日/他の参照)を
+            // 超えてしまう。例: 移植150日後が評価日の下限だが、移植からまだ150日経っていない)場合、
+            // 無理に未来日等を生成せず、この項目を未入力(null)のままにする。あわせて、この変数の
+            // presenceを「同じ行の他フィールドが値を持つこと」で条件づけているpresence_conditions
+            // (not_blank条件。例: "ORRES.present?"→FADTCの下限参照)があれば、そのref_cdisc_variable
+            // (presenceの起点となっている側、例: FAORRES)も同じ行でnullにする。これにより、後段の
+            // apply_presence_conditions()で連鎖的に下位の項目(GRADE等)も正しく未入力扱いになる
+            row[varName] = null;
+            (presenceConditions || []).forEach((pc) => {
+              if (pc.cdisc_variable !== varName || pc.condition_type !== "not_blank" || pc.ref_cdisc_variable == null) return;
+              if (pc.alias_name != null && pc.alias_name !== row.alias_name) return;
+              if (pc.label != null && pc.label !== row.label) return;
+              row[pc.ref_cdisc_variable] = null;
+            });
+          } else {
+            if (upper < lower) upper = lower;
+            row[varName] = randomDateBetween(lower, upper);
+          }
         });
       } else if (g.fieldType === "meddra") {
         const dv = g.defaultValue;
@@ -1543,7 +1605,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // clampDatesToDiscontinuation()はselfRefEdges(labelがあれば(alias_name, label)単位)で依存順に処理するため、
   // labelを跨ぐ連鎖(regenerateDateChain()で既に処理済みの同一alias内のものも含む)をそのまま渡してよい。
   // 中止日超過などでchain regen後に値が再サンプルされる場合でも、参照元・参照先の順序が正しく守られる
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData, presenceConditions);
   // 同じcdisc_variableが複数alias(シート)にまたがる場合(例: 来院ごとに繰り返すEC/LB/VS)、
   // シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。alias内の関係
   // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
@@ -1552,7 +1614,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、参照関係
   // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
-  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData);
+  data = clampDatesToDiscontinuation(data, dateVars, registrationStartDate, discontinuationDate, scopedDateRefBounds, existingData, presenceConditions);
 
   let codingCols = [];
   if (addCodingBlock) {

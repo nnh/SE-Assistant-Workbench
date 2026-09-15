@@ -65,9 +65,10 @@ function extractRefField(validatorType, value) {
 // ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
 // (alias_name)とフィールド名を取り出す(Rのextract_date_cross_ref_alias/extract_date_cross_ref_fieldに対応)。
 // "ref('maitenance',829)-28.days"のような日数オフセット付きの他シート参照(EDC仕様上使用例あり)にも
-// 対応する。同一シート内参照と同様、オフセット自体は下限として厳密には反映せず、参照先フィールドの
-// 値をそのまま下限にする(既存の方針を踏襲)
-const DATE_CROSS_REF_PATTERN = /^\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*(?:[+-]\s*[0-9]+\.days?)?\s*$/;
+// 対応する。オフセット(符号+日数)はextractDateCrossRefOffsetDays()で取り出し、
+// buildGenerationConstraints()のdateRefBoundsに反映する(参照先フィールドの値にオフセットを
+// 加減した値を下限/上限として使う)
+const DATE_CROSS_REF_PATTERN = /^\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*(?:([+-])\s*([0-9]+)\.days?)?\s*$/;
 
 function extractDateCrossRefAlias(validatorType, value) {
   if (validatorType !== "date" || value == null) return null;
@@ -79,6 +80,15 @@ function extractDateCrossRefField(validatorType, value) {
   if (validatorType !== "date" || value == null) return null;
   const m = value.match(DATE_CROSS_REF_PATTERN);
   return m ? `field${m[2]}` : null;
+}
+
+// ref('sheet_alias', N)+150.days / ref('sheet_alias', N)-28.daysの符号付き日数オフセットを
+// 数値(例: 150, -28)で取り出す。オフセットが無い場合はnull
+function extractDateCrossRefOffsetDays(validatorType, value) {
+  if (validatorType !== "date" || value == null) return null;
+  const m = value.match(DATE_CROSS_REF_PATTERN);
+  if (!m || m[4] == null) return null;
+  return (m[3] === "-" ? -1 : 1) * Number(m[4]);
 }
 
 // value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field6=="Y")を"||"で分割し、
@@ -278,6 +288,7 @@ function buildValidatorTable(sheets) {
     const boundType = classifyBoundType(validatorType, validatorKey) ?? formulaSingle.boundType ?? formulaFieldRef.boundType;
     const refField = extractRefField(validatorType, value) ?? extractDateCrossRefField(validatorType, value) ?? formulaSingle.refField ?? formulaFieldRef.refField;
     const dateRefAliasName = extractDateCrossRefAlias(validatorType, value);
+    const dateRefOffsetDays = extractDateCrossRefOffsetDays(validatorType, value);
     const numericValue = extractNumericValue(validatorType, value) ?? formulaSingle.boundValue ?? null;
 
     const presence = computePresenceRefFieldAndValue(validatorType, validatorKey, value);
@@ -289,6 +300,7 @@ function buildValidatorTable(sheets) {
       bound_type: boundType,
       ref_field: refField,
       date_ref_alias_name: dateRefAliasName,
+      date_ref_offset_days: dateRefOffsetDays,
       numeric_value: numericValue,
       presence_ref_field: presence.field,
       presence_ref_value: presence.value,
@@ -809,6 +821,7 @@ function buildDateRefBounds(validatorTable, fieldLookup) {
           ref_label: ref.label != null ? ref.label : null,
           ref_cdisc_variable: ref.cdisc_variable,
           bound_type: vr.bound_type,
+          offset_days: vr.date_ref_offset_days,
         });
       });
     });

@@ -305,6 +305,13 @@ function randomDateBetween(startDateStr, endDateStr) {
   return new Date(randomDay * oneDay).toISOString().slice(0, 10);
 }
 
+// dateStr(YYYY-MM-DD)にdays日(負数可)を加算した日付文字列を返す。
+// ref('sheet_alias', N)+150.days/-28.daysのような符号付き日数オフセットの適用に使う
+function addDaysToDateString(dateStr, days) {
+  const oneDay = 24 * 60 * 60 * 1000;
+  return new Date(new Date(dateStr).getTime() + days * oneDay).toISOString().slice(0, 10);
+}
+
 // tibble的な行オブジェクトの配列をCSV文字列に変換する。
 // RのNA相当(null/undefined)は空欄として出力する(文字列としての"NA"とは区別するため)。
 // 改行はLF、先頭にBOM(U+FEFF)を付ける(Windows版Excelでの文字化け防止のため、

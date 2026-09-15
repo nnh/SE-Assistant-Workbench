@@ -355,15 +355,19 @@ function populateLinkedBlocks(data, cdiscVariableValues, excludePrefix, registra
           let lower = registrationStartDate;
           // 明示的なmin_date参照(dateMinRow)があっても、labelを跨ぐ連鎖等で行によっては参照先の値が
           // まだ無いことがある。そのような行にだけRFSTDTCをデフォルト下限として補う(参照値がある行では、
-          // その変数本来の意味を尊重してRFSTDTCは加えない)
-          const refVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          // その変数本来の意味を尊重してRFSTDTCは加えない)。ref('sheet_alias', N)+N.days/-N.daysの
+          // 符号付き日数オフセット(dateMinRow.offset_days。無指定ならnull=0として扱う)を参照先の値に加味する
+          const rawMinRefVal = dateMinRow != null ? row[dateMinRow.ref_cdisc_variable] : null;
+          const refVal = rawMinRefVal != null && dateMinRow.offset_days ? addDaysToDateString(rawMinRefVal, dateMinRow.offset_days) : rawMinRefVal;
           if (refVal == null && row.RFSTDTC != null && row.RFSTDTC > lower) lower = row.RFSTDTC;
           if (refVal != null && refVal > lower) {
             lower = refVal;
           }
           let upper = today;
-          if (dateMaxRow != null && row[dateMaxRow.ref_cdisc_variable] != null && row[dateMaxRow.ref_cdisc_variable] < upper) {
-            upper = row[dateMaxRow.ref_cdisc_variable];
+          const rawMaxRefVal = dateMaxRow != null ? row[dateMaxRow.ref_cdisc_variable] : null;
+          const maxRefVal = rawMaxRefVal != null && dateMaxRow.offset_days ? addDaysToDateString(rawMaxRefVal, dateMaxRow.offset_days) : rawMaxRefVal;
+          if (maxRefVal != null && maxRefVal < upper) {
+            upper = maxRefVal;
           }
           if (upper < lower) upper = lower;
           row[varName] = randomDateBetween(lower, upper);

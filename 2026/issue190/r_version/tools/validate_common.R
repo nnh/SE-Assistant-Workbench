@@ -308,10 +308,12 @@ check_date_before_today <- function(data, date_var, domain_name = NULL) {
 # data(1ドメイン分。USUBJID列が必要)のdate_var列(日付の文字列)が、ref_date_var列以降・
 # 今日以前の範囲内かを確認する。date_var/ref_date_varのどちらかが無い行は判定対象から除く
 # (値の有無自体はcheck_required_vars等の別チェックで見る)。domain_nameを指定するとメッセージの
-# 先頭に付く。範囲外がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する
-check_date_after_var_before_today <- function(data, date_var, ref_date_var, domain_name = NULL) {
+# 先頭に付く。範囲外がある場合はstop()でエラーにする。問題なければチェック内容とOKである旨をcatで表示する。
+# offset_days(既定0): EDC仕様のref('sheet',N)+N.days/-N.daysのような日数オフセット付き参照の場合、
+# 下限をref_date_var + offset_daysにする(例: -28ならref_date_varの28日前以降を許容)
+check_date_after_var_before_today <- function(data, date_var, ref_date_var, domain_name = NULL, offset_days = 0) {
   label <- if (is.null(domain_name)) "" else str_c(domain_name, ": ")
-  ref_dates <- as.Date(data[[ref_date_var]])
+  ref_dates <- as.Date(data[[ref_date_var]]) + offset_days
   dates <- as.Date(data[[date_var]])
   today <- Sys.Date()
   valid_pair <- !is.na(ref_dates) & !is.na(dates)
@@ -319,14 +321,16 @@ check_date_after_var_before_today <- function(data, date_var, ref_date_var, doma
   invalid <- valid_pair & (dates < ref_dates | dates > today)
   invalid_usubjid <- data[["USUBJID"]][invalid]
 
+  ref_label <- if (offset_days == 0) ref_date_var else str_c(ref_date_var, if (offset_days > 0) "+" else "", offset_days, "日")
+
   if (length(invalid_usubjid) > 0) {
     stop(str_c(
-      label, date_var, "範囲チェック: ", length(invalid_usubjid), "件NG(", ref_date_var, "以降・今日(",
+      label, date_var, "範囲チェック: ", length(invalid_usubjid), "件NG(", ref_label, "以降・今日(",
       as.character(today), ")以前の範囲外。USUBJID: ", paste(invalid_usubjid, collapse = ", "), ")"
     ))
   }
   cat(
-    label, date_var, "範囲チェック: OK(", date_var, "が", ref_date_var, "以降・今日(", as.character(today),
+    label, date_var, "範囲チェック: OK(", date_var, "が", ref_label, "以降・今日(", as.character(today),
     ")以前であることを確認、", sum(valid_pair), "件)\n",
     sep = ""
   )

@@ -88,10 +88,10 @@ extract_ref_field <- function(validator_type, value) {
 # EDC仕様側の値に"ref('registration',12) "のような末尾スペースが付与されていることがあるため、
 # 前後の空白を許容する(付けないと完全一致に失敗し、この参照が無かったものとして扱われてしまう)。
 # "ref('maitenance',829)-28.days"のような日数オフセット付きの他シート参照(EDC仕様上使用例あり)にも
-# 対応する。同一シート内参照(extract_ref_field)と同様、オフセット自体は下限として厳密には反映せず、
-# 参照先フィールドの値をそのまま下限にする(その差はcheck_date_after_var_before_today等の>=判定には
-# 影響しない、既存の方針を踏襲)
-date_cross_ref_pattern <- "^\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*(?:[+-]\\s*[0-9]+\\.days?)?\\s*$"
+# 対応する。オフセット(符号+日数)はextract_date_cross_ref_offset_days()で取り出し、
+# build_generation_constraints.Rのdate_ref_boundsに反映する(参照先フィールドの値にオフセットを
+# 加減した値を下限/上限として使う)
+date_cross_ref_pattern <- "^\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*(?:([+-])\\s*([0-9]+)\\.days?)?\\s*$"
 
 extract_date_cross_ref_alias <- function(validator_type, value) {
   m <- str_match(value, date_cross_ref_pattern)
@@ -101,6 +101,14 @@ extract_date_cross_ref_alias <- function(validator_type, value) {
 extract_date_cross_ref_field <- function(validator_type, value) {
   m <- str_match(value, date_cross_ref_pattern)
   if_else(validator_type == "date" & !is.na(m[, 1]), str_c("field", m[, 3]), NA_character_)
+}
+
+# ref('sheet_alias', N)+150.days / ref('sheet_alias', N)-28.daysの符号付き日数オフセットを
+# 数値(例: 150, -28)で取り出す。オフセットが無い場合はNA
+extract_date_cross_ref_offset_days <- function(validator_type, value) {
+  m <- str_match(value, date_cross_ref_pattern)
+  sign_val <- if_else(m[, 4] == "-", -1, 1)
+  if_else(validator_type == "date" & !is.na(m[, 1]) & !is.na(m[, 5]), sign_val * as.numeric(m[, 5]), NA_real_)
 }
 
 # value(例: field2=='ADVERSE EVENT'、f4=='Y' || f4=='N'、field22==2 || field22=='5<='、field6=="Y")を
@@ -447,6 +455,7 @@ build_validator_table <- function(sheets) {
         extract_formula_field_ref(validator_type, validator_key, value)
       ),
       date_ref_alias_name = extract_date_cross_ref_alias(validator_type, value),
+      date_ref_offset_days = extract_date_cross_ref_offset_days(validator_type, value),
       numeric_value = coalesce(
         extract_numeric_value(validator_type, value),
         extract_formula_bound_value(validator_type, validator_key, value)

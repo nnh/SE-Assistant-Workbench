@@ -415,7 +415,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       validator_type == "date", !is.na(bound_type), !is.na(ref_field),
       !is.na(date_ref_alias_name) | ref_field != field_name
     ) %>%
-    distinct(alias_name, field_name, ref_field, bound_type, date_ref_alias_name) %>%
+    distinct(alias_name, field_name, ref_field, bound_type, date_ref_alias_name, date_ref_offset_days) %>%
     # ref('sheet_alias', N)形式の他シート参照(date_ref_alias_name)があればそちらを、無ければ
     # 従来通り自分自身と同じalias_nameを参照先のlookupに使う
     mutate(ref_lookup_alias_name = coalesce(date_ref_alias_name, alias_name)) %>%
@@ -429,7 +429,7 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
       field_to_label %>% rename(ref_label = label),
       by = c("ref_lookup_alias_name" = "alias_name", "ref_field" = "field")
     ) %>%
-    transmute(alias_name, label, cdisc_variable, ref_alias_name = ref_lookup_alias_name, ref_label, ref_cdisc_variable, bound_type) %>%
+    transmute(alias_name, label, cdisc_variable, ref_alias_name = ref_lookup_alias_name, ref_label, ref_cdisc_variable, bound_type, offset_days = date_ref_offset_days) %>%
     filter(!is.na(cdisc_variable), !is.na(ref_cdisc_variable)) %>%
     distinct()
 

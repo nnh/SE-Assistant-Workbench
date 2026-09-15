@@ -253,6 +253,32 @@ dm %>% check_date_before_today(c("RFSTDTC"), domain_name = "DM")
 dm %>% check_date_after_var_before_today("RFICDTC", "BRTHDTC", domain_name = "DM")
 c("SEX", "RACE", "ETHNIC", "COUNTRY") %>% walk(~ run_value_equals_checks_from_csv(dm, "DM", .x, fixed_value_checks_csv_path))
 
+# DD
+c("DDTESTCD", "DDTEST", "DDORRES") %>% walk(~ run_value_equals_checks_from_csv(dd, "DD", .x, fixed_value_checks_csv_path))
+# DDのUSUBJIDとDSの死亡(DSTERM=="Death")のUSUBJIDが一致することを確認する(どちらか一方にしか
+# いない場合はNG)
+dd_usubjid <- dd %>% pull(USUBJID) %>% unique()
+ds_death_usubjid <- ds %>% filter(DSTERM == "DEATH") %>% pull(USUBJID) %>% unique()
+if (!setequal(dd_usubjid, ds_death_usubjid)) {
+  stop(str_c(
+    "DD/DS(Death)対象USUBJID一致チェック: NG(DDのみ: ", paste(setdiff(dd_usubjid, ds_death_usubjid), collapse = ", "),
+    " / DS(Death)のみ: ", paste(setdiff(ds_death_usubjid, dd_usubjid), collapse = ", "), ")"
+  ))
+}
+cat("DD/DS(Death)対象USUBJID一致チェック: OK(", length(dd_usubjid), "件)\n", sep = "")
+
+# DS
+tmp_ds <- ds %>% filter(DSCAT == "DISPOSITION EVENT")
+tmp_dm <- dm %>% select(USUBJID, RFSTDTC)
+tmp_ds_2 <- tmp_ds %>% inner_join(tmp_dm, by="USUBJID")
+tmp_ds_2 %>% check_date_after_var_before_today("DSSTDTC", "RFSTDTC", domain_name = "DS")
+c("DSTERM", "DSSTDTC", "DSDTC") %>% check_required_vars(tmp_ds, ., domain_name = "DS")
+suffix <- "_1"
+ds_target_cols <- c("DSTERM", "EPOCH")
+tmp_ds <- tmp_ds %>% rename_with(~ str_c(.x, suffix), all_of(ds_target_cols))
+str_c(ds_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ds, "DS", .x, fixed_value_checks_csv_path))
+tmp_ds %>% check_date_after_var_before_today("DSDTC", "DSSTDTC", domain_name = "DS")
+
 # EC
 tmp_ec <- ec %>% filter(ECTRT == "PREDNISOLONE SODIUM SUCCINATE" & VISITNUM == 150)
 c("ECDOSE") %>% check_required_vars(tmp_ec, ., domain_name="EC")
@@ -856,12 +882,11 @@ check_osteonecrosis_fa("osteonecrosis3", "3000")
 
 # sct1のPRSTDTC(移植日)。osteonecrosis3のFADTC/QSDTCの下限参照(ref('sct1',16)+150.days)先
 tmp_sct1_prstdtc_ref <- pr %>% filter(PRSPID == "sct1") %>% select(USUBJID, sct1_prstdtc = PRSTDTC)
-# osteonecrosis3のFADTC(field9)は、EDC仕様上sct1のPRSTDTC以降であることが期待される(オフセット自体は
-# 下限には厳密には反映せず、参照先フィールドの値をそのまま下限にする既存方針を踏襲)。osteonecrosis1/2の
-# FADTCには同様の参照は無い
+# osteonecrosis3のFADTC(field9)は、EDC仕様上sct1のPRSTDTC+150日以降であることが期待される。
+# osteonecrosis1/2のFADTCには同様の参照は無い
 fa %>% filter(FASPID == "osteonecrosis3" & FATESTCD == "OCCUR") %>%
   inner_join(tmp_sct1_prstdtc_ref, by = "USUBJID") %>%
-  check_date_after_var_before_today("FADTC", "sct1_prstdtc", domain_name = "FA")
+  check_date_after_var_before_today("FADTC", "sct1_prstdtc", domain_name = "FA", offset_days = 150)
 
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
@@ -1172,23 +1197,22 @@ check_qs_osteo_testcd(qs, fa, "osteonecrosis1", "PNSEVIDX", "_2", fixed_value_ch
 check_qs_osteo_testcd(qs, fa, "osteonecrosis2", "IMOBIDX", "_3", fixed_value_checks_csv_path)
 check_qs_osteo_testcd(qs, fa, "osteonecrosis2", "PNSEVIDX", "_4", fixed_value_checks_csv_path)
 
-# osteonecrosis2のQSDTC(field27/field36)は、EDC仕様上maitenanceシートのSVENDTC以降であることが
-# 期待される(validate_date_after_or_equal_to: "ref('maitenance',829)-28.days"。オフセット自体は
-# 下限には厳密には反映せず、参照先フィールドの値をそのまま下限にする既存方針を踏襲)。osteonecrosis1の
+# osteonecrosis2のQSDTC(field27/field36)は、EDC仕様上maitenanceシートのSVENDTC-28日以降であることが
+# 期待される(validate_date_after_or_equal_to: "ref('maitenance',829)-28.days")。osteonecrosis1の
 # QSDTCには同様の参照は無い
 tmp_qs_maitenance_ref <- sv %>% filter(SVSPID == "maitenance") %>% select(USUBJID, maitenance_svendtc = SVENDTC)
 qs %>% filter(QSSPID == "osteonecrosis2") %>%
   inner_join(tmp_qs_maitenance_ref, by = "USUBJID") %>%
-  check_date_after_var_before_today("QSDTC", "maitenance_svendtc", domain_name = "QS")
+  check_date_after_var_before_today("QSDTC", "maitenance_svendtc", domain_name = "QS", offset_days = -28)
 
 check_qs_osteo_testcd(qs, fa, "osteonecrosis3", "IMOBIDX", "_5", fixed_value_checks_csv_path)
 check_qs_osteo_testcd(qs, fa, "osteonecrosis3", "PNSEVIDX", "_6", fixed_value_checks_csv_path)
 
-# osteonecrosis3のQSDTC(field27/field36)も、FADTCと同じくsct1のPRSTDTC以降であることが期待される
+# osteonecrosis3のQSDTC(field27/field36)も、FADTCと同じくsct1のPRSTDTC+150日以降であることが期待される
 # (ref('sct1',16)+150.days)
 qs %>% filter(QSSPID == "osteonecrosis3") %>%
   inner_join(tmp_sct1_prstdtc_ref, by = "USUBJID") %>%
-  check_date_after_var_before_today("QSDTC", "sct1_prstdtc", domain_name = "QS")
+  check_date_after_var_before_today("QSDTC", "sct1_prstdtc", domain_name = "QS", offset_days = 150)
 
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
