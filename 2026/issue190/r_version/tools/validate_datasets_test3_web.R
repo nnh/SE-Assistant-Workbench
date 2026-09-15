@@ -751,7 +751,11 @@ check_fa_grade_panel("blin3", "1700")
 check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
-check_fa_grade_panel("maitenance", "2300")
+# maitenanceのGRADEパネル(FATESTCD=="GRADE"の約79項目)は、EDC仕様上VISITNUMの既定値が"150"
+# (SVのVISITNUM"2300"とは別。おそらくprephaseシートのGRADEパネルからのコピー元由来)。
+# "2300"を指定すると常に0件ヒットし、シード・nを変えても解消しない(CSVのexpected_valueが
+# 一度も出現しないという警告が多発する)ため、実際のVISITNUMである"150"を指定する
+check_fa_grade_panel("maitenance", "150")
 
 # maitenanceのFA(維持療法期間の入院回数)。FATESTCD="NUMEPISD"の2項目(感染症による入院/非感染症に
 # よる入院)は、GRADEパネル(79項目)とは別にFAORRESが必須の数値(0以上、上限無し)であることを
@@ -790,60 +794,74 @@ check_immuno_astctgr("immunomonitoring1")
 check_immuno_astctgr("immunomonitoring2")
 check_immuno_astctgr("immunomonitoring3")
 
-# osteonecrosis1のFA。OCCUR(骨壊死の有無、label000)とGRADE(重症度、label001。OCCUR=="Y"のときのみ)の
+# osteonecrosis1/2/3共通。OCCUR(骨壊死の有無、label000)とGRADE(重症度、label001。OCCUR=="Y"のときのみ)の
 # 2段階構成で、GRADEの実施可否がFASTATではなくOCCUR自身のFAORRESに連動するため、
 # check_fa_grade_panel()(FATESTCD=="GRADE"のみの79項目パネル用)にもcheck_fa_testcd_no_loc()の
 # NOT DONE型(FASTATで実施可否が決まる前提)にも当てはまらず、個別に書く
-tmp_fa <- fa %>% filter(FASPID == "osteonecrosis1" & VISITNUM == "1800")
+check_osteonecrosis_fa <- function(spid, visitnum) {
+  tmp_fa <- fa %>% filter(FASPID == spid & VISITNUM == visitnum)
 
-tmp_fa_occur <- tmp_fa %>% filter(FATESTCD == "OCCUR")
-tmp_fa_occur %>% filter(FASTAT != "NOT DONE") %>% check_required_vars(c("FAORRES", "FADTC"), domain_name = "FA")
-tmp_fa_occur %>% filter(FASTAT == "NOT DONE") %>% check_blank_vars(c("FAORRES", "FADTC"), domain_name = "FA")
+  tmp_fa_occur <- tmp_fa %>% filter(FATESTCD == "OCCUR")
+  tmp_fa_occur %>% filter(FASTAT != "NOT DONE") %>% check_required_vars(c("FAORRES", "FADTC"), domain_name = "FA")
+  tmp_fa_occur %>% filter(FASTAT == "NOT DONE") %>% check_blank_vars(c("FAORRES", "FADTC"), domain_name = "FA")
 
-# FASTAT(field10)自体の必須条件: validate_presence_ifがage(初発診断日(MH MHCAT=="PRIMARY DIAGNOSIS"の
-# MHSTDTC), 生年月日(DM BRTHDTC))>39。すなわち初発診断日時点の年齢が39歳を超える被験者だけFASTATに
-# 値が入りうる(コード定義は"NOT DONE"の1択のみなので、該当すれば必ず"NOT DONE"、非該当なら必ず空欄になる)。
-# 実データの年齢を計算し、この条件が正しく反映されているか確認する
-diagnosis_age <- mh %>%
-  filter(MHCAT == "PRIMARY DIAGNOSIS") %>%
-  select(USUBJID, diag_dtc = MHSTDTC) %>%
-  inner_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID") %>%
-  mutate(diagnosis_age = as.numeric(as.Date(diag_dtc) - as.Date(BRTHDTC)) / 365.25)
-tmp_fa_occur_age <- tmp_fa_occur %>% inner_join(diagnosis_age, by = "USUBJID")
-mismatch_should_be_blank <- tmp_fa_occur_age %>% filter(diagnosis_age <= 39 & !(is.na(FASTAT) | FASTAT == ""))
-mismatch_should_be_not_done <- tmp_fa_occur_age %>% filter(diagnosis_age > 39 & (is.na(FASTAT) | FASTAT != "NOT DONE"))
-if (nrow(mismatch_should_be_blank) > 0 || nrow(mismatch_should_be_not_done) > 0) {
-  stop(str_c(
-    "FA: FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: NG(",
-    "39歳以下でFASTATが空欄でない: ", nrow(mismatch_should_be_blank), "件(",
-    paste(mismatch_should_be_blank[["USUBJID"]], collapse = ", "), ")、",
-    "39歳超でFASTATが\"NOT DONE\"でない: ", nrow(mismatch_should_be_not_done), "件(",
-    paste(mismatch_should_be_not_done[["USUBJID"]], collapse = ", "), "))"
-  ))
+  # FASTAT(field10)自体の必須条件: validate_presence_ifがage(初発診断日(MH MHCAT=="PRIMARY DIAGNOSIS"の
+  # MHSTDTC), 生年月日(DM BRTHDTC))>39。すなわち初発診断日時点の年齢が39歳を超える被験者だけFASTATに
+  # 値が入りうる(コード定義は"NOT DONE"の1択のみなので、該当すれば必ず"NOT DONE"、非該当なら必ず空欄になる)。
+  # 実データの年齢を計算し、この条件が正しく反映されているか確認する
+  diagnosis_age <- mh %>%
+    filter(MHCAT == "PRIMARY DIAGNOSIS") %>%
+    select(USUBJID, diag_dtc = MHSTDTC) %>%
+    inner_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID") %>%
+    mutate(diagnosis_age = as.numeric(as.Date(diag_dtc) - as.Date(BRTHDTC)) / 365.25)
+  tmp_fa_occur_age <- tmp_fa_occur %>% inner_join(diagnosis_age, by = "USUBJID")
+  mismatch_should_be_blank <- tmp_fa_occur_age %>% filter(diagnosis_age <= 39 & !(is.na(FASTAT) | FASTAT == ""))
+  mismatch_should_be_not_done <- tmp_fa_occur_age %>% filter(diagnosis_age > 39 & (is.na(FASTAT) | FASTAT != "NOT DONE"))
+  if (nrow(mismatch_should_be_blank) > 0 || nrow(mismatch_should_be_not_done) > 0) {
+    stop(str_c(
+      "FA(", spid, "): FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: NG(",
+      "39歳以下でFASTATが空欄でない: ", nrow(mismatch_should_be_blank), "件(",
+      paste(mismatch_should_be_blank[["USUBJID"]], collapse = ", "), ")、",
+      "39歳超でFASTATが\"NOT DONE\"でない: ", nrow(mismatch_should_be_not_done), "件(",
+      paste(mismatch_should_be_not_done[["USUBJID"]], collapse = ", "), "))"
+    ))
+  }
+  cat(
+    "FA(", spid, "): FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: OK(対象",
+    nrow(tmp_fa_occur_age), "件中、39歳超: ", sum(tmp_fa_occur_age[["diagnosis_age"]] > 39), "件)\n",
+    sep = ""
+  )
+
+  suffix <- "_15"
+  tmp_fa_occur_2 <- tmp_fa_occur %>% rename_with(~ str_c(.x, suffix), c("FATEST", "FAOBJ"))
+  str_c(c("FATEST", "FAOBJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_2, "FA", .x, fixed_value_checks_csv_path))
+  # FAORRESの値チェックはFASTAT!="NOT DONE"(実施済み)の行だけを対象にする
+  tmp_fa_occur_done <- tmp_fa_occur_2 %>% filter(FASTAT != "NOT DONE") %>% rename_with(~ str_c(.x, suffix), "FAORRES")
+  str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_done, "FA", .x, fixed_value_checks_csv_path))
+
+  tmp_fa_grade <- tmp_fa %>% filter(FATESTCD == "GRADE")
+  suffix <- "_16"
+  tmp_fa_grade_2 <- tmp_fa_grade %>% rename_with(~ str_c(.x, suffix), c("FATEST", "FACAT", "FAOBJ"))
+  str_c(c("FATEST", "FACAT", "FAOBJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_2, "FA", .x, fixed_value_checks_csv_path))
+  tmp_fa_occur_ref <- tmp_fa_occur %>% select(USUBJID, occur_orres = FAORRES)
+  tmp_fa_grade_3 <- tmp_fa_grade_2 %>% inner_join(tmp_fa_occur_ref, by="USUBJID")
+  tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% check_required_vars("FAORRES", domain_name = "FA")
+  tmp_fa_grade_3 %>% filter(occur_orres != "Y") %>% check_blank_vars("FAORRES", domain_name = "FA")
+  tmp_fa_grade_y <- tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
+  str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_y, "FA", .x, fixed_value_checks_csv_path))
 }
-cat(
-  "FA: FASTAT(field10)の年齢条件(初発診断日時点の年齢>39でのみ提示)チェック: OK(対象",
-  nrow(tmp_fa_occur_age), "件中、39歳超: ", sum(tmp_fa_occur_age[["diagnosis_age"]] > 39), "件)\n",
-  sep = ""
-)
+check_osteonecrosis_fa("osteonecrosis1", "1800")
+check_osteonecrosis_fa("osteonecrosis2", "2500")
+check_osteonecrosis_fa("osteonecrosis3", "3000")
 
-suffix <- "_15"
-tmp_fa_occur_2 <- tmp_fa_occur %>% rename_with(~ str_c(.x, suffix), "FATEST")
-str_c("FATEST", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_2, "FA", .x, fixed_value_checks_csv_path))
-# FAORRESの値チェックはFASTAT!="NOT DONE"(実施済み)の行だけを対象にする
-tmp_fa_occur_done <- tmp_fa_occur_2 %>% filter(FASTAT != "NOT DONE") %>% rename_with(~ str_c(.x, suffix), "FAORRES")
-str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_done, "FA", .x, fixed_value_checks_csv_path))
-
-tmp_fa_grade <- tmp_fa %>% filter(FATESTCD == "GRADE")
-suffix <- "_16"
-tmp_fa_grade_2 <- tmp_fa_grade %>% rename_with(~ str_c(.x, suffix), c("FATEST", "FACAT"))
-str_c(c("FATEST", "FACAT"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_2, "FA", .x, fixed_value_checks_csv_path))
-tmp_fa_occur_ref <- tmp_fa_occur %>% select(USUBJID, occur_orres = FAORRES)
-tmp_fa_grade_3 <- tmp_fa_grade_2 %>% inner_join(tmp_fa_occur_ref, by="USUBJID")
-tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% check_required_vars("FAORRES", domain_name = "FA")
-tmp_fa_grade_3 %>% filter(occur_orres != "Y") %>% check_blank_vars("FAORRES", domain_name = "FA")
-tmp_fa_grade_y <- tmp_fa_grade_3 %>% filter(occur_orres == "Y") %>% rename(!!str_c("FAORRES", suffix) := FAORRES)
-str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_y, "FA", .x, fixed_value_checks_csv_path))
+# sct1のPRSTDTC(移植日)。osteonecrosis3のFADTC/QSDTCの下限参照(ref('sct1',16)+150.days)先
+tmp_sct1_prstdtc_ref <- pr %>% filter(PRSPID == "sct1") %>% select(USUBJID, sct1_prstdtc = PRSTDTC)
+# osteonecrosis3のFADTC(field9)は、EDC仕様上sct1のPRSTDTC以降であることが期待される(オフセット自体は
+# 下限には厳密には反映せず、参照先フィールドの値をそのまま下限にする既存方針を踏襲)。osteonecrosis1/2の
+# FADTCには同様の参照は無い
+fa %>% filter(FASPID == "osteonecrosis3" & FATESTCD == "OCCUR") %>%
+  inner_join(tmp_sct1_prstdtc_ref, by = "USUBJID") %>%
+  check_date_after_var_before_today("FADTC", "sct1_prstdtc", domain_name = "FA")
 
 suffix <- "_11"
 target_fa_cols <- c("FATEST", "FAOBJ", "FACAT", "FAORRES", "VISITNUM")
@@ -1122,18 +1140,18 @@ pwalk(pr_checks, function(visitnum, prtrt, suffix) {
   str_c(pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr, "PR", .x, fixed_value_checks_csv_path))
 })
 
-# osteonecrosis1のQS。QSTESTCD(IMOBIDX=Immobility Index/PNSEVIDX=Pain Severity Index)ごとに、
+# osteonecrosis1/2/3共通。QSTESTCD(IMOBIDX=Immobility Index/PNSEVIDX=Pain Severity Index)ごとに、
 # QSORRES(1〜4の順序尺度)自体がQSSTAT(空欄=実施済み)かつGRADE(FA GRADE、骨壊死のGrade。label=001の
 # FAORRES)が2以上のときだけ値を持つ(EDC仕様のvalidate_presence_if: "f16>=2&&STAT.blank?"、
 # f16はGRADE)。QSDTCはQSSTATが空欄、かつQSORRESに値がある(=上記条件を満たす)ときだけ値を持つ
 is_blank_val <- function(x) is.na(x) | x == ""
-check_qs_osteo_testcd <- function(qs, fa, qstestcd, suffix, fixed_value_checks_csv_path) {
+check_qs_osteo_testcd <- function(qs, fa, spid, qstestcd, suffix, fixed_value_checks_csv_path) {
   target_qs_cols <- c("QSTEST", "QSCAT", "VISITNUM")
-  tmp_qs <- qs %>% filter(QSSPID == "osteonecrosis1" & QSTESTCD == qstestcd)
+  tmp_qs <- qs %>% filter(QSSPID == spid & QSTESTCD == qstestcd)
   tmp_qs_2 <- tmp_qs %>% rename_with(~ str_c(.x, suffix), all_of(target_qs_cols))
   str_c(target_qs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_qs_2, "QS", .x, fixed_value_checks_csv_path))
 
-  grade <- fa %>% filter(FASPID == "osteonecrosis1" & FATESTCD == "GRADE") %>% select(USUBJID, grade_orres = FAORRES)
+  grade <- fa %>% filter(FASPID == spid & FATESTCD == "GRADE") %>% select(USUBJID, grade_orres = FAORRES)
   tmp_qs_grade <- tmp_qs %>% left_join(grade, by = "USUBJID") %>%
     mutate(grade_num = suppressWarnings(as.numeric(grade_orres)))
   stat_done <- !(!is.na(tmp_qs_grade[["QSSTAT"]]) & tmp_qs_grade[["QSSTAT"]] == "NOT DONE")
@@ -1147,8 +1165,30 @@ check_qs_osteo_testcd <- function(qs, fa, qstestcd, suffix, fixed_value_checks_c
   tmp_qs_grade %>% filter(stat_done & orres_present) %>% check_required_vars("QSDTC", domain_name = "QS")
   tmp_qs_grade %>% filter(!(stat_done & orres_present)) %>% check_blank_vars("QSDTC", domain_name = "QS")
 }
-check_qs_osteo_testcd(qs, fa, "IMOBIDX", "_1", fixed_value_checks_csv_path)
-check_qs_osteo_testcd(qs, fa, "PNSEVIDX", "_2", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "osteonecrosis1", "IMOBIDX", "_1", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "osteonecrosis1", "PNSEVIDX", "_2", fixed_value_checks_csv_path)
+# QSTEST/QSCATはosteonecrosis1と同一の固定値だが、VISITNUMが1800→2500と異なるため
+# 同じsuffixは再利用できず、新しいsuffix "_3"/"_4"を使う
+check_qs_osteo_testcd(qs, fa, "osteonecrosis2", "IMOBIDX", "_3", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "osteonecrosis2", "PNSEVIDX", "_4", fixed_value_checks_csv_path)
+
+# osteonecrosis2のQSDTC(field27/field36)は、EDC仕様上maitenanceシートのSVENDTC以降であることが
+# 期待される(validate_date_after_or_equal_to: "ref('maitenance',829)-28.days"。オフセット自体は
+# 下限には厳密には反映せず、参照先フィールドの値をそのまま下限にする既存方針を踏襲)。osteonecrosis1の
+# QSDTCには同様の参照は無い
+tmp_qs_maitenance_ref <- sv %>% filter(SVSPID == "maitenance") %>% select(USUBJID, maitenance_svendtc = SVENDTC)
+qs %>% filter(QSSPID == "osteonecrosis2") %>%
+  inner_join(tmp_qs_maitenance_ref, by = "USUBJID") %>%
+  check_date_after_var_before_today("QSDTC", "maitenance_svendtc", domain_name = "QS")
+
+check_qs_osteo_testcd(qs, fa, "osteonecrosis3", "IMOBIDX", "_5", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "osteonecrosis3", "PNSEVIDX", "_6", fixed_value_checks_csv_path)
+
+# osteonecrosis3のQSDTC(field27/field36)も、FADTCと同じくsct1のPRSTDTC以降であることが期待される
+# (ref('sct1',16)+150.days)
+qs %>% filter(QSSPID == "osteonecrosis3") %>%
+  inner_join(tmp_sct1_prstdtc_ref, by = "USUBJID") %>%
+  check_date_after_var_before_today("QSDTC", "sct1_prstdtc", domain_name = "QS")
 
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")

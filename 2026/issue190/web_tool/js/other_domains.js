@@ -313,7 +313,7 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
   const refVars = [...new Set(refInstances.map((r) => r.ref_cdisc_variable))];
 
   refVars.forEach((refVar) => {
-    if (refVar in data[0]) return;
+    if (data.some((row) => refVar in row)) return;
     const refPrefix = cdiscVariableToPrefix ? cdiscVariableToPrefix[refVar] : null;
     if (!refPrefix || !builtDomains || !builtDomains[refPrefix] || builtDomains[refPrefix].length === 0) return;
     // ownPrefixが指定されている場合、参照先が自分自身のドメインなら注入しない。wave分割時、
@@ -323,7 +323,11 @@ function injectCrossDomainRefs(data, presenceConditions, fieldRefBounds, builtDo
     // 別途正しく処理される)
     if (ownPrefix && refPrefix === ownPrefix) return;
     const refData = builtDomains[refPrefix];
-    if (!(refVar in refData[0])) return;
+    // refData[0](先頭行)だけで列の有無を判定すると、wave分割で蓄積されたデータは行ごとに
+    // 保持する列が異なりうる(例: SVは複数aliasのwaveに分けて生成されるため、先頭行がたまたま
+    // SVENDTCを持たないalias(prephase)の行で、後方にSVENDTCを持つalias(maitenance)の行が
+    // 存在していても「列が無い」と誤判定されていた)。全行を見て判定する
+    if (!refData.some((row) => refVar in row)) return;
     const hasRefAlias = "alias_name" in refData[0] && "label" in refData[0];
     // 参照先がbuildGenericDomain由来(例: SV)の場合、alias_nameはあってもlabelが無い
     // (繰り返し項目を持たないため)。hasRefAliasはlabelも必須なのでこのケースではfalseになるが、

@@ -86,8 +86,12 @@ extract_ref_field <- function(validator_type, value) {
 # ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
 # (alias_name)とフィールド名を取り出す
 # EDC仕様側の値に"ref('registration',12) "のような末尾スペースが付与されていることがあるため、
-# 前後の空白を許容する(付けないと完全一致に失敗し、この参照が無かったものとして扱われてしまう)
-date_cross_ref_pattern <- "^\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*$"
+# 前後の空白を許容する(付けないと完全一致に失敗し、この参照が無かったものとして扱われてしまう)。
+# "ref('maitenance',829)-28.days"のような日数オフセット付きの他シート参照(EDC仕様上使用例あり)にも
+# 対応する。同一シート内参照(extract_ref_field)と同様、オフセット自体は下限として厳密には反映せず、
+# 参照先フィールドの値をそのまま下限にする(その差はcheck_date_after_var_before_today等の>=判定には
+# 影響しない、既存の方針を踏襲)
+date_cross_ref_pattern <- "^\\s*ref\\('([^']+)'\\s*,\\s*([0-9]+)\\)\\s*(?:[+-]\\s*[0-9]+\\.days?)?\\s*$"
 
 extract_date_cross_ref_alias <- function(validator_type, value) {
   m <- str_match(value, date_cross_ref_pattern)

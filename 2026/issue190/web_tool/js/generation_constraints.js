@@ -63,8 +63,11 @@ function extractRefField(validatorType, value) {
 // valueが"ref('sheet_alias', N)"のような他シート参照の場合(date型バリデータの
 // validate_date_after_or_equal_to/validate_date_before_or_equal_toで使われる形。presence/formula側の
 // ref('sheet_alias', N)=='値'とは異なり、値の比較を伴わない単独のref()呼び出し)、参照先のシート
-// (alias_name)とフィールド名を取り出す(Rのextract_date_cross_ref_alias/extract_date_cross_ref_fieldに対応)
-const DATE_CROSS_REF_PATTERN = /^\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*$/;
+// (alias_name)とフィールド名を取り出す(Rのextract_date_cross_ref_alias/extract_date_cross_ref_fieldに対応)。
+// "ref('maitenance',829)-28.days"のような日数オフセット付きの他シート参照(EDC仕様上使用例あり)にも
+// 対応する。同一シート内参照と同様、オフセット自体は下限として厳密には反映せず、参照先フィールドの
+// 値をそのまま下限にする(既存の方針を踏襲)
+const DATE_CROSS_REF_PATTERN = /^\s*ref\('([^']+)'\s*,\s*([0-9]+)\)\s*(?:[+-]\s*[0-9]+\.days?)?\s*$/;
 
 function extractDateCrossRefAlias(validatorType, value) {
   if (validatorType !== "date" || value == null) return null;
