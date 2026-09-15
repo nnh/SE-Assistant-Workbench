@@ -751,6 +751,24 @@ check_fa_grade_panel("blin3", "1700")
 check_fa_grade_panel("reinduction1", "1900")
 check_fa_grade_panel("reinduction2", "2000")
 check_fa_grade_panel("reinduction3", "2100")
+check_fa_grade_panel("maitenance", "2300")
+
+# maitenanceのFA(維持療法期間の入院回数)。FATESTCD="NUMEPISD"の2項目(感染症による入院/非感染症に
+# よる入院)は、GRADEパネル(79項目)とは別にFAORRESが必須の数値(0以上、上限無し)であることを
+# 確認する。FATEST/FATESTCD/FAORRESU/FAEPOCH/VISITNUMは2項目共通のためまとめてチェックし、
+# FAOBJだけがlabel(099/100)ごとに異なるため個別にチェックする
+tmp_fa <- fa %>% filter(FASPID == "maitenance" & FATESTCD == "NUMEPISD")
+c("FAORRES") %>% check_required_vars(tmp_fa, ., domain_name = "FA")
+tmp_fa %>% check_numeric_range("FAORRES", 0, domain_name = "FA")
+fa_numepisd_target_cols <- c("FATEST", "FATESTCD", "FAORRESU", "FAEPOCH", "VISITNUM")
+suffix <- "_17"
+tmp_fa_2 <- tmp_fa %>% rename_with(~ str_c(.x, suffix), all_of(fa_numepisd_target_cols))
+str_c(fa_numepisd_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_2, "FA", .x, fixed_value_checks_csv_path))
+tmp_fa_infection <- tmp_fa %>% filter(FAOBJ == "Hospitalization for Infection") %>% rename_with(~ str_c(.x, suffix), "FAOBJ")
+str_c("FAOBJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_infection, "FA", .x, fixed_value_checks_csv_path))
+suffix <- "_18"
+tmp_fa_noninfection <- tmp_fa %>% filter(FAOBJ == "Hospitalization for Non-Infection") %>% rename_with(~ str_c(.x, suffix), "FAOBJ")
+str_c("FAOBJ", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_noninfection, "FA", .x, fixed_value_checks_csv_path))
 
 # BLIN群イムノモニタリング各シート(immunomonitoring1/2/3)のASTCTGR(ASTCT Consensus Grading)。
 # GRADEパネル(FATESTCD=="GRADE")とは別のテストコードで、FAOBJがCytokine release syndrome/
@@ -1165,6 +1183,7 @@ tmp_rs_2 %>% check_date_after_var_before_today("RSDTC", "tmp_dtc", domain_name =
 # SC
 c("SCTESTCD", "SCTEST") %>% walk(~ run_value_equals_checks_from_csv(sc, "SC", .x, fixed_value_checks_csv_path))
 "SCORRES" %>% check_required_vars(sc, ., domain_name = "SC")
+
 # SV
 tmp_mh <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, MHSTDTC)
 sv <- sv %>% inner_join(tmp_mh, by="USUBJID")
@@ -1362,3 +1381,13 @@ tmp_sv <- sv %>% filter(SVSPID == "reinduction3")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# maitenanceのSV(維持療法期間)。SVSTDTC自体には明示的な下限参照は無いが、SVENDTCはSVSTDTC以降で
+# あることが期待される(ref('maitenance', ...)、同一label内の自己参照)。VISITNUMは2300のため
+# 新しいsuffix "_15"を使う
+tmp_sv <- sv %>% filter(SVSPID == "maitenance")
+c("SVSTDTC", "SVENDTC") %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+tmp_sv %>% check_date_after_var_before_today("SVENDTC", "SVSTDTC", domain_name = "SV")
+suffix <- "_15"
+tmp_sv_x <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv_x, "SV", .x, fixed_value_checks_csv_path))
