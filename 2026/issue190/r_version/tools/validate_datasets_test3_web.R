@@ -91,6 +91,7 @@ cm_named_checks <- tribble(
   1600, "ANTIFUNGAL DRUG", "_1",
   1900, "ANTIFUNGAL DRUG", "_1",
   2000, "ANTIFUNGAL DRUG", "_1",
+  2100, "ANTIFUNGAL DRUG", "_1",
   200, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   300, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   400, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
@@ -101,6 +102,7 @@ cm_named_checks <- tribble(
   1600, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   1900, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   2000, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
+  2100, "ANTITHROMBIN GAMMA(GENETICAL RECOMBINATION)", "_2",
   200, "FRESH-FROZEN HUMAN PLASMA", "_3",
   300, "FRESH-FROZEN HUMAN PLASMA", "_3",
   400, "FRESH-FROZEN HUMAN PLASMA", "_3",
@@ -110,7 +112,8 @@ cm_named_checks <- tribble(
   1500, "FRESH-FROZEN HUMAN PLASMA", "_3",
   1600, "FRESH-FROZEN HUMAN PLASMA", "_3",
   1900, "FRESH-FROZEN HUMAN PLASMA", "_3",
-  2000, "FRESH-FROZEN HUMAN PLASMA", "_3"
+  2000, "FRESH-FROZEN HUMAN PLASMA", "_3",
+  2100, "FRESH-FROZEN HUMAN PLASMA", "_3"
 )
 pwalk(cm_named_checks, function(visitnum, cmtrt, suffix) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum)
@@ -215,7 +218,15 @@ cm_anticoag_checks <- tribble(
   2000, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
   2000, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
   2000, "HEPARINOID", "SECOND PREVENTION",
-  2000, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
+  2000, "OTHER ANTICOAGULANT", "SECOND PREVENTION",
+  2100, "UNFRACTIONATED HEPARIN", "FIRST PREVENTION",
+  2100, "LOW MOLECULAR HEPARIN", "FIRST PREVENTION",
+  2100, "HEPARINOID", "FIRST PREVENTION",
+  2100, "OTHER ANTICOAGULANT", "FIRST PREVENTION",
+  2100, "UNFRACTIONATED HEPARIN", "SECOND PREVENTION",
+  2100, "LOW MOLECULAR HEPARIN", "SECOND PREVENTION",
+  2100, "HEPARINOID", "SECOND PREVENTION",
+  2100, "OTHER ANTICOAGULANT", "SECOND PREVENTION"
 )
 pwalk(cm_anticoag_checks, function(visitnum, cmtrt, cmcat) {
   tmp_cm <- cm %>% filter(CMTRT == cmtrt & VISITNUM == visitnum & CMCAT == cmcat)
@@ -607,15 +618,45 @@ invisible(check_erwasp_crisantaspase(300, "_8", tmp_ec_erwasp_200_ref))
 # suffix "_8"(VISITNUM=300)と同一のため再利用する。VISITNUM=400(先頭)には明示的なref()参照が
 # 無いため、ref_dataを渡さず日付チェックを省略する
 tmp_ec_erwasp_400 <- check_erwasp_crisantaspase(400, "_8")
+ec %>% filter(VISITNUM == 400) %>% check_date_before_today("ECSTDTC", domain_name = "EC")
 tmp_ec_erwasp_400_ref <- tmp_ec_erwasp_400 %>% select(USUBJID, erwasp_400=ECSTDTC)
 tmp_ec_erwasp_1100 <- check_erwasp_crisantaspase(1100, "_8", tmp_ec_erwasp_400_ref)
 tmp_ec_erwasp_1100_ref <- tmp_ec_erwasp_1100 %>% select(USUBJID, erwasp_1100=ECSTDTC)
-invisible(check_erwasp_crisantaspase(1200, "_8", tmp_ec_erwasp_1100_ref))
+tmp_ec_erwasp_1200 <- check_erwasp_crisantaspase(1200, "_8", tmp_ec_erwasp_1100_ref)
+tmp_ec_erwasp_1200_ref <- tmp_ec_erwasp_1200 %>% select(USUBJID, erwasp_1200=ECSTDTC)
 
 # erwasp_jacls02srのCRISANTASPASE(VISITNUM=1900)。ECADJの11コード体系・固定値はsuffix "_8"と
 # 同一のため再利用する。他のerwasp系シートのようなチェーンの続きではなく単独のlabelのため、
 # ref_dataを渡さず日付チェックを省略する
 invisible(check_erwasp_crisantaspase(1900, "_8"))
+
+# erwasp_armblockはVISITNUM=1200からさらに1400→1500→1600と続く(erwasp_sct/erwasp_hrにはこの
+# 中間段階が無いため、CRISANTASPASE&VISITNUM=1400/1500/1600はerwasp_armblockの行のみが該当する)
+tmp_ec_erwasp_1400 <- check_erwasp_crisantaspase(1400, "_8", tmp_ec_erwasp_1200_ref)
+tmp_ec_erwasp_1400_ref <- tmp_ec_erwasp_1400 %>% select(USUBJID, erwasp_1400=ECSTDTC)
+tmp_ec_erwasp_1500 <- check_erwasp_crisantaspase(1500, "_8", tmp_ec_erwasp_1400_ref)
+tmp_ec_erwasp_1500_ref <- tmp_ec_erwasp_1500 %>% select(USUBJID, erwasp_1500=ECSTDTC)
+tmp_ec_erwasp_1600 <- check_erwasp_crisantaspase(1600, "_8", tmp_ec_erwasp_1500_ref)
+tmp_ec_erwasp_1600_ref <- tmp_ec_erwasp_1600 %>% select(USUBJID, erwasp_1600=ECSTDTC)
+
+# erwasp_lrsrir・erwasp_hr・erwasp_armblockのCRISANTASPASE(VISITNUM=2000、ECADJの11コード体系・
+# 固定値はsuffix "_8"と同一)。参照先は3シートで異なる: erwasp_armblockは自身のVISITNUM=1600
+# (ref_labelチェーンの続き)、erwasp_hrは1400/1500/1600を経由せず自身のVISITNUM=1200を直接参照
+# (date_ref_boundsで確認済み)、erwasp_lrsrirはチェーンの先頭で明示的なref()参照が無い単独のlabelの
+# ため対象外。USUBJIDだけでref_dataを結合すると、同じ被験者がerwasp_sct(1200まで)とerwasp_lrsrir
+# (2000)を両方持つ場合にerwasp_sctの1200をerwasp_lrsrirの参照として誤って突き合わせてしまう
+# (実際に発生したバグ)ため、ECSPIDで各シートに絞り込んでから個別にinner_joinする
+tmp_ec_erwasp_2000 <- check_erwasp_crisantaspase(2000, "_8")
+ec %>% filter(ECSPID == "erwasp_lrsrir") %>% check_date_before_today("ECSTDTC", domain_name = "EC")
+
+tmp_ec_erwasp_2000 %>%
+  filter(ECSPID == "erwasp_armblock") %>%
+  inner_join(tmp_ec_erwasp_1600_ref, by = "USUBJID") %>%
+  check_date_after_var_before_today("ECSTDTC", "erwasp_1600", domain_name = "EC")
+tmp_ec_erwasp_2000 %>%
+  filter(ECSPID == "erwasp_hr") %>%
+  inner_join(tmp_ec_erwasp_1200_ref, by = "USUBJID") %>%
+  check_date_after_var_before_today("ECSTDTC", "erwasp_1200", domain_name = "EC")
 
 # reinduction1(VISITNUM=1900)のEC。5薬剤ともECADJにpresence_conditionsが無く常に値を持つため、
 # 従来通りECOCCURでの絞り込み無しでECADJの必須・固定値チェックを行う
@@ -657,6 +698,23 @@ suffix <- "_9"
 ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ", "ECROUTE")
 tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
 str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+
+# reinduction3(VISITNUM=2100)のEC。4薬剤ともECADJにpresence_conditionsが無く常に値を持ち、
+# いずれも6コード体系(CYTARABINE/CYCLOPHOSPHAMIDE HYDRATE/MERCAPTOPURINE HYDRATEはsuffix "_2"、
+# METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE(髄注)はECROUTE="INTRATHECAL"付きの
+# suffix "_5"と同一)のため、いずれも既存suffixを再利用する
+check_reinduction3_ec_drug <- function(drug, suffix, has_route = FALSE) {
+  tmp_ec <- ec %>% filter(ECTRT == drug & VISITNUM == 2100)
+  c("ECOCCUR", "ECADJ") %>% check_required_vars(tmp_ec, ., domain_name ="EC")
+  ec_target_cols <- c("ECMOOD", "ECPRESP", "ECOCCUR", "ECADJ")
+  if (has_route) ec_target_cols <- c(ec_target_cols, "ECROUTE")
+  tmp_ec <- tmp_ec %>% rename_with(~ str_c(.x, suffix), all_of(ec_target_cols))
+  str_c(ec_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec, "EC", .x, fixed_value_checks_csv_path))
+}
+check_reinduction3_ec_drug("CYTARABINE", "_2")
+check_reinduction3_ec_drug("CYCLOPHOSPHAMIDE HYDRATE", "_2")
+check_reinduction3_ec_drug("MERCAPTOPURINE HYDRATE", "_2")
+check_reinduction3_ec_drug("METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE", "_5", has_route = TRUE)
 
 # FA(Findings About)関連チェックはtools/validate_datasets_test3_fa.Rに切り出してある
 source(here("tools/validate_datasets_test3_fa.R"))
@@ -1015,7 +1073,8 @@ pr_checks <- tribble(
   1500, "Central Venous Catheter Placement", "_1",
   1600, "Central Venous Catheter Placement", "_1",
   1900, "Central Venous Catheter Placement", "_1",
-  2000, "Central Venous Catheter Placement", "_1"
+  2000, "Central Venous Catheter Placement", "_1",
+  2100, "Central Venous Catheter Placement", "_1"
 )
 pwalk(pr_checks, function(visitnum, prtrt, suffix) {
   tmp_pr <- pr %>% filter(PRTRT == prtrt & VISITNUM == visitnum)
@@ -1263,6 +1322,18 @@ tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "evaluationtp2_rsdtc", d
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
 suffix <- "_13"
 tmp_sv <- sv %>% filter(SVSPID == "reinduction2")
+tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
+str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+
+# reinduction3のSVSTDTCはreinduction2自身のSVSTDTC以降であることが期待される(ref('reinduction2', ...)。
+# evaluationtp2基準ではない)。VISITNUMは2100のため新しいsuffix "_14"を使う
+tmp_sv_2 <- sv %>% filter(SVSPID == "reinduction2") %>% select(USUBJID, reinduction2_svstdtc=SVSTDTC)
+tmp_sv <- sv %>% filter(SVSPID == "reinduction3") %>% inner_join(tmp_sv_2, by="USUBJID")
+tmp_sv %>% check_date_after_var_before_today("SVSTDTC", "reinduction2_svstdtc", domain_name = "SV")
+"SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
+suffix <- "_14"
+tmp_sv <- sv %>% filter(SVSPID == "reinduction3")
 tmp_sv <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv, "SV", .x, fixed_value_checks_csv_path))
 "SVSTDTC" %>% check_required_vars(tmp_sv, ., domain_name = "SV")
