@@ -143,18 +143,20 @@ extract_presence_ref_value <- function(validator_type, validator_key, value) {
 # value(例: STAT.blank?、ORRES.present?)が"接尾辞.blank?"/"接尾辞.present?"の形の場合、
 # その接尾辞(例: STAT)を取り出す。これは"fieldN=='値'"とは別の書き方で、同じcdisc_sheet_configsブロック内で
 # この接尾辞を持つフィールド(=同じprefixのcdisc_variable、例: FASTAT)が空白/非空白のときだけ値を設定する、という意味。
-# validator_typeは"presence"の場合も"formula"の場合もあるため、validator_keyとパターンだけで判定する
+# validate_formula_ifは値の妥当性検証(フィールドに値がある場合にその値が満たすべき条件)であり、
+# 提示可否(ゲーティング)の意味を持たないため、ここではvalidate_presence_ifのみを対象にする
+# (validate_formula_ifの複雑な式から断片だけを誤って提示条件として抽出してしまうバグがあったため)
 presence_predicate_pattern <- "^([A-Za-z_][A-Za-z0-9_]*)\\.(blank|present)\\?$"
 
 extract_presence_predicate_suffix <- function(validator_key, value) {
-  is_target <- coalesce(validator_key %in% c("validate_presence_if", "validate_formula_if"), FALSE)
+  is_target <- coalesce(validator_key == "validate_presence_if", FALSE)
   m <- str_match(value, presence_predicate_pattern)
   if_else(is_target, m[, 2], NA_character_)
 }
 
 # 上記と同じ条件式から、blank(空白であること)かpresent(非空白であること)かを取り出す
 extract_presence_predicate_type <- function(validator_key, value) {
-  is_target <- coalesce(validator_key %in% c("validate_presence_if", "validate_formula_if"), FALSE)
+  is_target <- coalesce(validator_key == "validate_presence_if", FALSE)
   m <- str_match(value, presence_predicate_pattern)
   if_else(is_target, m[, 3], NA_character_)
 }

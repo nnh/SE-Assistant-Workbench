@@ -245,7 +245,8 @@ trlnkgrp_by_visitnum <- tibble::tribble(
 
 
 # LB
-lb %>% check_required_vars(c("LBTEST", "LBCAT", "LBDTC", "VISITNUM"), domain_name = "LB")
+tmp_lb <- lb %>% filter(LBTESTCD != "HCG")
+tmp_lb %>% check_required_vars(c("LBTEST", "LBCAT", "LBDTC", "VISITNUM"), domain_name = "LB")
 lb %>% check_date_before_today(c("LBDTC"), domain_name = "LB")
 lb_done <- lb %>% filter(LBSTAT != "NOT DONE")
 lb_not_done <- lb %>% filter(LBSTAT == "NOT DONE")

@@ -76,16 +76,19 @@ build_generation_constraints <- function(validator_table, df_cdisc, field_refere
 
   presence_conditions <- bind_rows(presence_conditions, presence_predicate_conditions)
 
-  # validate_presence_if/validate_formula_ifで、"&&"により種類の異なる複数条件
+  # validate_presence_ifで、"&&"により種類の異なる複数条件
   # (STAT.blank?のような述語、ref('sheet', N)=='値'のような別シート参照、fieldN=='値')が
   # 組み合わさっている場合、断片ごとに独立したpresence_conditions行に分解する。
   # AND条件は「いずれかの行が条件を満たさなければ値をNAにする」という既存の仕組みで表現できるため、
   # 断片数だけ行を作ればよい。age(fN,fM)>=X && age(fN,fM)<=Yはage_ref_fieldで別途処理済みのため除外する。
   # &&での分解に失敗する場合(ref()以外の部分がOR/ANDの入れ子など複雑な式)や、&&を伴わない
-  # ref('sheet', N)=='値'単独の行は、ref()部分の条件だけを抽出する(それ以外の条件は無視される)
+  # ref('sheet', N)=='値'単独の行は、ref()部分の条件だけを抽出する(それ以外の条件は無視される)。
+  # validate_formula_ifは値の妥当性検証であり提示可否のゲーティングには使わない(実際に発生したバグ:
+  # reinduction2のECADJで、値の妥当性を表す複雑なOR/AND式の中の一部の断片だけをゲーティング条件として
+  # 誤抽出し、本来常に提示されるべき値が誤って空欄化されていた)
   ref_condition_rows <- validator_table %>%
     filter(
-      validator_key %in% c("validate_presence_if", "validate_formula_if"),
+      validator_key == "validate_presence_if",
       is.na(age_ref_field),
       str_detect(value, "&&") | str_detect(value, "ref\\(")
     ) %>%

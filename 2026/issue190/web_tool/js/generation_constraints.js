@@ -101,10 +101,13 @@ function computePresenceRefFieldAndValue(validatorType, validatorKey, value) {
   return { field: parsed.field, value: parsed.values.join(", ") };
 }
 
-// value(例: STAT.blank?、ORRES.present?)が"接尾辞.blank?"/"接尾辞.present?"の形かどうかを判定する
+// value(例: STAT.blank?、ORRES.present?)が"接尾辞.blank?"/"接尾辞.present?"の形かどうかを判定する。
+// validateFormulaIfは値の妥当性検証(フィールドに値がある場合にその値が満たすべき条件)であり、
+// 提示可否(ゲーティング)の意味を持たないため、validatePresenceIfのみを対象にする(validateFormulaIfの
+// 複雑な式から断片だけを誤って提示条件として抽出してしまうバグがあったため)
 const PRESENCE_PREDICATE_RE = /^([A-Za-z_][A-Za-z0-9_]*)\.(blank|present)\?$/;
 function extractPresencePredicate(validatorKey, value) {
-  if (!["validate_presence_if", "validate_formula_if"].includes(validatorKey) || value == null) {
+  if (validatorKey !== "validate_presence_if" || value == null) {
     return { suffix: null, type: null };
   }
   const m = value.match(PRESENCE_PREDICATE_RE);
@@ -462,13 +465,16 @@ function buildAgeRefPresenceConditions(validatorTable, fieldLookup) {
   return rows;
 }
 
-// "&&"で複数条件が組み合わさったvalidate_presence_if/validate_formula_ifを断片ごとに分解し、
-// 断片の種類(predicate/cross_ref/field_ref)ごとにpresence_conditions行を作る
+// "&&"で複数条件が組み合わさったvalidate_presence_ifを断片ごとに分解し、断片の種類
+// (predicate/cross_ref/field_ref)ごとにpresence_conditions行を作る。validate_formula_ifは値の
+// 妥当性検証であり提示可否のゲーティングには使わない(実際に発生したバグ: reinduction2のECADJで、
+// 値の妥当性を表す複雑なOR/AND式の中の一部の断片だけをゲーティング条件として誤抽出し、本来常に
+// 提示されるべき値が誤って空欄化されていた)
 function buildAndPresenceConditions(validatorTable, fieldLookup) {
   const rows = [];
   const seen = new Set();
   validatorTable.forEach((vr) => {
-    if (!["validate_presence_if", "validate_formula_if"].includes(vr.validator_key)) return;
+    if (vr.validator_key !== "validate_presence_if") return;
     if (vr.age_ref_field != null) return;
     const value = vr.value;
     if (value == null || !(value.includes("&&") || value.includes("ref("))) return;
