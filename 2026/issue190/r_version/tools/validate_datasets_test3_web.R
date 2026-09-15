@@ -827,7 +827,9 @@ check_immuno_astctgr("immunomonitoring3")
 check_osteonecrosis_fa <- function(spid, visitnum) {
   tmp_fa <- fa %>% filter(FASPID == spid & VISITNUM == visitnum)
 
-  tmp_fa_occur <- tmp_fa %>% filter(FATESTCD == "OCCUR")
+  # FAOBJ=="Osteonecrosis"で絞り込む(latecomplicationのように他のFATESTCD=="OCCUR"項目が
+  # 同じVISITNUMに混在する可能性があるため、念のためGRADE側と同様に明示的に絞り込む)
+  tmp_fa_occur <- tmp_fa %>% filter(FATESTCD == "OCCUR" & FAOBJ == "Osteonecrosis")
   tmp_fa_occur %>% filter(FASTAT != "NOT DONE") %>% check_required_vars(c("FAORRES", "FADTC"), domain_name = "FA")
   tmp_fa_occur %>% filter(FASTAT == "NOT DONE") %>% check_blank_vars(c("FAORRES", "FADTC"), domain_name = "FA")
 
@@ -865,7 +867,10 @@ check_osteonecrosis_fa <- function(spid, visitnum) {
   tmp_fa_occur_done <- tmp_fa_occur_2 %>% filter(FASTAT != "NOT DONE") %>% rename_with(~ str_c(.x, suffix), "FAORRES")
   str_c("FAORRES", suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_occur_done, "FA", .x, fixed_value_checks_csv_path))
 
-  tmp_fa_grade <- tmp_fa %>% filter(FATESTCD == "GRADE")
+  # FAOBJ=="Osteonecrosis"で絞り込む(latecomplicationのようにFATESTCD=="GRADE"を共有する
+  # 他項目(高血糖・甲状腺機能異常等)が同じVISITNUMに混在するシートがあるため、
+  # FATESTCDだけでは骨壊死のGRADEを一意に特定できない)
+  tmp_fa_grade <- tmp_fa %>% filter(FATESTCD == "GRADE" & FAOBJ == "Osteonecrosis")
   suffix <- "_16"
   tmp_fa_grade_2 <- tmp_fa_grade %>% rename_with(~ str_c(.x, suffix), c("FATEST", "FACAT", "FAOBJ"))
   str_c(c("FATEST", "FACAT", "FAOBJ"), suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_grade_2, "FA", .x, fixed_value_checks_csv_path))
@@ -879,6 +884,27 @@ check_osteonecrosis_fa <- function(spid, visitnum) {
 check_osteonecrosis_fa("osteonecrosis1", "1800")
 check_osteonecrosis_fa("osteonecrosis2", "2500")
 check_osteonecrosis_fa("osteonecrosis3", "3000")
+# latecomplication(晩期合併症報告)シート内の骨壊死ブロックは、osteonecrosis1/2/3と
+# presence_conditions/構造が完全に同一(FAORRES<-FASTAT blank、FASTAT<-age>39、
+# GRADE<-OCCUR=="Y"、QS Immobility/Pain<-GRADE>=2 && QSSTAT blank)なので、同じ関数を再利用する
+check_osteonecrosis_fa("latecomplication", "3100")
+
+# latecomplicationの高血糖(Hyperglycemia)Grade。presence_conditions無し(常時必須)で、
+# 値の許容セット(FATEST/FACAT/FAORRES 0-5)はcheck_fa_grade_panel()のgrade_no_loc_checksに
+# 既にある"Hyperglycemia"(suffix "_5")とVISITNUM以外完全に同じため、そのsuffixを再利用する
+check_fa_testcd_no_loc(
+  fa %>% filter(FASPID == "latecomplication" & VISITNUM == "3100"),
+  "GRADE", "Hyperglycemia", "_5", fixed_value_checks_csv_path,
+  has_blfl = FALSE, has_orres_in_target = TRUE
+)
+# latecomplicationの甲状腺機能異常(Thyroid function abnormal)Grade。presence_conditions無し
+# (常時必須)。FATEST/FACAT/FAORRESの値セットはHyperglycemiaと同じ形(0-5)だが、
+# grade_no_loc_checksには登録が無い項目のため新しいsuffix "_19"を使う
+check_fa_testcd_no_loc(
+  fa %>% filter(FASPID == "latecomplication" & VISITNUM == "3100"),
+  "GRADE", "Thyroid function abnormal", "_19", fixed_value_checks_csv_path,
+  has_blfl = FALSE, has_orres_in_target = TRUE
+)
 
 # sct1のPRSTDTC(移植日)。osteonecrosis3のFADTC/QSDTCの下限参照(ref('sct1',16)+150.days)先
 tmp_sct1_prstdtc_ref <- pr %>% filter(PRSPID == "sct1") %>% select(USUBJID, sct1_prstdtc = PRSTDTC)
@@ -1176,7 +1202,10 @@ check_qs_osteo_testcd <- function(qs, fa, spid, qstestcd, suffix, fixed_value_ch
   tmp_qs_2 <- tmp_qs %>% rename_with(~ str_c(.x, suffix), all_of(target_qs_cols))
   str_c(target_qs_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_qs_2, "QS", .x, fixed_value_checks_csv_path))
 
-  grade <- fa %>% filter(FASPID == spid & FATESTCD == "GRADE") %>% select(USUBJID, grade_orres = FAORRES)
+  # FAOBJ=="Osteonecrosis"で絞り込む(latecomplicationのようにFATESTCD=="GRADE"を共有する
+  # 他項目(高血糖・甲状腺機能異常等)が混在するシートでは、USUBJIDあたり複数のGRADE行が
+  # 存在しうるため、FAOBJで絞らないとleft_join()で誤った行と結合されてしまう)
+  grade <- fa %>% filter(FASPID == spid & FATESTCD == "GRADE" & FAOBJ == "Osteonecrosis") %>% select(USUBJID, grade_orres = FAORRES)
   tmp_qs_grade <- tmp_qs %>% left_join(grade, by = "USUBJID") %>%
     mutate(grade_num = suppressWarnings(as.numeric(grade_orres)))
   stat_done <- !(!is.na(tmp_qs_grade[["QSSTAT"]]) & tmp_qs_grade[["QSSTAT"]] == "NOT DONE")
@@ -1213,6 +1242,21 @@ check_qs_osteo_testcd(qs, fa, "osteonecrosis3", "PNSEVIDX", "_6", fixed_value_ch
 qs %>% filter(QSSPID == "osteonecrosis3") %>%
   inner_join(tmp_sct1_prstdtc_ref, by = "USUBJID") %>%
   check_date_after_var_before_today("QSDTC", "sct1_prstdtc", domain_name = "QS", offset_days = 150)
+
+# latecomplicationシート内の骨壊死Immobility/Pain Indexも、osteonecrosis1/2/3と構造が同一
+# (GRADE>=2 && QSSTAT blank)なので既存の関数を再利用する。QSTEST/QSCATは同一だがVISITNUMが
+# 異なるため新しいsuffix "_7"/"_8"を使う
+check_qs_osteo_testcd(qs, fa, "latecomplication", "IMOBIDX", "_7", fixed_value_checks_csv_path)
+check_qs_osteo_testcd(qs, fa, "latecomplication", "PNSEVIDX", "_8", fixed_value_checks_csv_path)
+
+# latecomplicationのNYHA心機能分類(QSTESTCD=="NYHACLS")。QSORRES/QSDTCともpresence_conditions無し
+# (常時必須)
+tmp_qs_nyha <- qs %>% filter(QSSPID == "latecomplication", QSTESTCD == "NYHACLS")
+c("QSORRES", "QSDTC") %>% check_required_vars(tmp_qs_nyha, ., domain_name = "QS")
+qs_nyha_target_cols <- c("QSTEST", "QSCAT", "VISITNUM", "QSORRES")
+suffix <- "_9"
+tmp_qs_nyha_2 <- tmp_qs_nyha %>% rename_with(~ str_c(.x, suffix), all_of(qs_nyha_target_cols))
+str_c(qs_nyha_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_qs_nyha_2, "QS", .x, fixed_value_checks_csv_path))
 
 # RS
 c("RSORRES", "RSDTC") %>% check_required_vars(rs, ., domain_name="RS")
