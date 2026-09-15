@@ -84,6 +84,20 @@ tmp_ce_diag <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, d
 tmp_ce %>% inner_join(tmp_ce_diag, by = "USUBJID") %>%
   check_date_after_var_before_today("CEDTC", "diag_dtc", domain_name = "CE")
 
+# smreport(二次がん報告)シートのCE(二次がんの有無・診断日)。CEOCCURは"Y"/"N"/"NA"の3択で、
+# "Y"のときのみCEDTCが必須(presence_conditions: CEDTC<-CEOCCUR=="Y")。CEDTCの下限は
+# registrationのRFSTDTC(症例登録日。diag_dtc(初発診断日)ではない点がrelapseと異なる)
+tmp_ce_sm <- ce %>% filter(CESPID == "smreport")
+c("CETERM", "CEPRESP", "CEOCCUR") %>% check_required_vars(tmp_ce_sm, ., domain_name = "CE")
+suffix <- "_2"
+target_ce_sm_cols <- c("CETERM", "CEPRESP", "CEOCCUR")
+tmp_ce_sm <- tmp_ce_sm %>% rename_with(~ str_c(.x, suffix), all_of(target_ce_sm_cols))
+str_c(target_ce_sm_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ce_sm, "CE", .x, fixed_value_checks_csv_path))
+tmp_ce_sm %>% filter(CEOCCUR_2 == "Y") %>% check_required_vars("CEDTC", domain_name = "CE")
+tmp_ce_sm %>% filter(CEOCCUR_2 != "Y") %>% check_blank_vars("CEDTC", domain_name = "CE")
+tmp_ce_sm %>% filter(CEOCCUR_2 == "Y") %>% inner_join(dm %>% select(USUBJID, RFSTDTC), by = "USUBJID") %>%
+  check_date_after_var_before_today("CEDTC", "RFSTDTC", domain_name = "CE")
+
 # CM
 cm %>% filter(CMSPID != "sct1") %>% check_required_vars("CMOCCUR", domain_name = "CM")
 cm %>% filter(CMSPID == "sct1") %>% check_blank_vars("CMOCCUR", domain_name = "CM")
