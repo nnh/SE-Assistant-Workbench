@@ -1252,6 +1252,19 @@ tmp_cm_sct1 <- cm %>% filter(CMSPID == "sct1") %>% select(USUBJID, sct1_cmstdtc=
 tmp_pr_3 <- tmp_pr %>% inner_join(tmp_cm_sct1, by="USUBJID")
 tmp_pr_3 %>% check_date_after_var_before_today("PRSTDTC", "sct1_cmstdtc", domain_name = "PR")
 
+# sct2(2度目の造血幹細胞移植)。sct1と異なりPRCAT/VISITNUMは無く、PROCCUR/PRPRESP/PRSTRTPT/PRSTTPT/
+# PRTRTは全てpresence_conditions無しの固定値(is_invisible)。PRSTDTCはdiscon(中止)のDSSTDTC以降
+# であることが期待される(date_ref_bounds: ref('discon', ...))
+tmp_pr_sct2 <- pr %>% filter(PRSPID == "sct2")
+c("PROCCUR", "PRSTDTC", "PRPRESP", "PRSTRTPT", "PRSTTPT", "PRTRT") %>% check_required_vars(tmp_pr_sct2, ., domain_name = "PR")
+suffix <- "_3"
+sct2_pr_target_cols <- c("PROCCUR", "PRPRESP", "PRSTRTPT", "PRSTTPT", "PRTRT")
+tmp_pr_sct2 <- tmp_pr_sct2 %>% rename_with(~ str_c(.x, suffix), all_of(sct2_pr_target_cols))
+str_c(sct2_pr_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_pr_sct2, "PR", .x, fixed_value_checks_csv_path))
+tmp_ds_discon <- ds %>% filter(DSSPID == "discon") %>% select(USUBJID, discon_dtc = DSSTDTC)
+tmp_pr_sct2 %>% inner_join(tmp_ds_discon, by = "USUBJID") %>%
+  check_date_after_var_before_today("PRSTDTC", "discon_dtc", domain_name = "PR")
+
 # induction(VISITNUM=200)とearlyintensifi(VISITNUM=300)は、Central Venous Catheter Placementの
 # 内容が完全に同一のため、VISITNUMをパラメータにしたtribble+pwalkでまとめて検証する
 pr_target_cols <- c("PRPRESP", "PROCCUR")
