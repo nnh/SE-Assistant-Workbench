@@ -1006,6 +1006,20 @@ tmp_sv <- sv %>% filter(SVSPID == "prephase") %>% select(USUBJID, prephase825=SV
 tmp_fa_2 <- tmp_fa %>% inner_join(tmp_sv, by="USUBJID")
 tmp_fa_2 %>% check_date_after_var_before_today("FADTC", "prephase825", domain_name = "FA")
 
+# deepmycosisz(深在性真菌症、EORTC/MSG診断基準)シート。category="multiple"のため被験者ごとに0件
+# 以上のレコードを持ちうる(FASPIDは"deepmycosisz"+USUBJID内連番)。VISITNUM/FACATは無く、
+# presence_conditionsも無いため、FAOBJ/FAORRES/FATEST/FATESTCD/FADTCとも常に値を持つ。FADTCは
+# prephaseのSVSTDTC以降であることが期待される(date_ref_bounds)
+tmp_fa_deepmycosisz <- fa %>% filter(str_detect(FASPID, "^deepmycosisz"))
+c("FADTC", "FAORRES") %>% check_required_vars(tmp_fa_deepmycosisz, ., domain_name = "FA")
+suffix <- "_20"
+fa_deepmycosisz_target_cols <- c("FAOBJ", "FAORRES", "FATEST", "FATESTCD")
+tmp_fa_deepmycosisz <- tmp_fa_deepmycosisz %>% rename_with(~ str_c(.x, suffix), all_of(fa_deepmycosisz_target_cols))
+str_c(fa_deepmycosisz_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_fa_deepmycosisz, "FA", .x, fixed_value_checks_csv_path))
+tmp_sv_prephase_dm <- sv %>% filter(SVSPID == "prephase") %>% select(USUBJID, prephase_svstdtc_dm = SVSTDTC)
+tmp_fa_deepmycosisz %>% inner_join(tmp_sv_prephase_dm, by = "USUBJID") %>%
+  check_date_after_var_before_today("FADTC", "prephase_svstdtc_dm", domain_name = "FA")
+
 # LB: LBTESTCDごとの個別チェック(test3用)。指定visitnumのレコードに絞り込み、LBTEST/LBCAT/
 # extra_cols(+has_blflならLBBLFL)+VISITNUMをsuffix付き列名にリネームしたうえで固定値と
 # 一致することを確認する。has_not_done_split=TRUEの場合、LBSTAT=="NOT DONE"で分岐し、
