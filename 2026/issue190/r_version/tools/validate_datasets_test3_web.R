@@ -88,6 +88,25 @@ tmp_ae_sae %>% inner_join(tmp_ae_diag, by = "USUBJID") %>%
   check_date_after_var_before_today("AESTDTC", "diag_dtc", domain_name = "AE")
 tmp_ae_sae %>% check_date_after_var_before_today("AEENDTC", "AESTDTC", domain_name = "AE")
 
+# ae(有害事象報告、非重篤)シート。sae_reportと同じcategory="ae_report"のためAEドメインに直接
+# マッピングされる。sae_reportと異なりAESDTH/AESLIFE/AESHOSP/AESDISAB/AESCONG/AESMIE(重篤性基準)の
+# 項目が無く、AEACNは選択肢ではなく"DRUG WITHDRAWN"固定(is_invisible)、AEOUTもFATALを含まない4択
+# (sae_reportはFATAL込み5択)。presence_conditionsは無く全項目無条件必須。AEACN/AEOUTを含む全ての
+# 値域はsae_reportの値域(CSVのAE,AEACN/AE,AEOUT等、suffix無し)の部分集合のため、新しいsuffixは
+# 追加せず既存のCSV行をそのまま使う。AESTDTCに診断日等への明示的なref()参照は無く(sae_reportと
+# 異なる)、AEENDTCが同じ行のAESTDTC以降であることのみdate_ref_boundsで規定されている
+tmp_ae_plain <- ae %>% filter(str_detect(AESPID, "^ae[0-9]"))
+c("AETERM", "AETOXGR", "AESTDTC", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC") %>%
+  check_required_vars(tmp_ae_plain, ., domain_name = "AE")
+c("AETOXGR", "AESER", "AEREL") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_ae_plain, "AE", .x, fixed_value_checks_csv_path))
+tmp_ae_plain %>% check_date_before_today("AESTDTC", domain_name = "AE")
+tmp_ae_plain %>% check_date_after_var_before_today("AEENDTC", "AESTDTC", domain_name = "AE")
+suffix <- "_1"
+target_ae_cols <- c("AEACN", "AEOUT")
+tmp_ae_plain <- tmp_ae_plain %>% rename_with(~ str_c(.x, suffix), all_of(target_ae_cols))
+str_c(target_ae_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ae_plain, "AE", .x, fixed_value_checks_csv_path))
+
 # CE
 # relapse(再発報告)シートのCE(再発の種類・再発日)。presenceのゲート元であるfield141(再発の有無、
 # Y/N)はCDISC変数にマッピングされていないフィールドのため、presence_conditionsには反映されず
