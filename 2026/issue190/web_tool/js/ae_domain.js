@@ -107,39 +107,64 @@ function populateAeChoiceFields(ae, aeSpec, numericBounds) {
 }
 
 // date型のAE項目に、registrationStartDate〜今日の間のランダムな日付を入れる。
-// AESTDTC -> それ以外 -> AEENDTC(AESTDTC以降になるよう制御)の順に生成する(Rのpopulate_ae_domain()の
-// date生成部分に対応)。AEENDTCは、AESTDTCが対象変数に含まれる場合はAESTDTC〜今日の間、
-// そうでなければ他のdate項目と同様registrationStartDate〜今日の間から選ぶ
-function populateAeDateFields(ae, aeSpec, registrationStartDate) {
+// AEENDTC>=AESTDTCの前後関係や、sae_reportのAESTDTC<-MH(registration)のMHSTDTC(診断日)のような
+// 他ドメイン参照はdateRefBoundsに定義されている。以前はAEENDTC>=AESTDTCの関係だけをハードコードし、
+// 他ドメイン参照は一切考慮していなかった(sae_reportのAESTDTCが診断日より前になり得るバグの原因)。
+// 他の汎用ドメイン(buildGenericDomain/buildRepeatedDomain)と同じくinjectCrossDomainRefs()で
+// 参照先の値を結合してからpopulateGenericDateFields()に通すことで、dateRefBoundsに定義された
+// 全ての制約(AEENDTC>=AESTDTCを含む)を一律に反映する(Rのpopulate_ae_domain()の日付生成部分に対応)
+function populateAeDateFields(ae, aeSpec, registrationStartDate, dateRefBoundsAll, builtDomains, cdiscVariableToPrefix) {
   const existingColumns = new Set(Object.keys(ae[0] || {}));
   const dateVars = [...new Set(aeSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))].filter(
     (v) => !existingColumns.has(v)
   );
-  const orderedDateVars = [
-    ...(dateVars.includes("AESTDTC") ? ["AESTDTC"] : []),
-    ...dateVars.filter((v) => v !== "AESTDTC" && v !== "AEENDTC"),
-    ...(dateVars.includes("AEENDTC") ? ["AEENDTC"] : []),
-  ];
+  // dateRefBoundsは全ドメイン分を含む共通テーブルのため、AE自身のcdisc_variableに関する行だけに絞る
+  const aeVars = new Set(aeSpec.map((r) => r.cdisc_variable));
+  const aeDateRefBounds = (dateRefBoundsAll || []).filter((r) => aeVars.has(r.cdisc_variable));
+
+  const injected = injectCrossDomainRefs(ae, null, null, builtDomains || {}, cdiscVariableToPrefix || {}, null, aeDateRefBounds, "AE");
+  ae = injected.data;
+  ae = populateGenericDateFields(ae, aeSpec, registrationStartDate, aeDateRefBounds, null);
+
+  // AE報告が複数のalias(シート、例: "sae_report"/"ae2")にまたがる場合、シートの本来の並び順
+  // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする(同じ行のAESTDTC<=AEENDTCの関係は保つ)。
+  // このシフトはae自身の日付列だけをまとめて動かすため、他ドメイン参照(dateRefBounds、例:
+  // sae_reportのAESTDTC<-MHSTDTC)の下限が再び崩れる場合がある(同じUSUBJIDが"ae"と"sae_report"の
+  // 両方を持つ場合など)。buildGenericDomain等はreorder後にclampDatesToDiscontinuation()を再度
+  // 呼んで修復しているが、AEはこの時点でDS/中止日情報をまだ持たないため、その簡易版
+  // (reclampAeDatesToRefBounds、discon超過は扱わずmin_date違反のみ対象)で修復する。参照列
+  // (MHSTDTC等)が必要なため、injectedColsを取り除くのはこの後にする
+  ae = reorderDatesBySheetSeq(ae, dateVars, aeSpec, registrationStartDate);
+  ae = reclampAeDatesToRefBounds(ae, dateVars, aeDateRefBounds);
+  injected.injectedCols.forEach((col) => {
+    ae.forEach((row) => delete row[col]);
+  });
+  return ae;
+}
+
+// reorderDatesBySheetSeq()による同日ブロックの入れ替えでdateRefBounds(他ドメイン参照。例:
+// sae_reportのAESTDTC<-MHSTDTC)のmin_date制約が再び崩れた行だけ、参照値以降になるよう最小限で
+// 再生成する。other_domains.jsのclampDatesToDiscontinuation()と同じ考え方の簡易版だが、AEは
+// この時点でDS/中止日情報をまだ持たないため、discon超過は扱わずmin_date違反のみを対象にする
+function reclampAeDatesToRefBounds(ae, dateVars, dateRefBounds) {
+  if (!dateRefBounds || dateRefBounds.length === 0 || dateVars.length === 0) return ae;
+  const orderedDateVars = sortDateVarsByDependency(dateVars, dateRefBounds);
   const today = new Date().toISOString().slice(0, 10);
 
   orderedDateVars.forEach((varName) => {
-    const useAestdtcAsStart = varName === "AEENDTC" && "AESTDTC" in (ae[0] || {});
-    ae.forEach((row) => {
-      // RFSTDTC(症例登録日、buildAeDomain()で結合済み)がある場合、AESTDTC以外の日付項目の下限を
-      // registrationStartDate(試験共通の定数)ではなく被験者本人のRFSTDTCにする
-      let start = registrationStartDate;
-      if (useAestdtcAsStart) {
-        start = row.AESTDTC;
-      } else if (row.RFSTDTC != null && row.RFSTDTC > start) {
-        start = row.RFSTDTC;
+    if (!ae[0] || !(varName in ae[0])) return;
+    const minRefVals = resolveDateRefBoundVals(ae, dateRefBounds, varName, "min_date");
+    if (minRefVals == null) return;
+    ae.forEach((row, i) => {
+      const refVal = minRefVals[i];
+      const current = row[varName];
+      if (refVal == null || current == null) return;
+      if (current < refVal) {
+        const upper = refVal > today ? refVal : today;
+        row[varName] = randomDateBetween(refVal, upper);
       }
-      row[varName] = randomDateBetween(start, today);
     });
   });
-
-  // AE報告が複数のalias(シート、例: "sae_report"/"ae2")にまたがる場合、シートの本来の並び順
-  // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする(同じ行のAESTDTC<=AEENDTCの関係は保つ)
-  ae = reorderDatesBySheetSeq(ae, orderedDateVars, aeSpec, registrationStartDate);
   return ae;
 }
 

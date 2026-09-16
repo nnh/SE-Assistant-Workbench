@@ -83,9 +83,32 @@ load_edc_spec <- function(json_path) {
   active_sheet_table <- active_sheet_membership_table(dm_result[["active_sheets"]])
   visit_lookup <- build_visit_lookup(sheets, edc_spec[["visits"]])
   dm <- populate_dm_domain(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, age_bounds, date_ref_bounds)
+  cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
+
+  # MH(registration、診断日ブロック)を他ドメインより先に生成しておく。sae_reportシートのAESTDTCは
+  # このブロックのMHSTDTC(診断日)を下限として参照する(date_ref_bounds)が、MHドメイン全体は本来
+  # build_other_domains側(AEより後)で生成される。MH全体を早めるのは影響範囲が大きいため、
+  # 他ドメインに依存しない(DMのBRTHDTCのみに依存する)registrationブロックだけを先行生成し、
+  # 後段のbuild_other_domains呼び出しにexisting_dataとして渡して二重生成を避ける(pre_built_domains)
+  mh_registration_spec <- cdisc_variable_values %>% filter(prefix == "MH", alias_name == "registration")
+  mh_registration <- if (nrow(mh_registration_spec) > 0) {
+    build_repeated_domain(
+      dm, mh_registration_spec, "MH", registration_start_date, meddra, presence_conditions, required_var_instances,
+      add_coding_block = TRUE, built_domains = list(DM = dm), cdisc_variable_to_prefix = cdisc_variable_to_prefix,
+      age_bounds = age_bounds, active_sheet_table = active_sheet_table, date_ref_bounds = date_ref_bounds,
+      finalize = FALSE
+    )
+  } else {
+    NULL
+  }
+
   # AE
   ae <- dm %>% build_ae_domain()
-  ae_result <- populate_ae_domain(ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, required_ae_llt_codes, who_drug_idf, active_sheet_table, date_ref_bounds)
+  ae_result <- populate_ae_domain(
+    ae, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds,
+    required_ae_llt_codes, who_drug_idf, active_sheet_table, date_ref_bounds,
+    built_domains = list(DM = dm, MH = mh_registration), cdisc_variable_to_prefix = cdisc_variable_to_prefix
+  )
   ae <- ae_result[["ae"]]
   ae_linked_domains <- ae_result[["linked"]]
   death_date <- build_death_date_table(ae)
@@ -93,7 +116,6 @@ load_edc_spec <- function(json_path) {
   # discon/withdrawalシートのDSSTDTC(field6)はDM.RFSTDTCを参照する下限バリデータ(ref('registration',12))を
   # 持つため、built_domains/cdisc_variable_to_prefixを渡してDM側の値を結合できるようにする
   # (結合しないと下限が適用されず、DISCONDTCがRFSTDTCより前になり得る)
-  cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
   ds <- build_ds_domain(dm, cdisc_variable_values)
   ds <- populate_ds_domain(ds, cdisc_variable_values, registration_start_date, meddra, presence_conditions, numeric_bounds, field_ref_bounds, date_ref_bounds, built_domains = list(DM = dm), cdisc_variable_to_prefix = cdisc_variable_to_prefix)
   ds <- finalize_ds_disposition(ds, death_date, cdisc_variable_values)
@@ -117,6 +139,26 @@ load_edc_spec <- function(json_path) {
     }
   }
 
+  # registrationブロックはAEより前(discontinuation_dateが確定する前)に先行生成したため、
+  # そのブロック自身の日付項目(例: 試験によってはMHSTDTCではなくMHDTCという名前のこともある)が
+  # 中止日を超えていてもクランプされないまま残っている可能性がある。build_other_domains側の
+  # existing_data経路はexisting_data自体を再クランプしない仕様のため、ここでdiscontinuation_date・
+  # 上のRFSTDTC補正の両方が確定した時点で明示的にクランプしておく(RFSTDTC補正より前に行うと、
+  # 中止日を超えたままの補正前RFSTDTCがデフォルト下限として使われ、クランプが効かなくなる)
+  if (!is.null(mh_registration)) {
+    mh_registration_reclamp_data <- inject_dm_rfstdtc(mh_registration, list(DM = dm))[["data"]]
+    if ("BRTHDTC" %in% colnames(dm) && !("BRTHDTC" %in% colnames(mh_registration_reclamp_data))) {
+      mh_registration_reclamp_data <- mh_registration_reclamp_data %>% left_join(dm %>% select(USUBJID, BRTHDTC), by = "USUBJID")
+    }
+    mh_registration_date_vars <- mh_registration_spec %>% filter(field_type == "date") %>% pull(cdisc_variable) %>% unique()
+    mh_registration_date_ref_bounds <- date_ref_bounds %>% filter(cdisc_variable %in% mh_registration_spec[["cdisc_variable"]])
+    mh_registration_presence_conditions <- presence_conditions %>% filter(cdisc_variable %in% mh_registration_spec[["cdisc_variable"]])
+    mh_registration <- clamp_dates_to_discontinuation(
+      mh_registration_reclamp_data, mh_registration_date_vars, registration_start_date, discontinuation_date,
+      mh_registration_date_ref_bounds, existing_data = NULL, presence_conditions = mh_registration_presence_conditions
+    ) %>% select(-any_of(c("RFSTDTC", "BRTHDTC")))
+  }
+
   ds <- add_randomization_ds_rows(ds, dm, registration_start_date)
 
   # ae/sae_reportのように、AE報告と同じフォーム上の他prefixブロック(例: FA)は、
@@ -130,7 +172,8 @@ load_edc_spec <- function(json_path) {
   other_domains <- build_other_domains(
     dm, cdisc_variable_values_for_others, registration_start_date, meddra, presence_conditions, required_var_instances, numeric_bounds, field_ref_bounds,
     built_domains = list(DM = dm, AE = ae, DS = ds), age_bounds = age_bounds, multi_record_alias_names = multi_record_alias_names, who_drug_idf = who_drug_idf,
-    active_sheet_table = active_sheet_table, visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds
+    active_sheet_table = active_sheet_table, visit_lookup = visit_lookup, discontinuation_date = discontinuation_date, date_ref_bounds = date_ref_bounds,
+    pre_built_domains = list(MH = mh_registration), pre_built_alias_names = list(MH = "registration")
   )
 
   # alias_name/label/sheet_seqは他ドメイン生成時の突き合わせキーやDSSEQ並び替えに使い終わったため、

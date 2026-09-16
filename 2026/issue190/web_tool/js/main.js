@@ -262,12 +262,34 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   renderPreview(dm, "dm-preview");
   resultSection.style.display = "block";
 
+  const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
+  const activeSheetTable = buildActiveSheetTable(dmResult.activeSheets);
+
+  // MH(registration、診断日ブロック)を他ドメインより先に生成しておく。sae_reportシートのAESTDTCは
+  // このブロックのMHSTDTC(診断日)を下限として参照する(dateRefBounds)が、MHドメイン全体は本来
+  // buildOtherDomains側(AEより後)で生成される。MH全体を早めるのは影響範囲が大きいため、
+  // 他ドメインに依存しない(DMのBRTHDTCのみに依存する)registrationブロックだけを先行生成し、
+  // 後段のbuildOtherDomains呼び出しにexistingDataとして渡して二重生成を避ける(preBuiltDomains)
+  const mhRegistrationSpec = cdiscVariableValues.filter((r) => r.prefix === "MH" && r.alias_name === "registration");
+  let mhRegistration =
+    mhRegistrationSpec.length > 0
+      ? buildRepeatedDomain(dm, mhRegistrationSpec, "MH", registrationStartDate, meddraData, presenceConditions, requiredVarInstances, {
+          addCodingBlock: true,
+          builtDomains: { DM: dm },
+          cdiscVariableToPrefix,
+          ageBounds,
+          activeSheetTable,
+          dateRefBounds,
+          finalize: false,
+        })
+      : null;
+
   const aeN = parseInt(document.getElementById("ae-n").value, 10);
   const aeSpec = cdiscVariableValues.filter((r) => r.prefix === "AE");
   let ae = buildAeDomain(dm, aeN);
   ae = assignAeAliasNames(ae, aeSpec, dmResult.activeSheets);
   ae = populateAeChoiceFields(ae, aeSpec, numericBounds);
-  ae = populateAeDateFields(ae, aeSpec, registrationStartDate);
+  ae = populateAeDateFields(ae, aeSpec, registrationStartDate, dateRefBounds, { DM: dm, MH: mhRegistration }, cdiscVariableToPrefix);
   const meddraSample = sampleMeddraRows(meddraData, ae.length);
   const requiredLltCodes = deriveRequiredLltCodes(presenceConditions);
   injectRequiredLltCodes(meddraSample, meddraData, requiredLltCodes);
@@ -293,7 +315,6 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
   // discon/withdrawalシートのDSSTDTC(field6)はDM.RFSTDTCを参照する下限バリデータ(ref('registration',12))を
   // 持つため、builtDomains/cdiscVariableToPrefixを渡してDM側の値を結合できるようにする
   // (結合しないと下限が適用されず、DISCONDTCがRFSTDTCより前になり得る)
-  const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
   let ds = buildDsDomain(dm, cdiscVariableValues);
   ds = populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddraData, presenceConditions, numericBounds, fieldRefBounds, dateRefBounds, {
     builtDomains: { DM: dm },
@@ -330,9 +351,40 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     });
   }
 
+  // registrationブロックはAEより前(discontinuationDateが確定する前)に先行生成したため、
+  // そのブロック自身の日付項目(例: 試験によってはMHSTDTCではなくMHDTCという名前のこともある)が
+  // 中止日を超えていてもクランプされないまま残っている可能性がある。buildOtherDomains側の
+  // preBuiltDomains経路はpreBuiltDomains自体を再クランプしない仕様のため、ここでdiscontinuationDate・
+  // 上のRFSTDTC補正の両方が確定した時点で明示的にクランプしておく(RFSTDTC補正より前に行うと、
+  // 中止日を超えたままの補正前RFSTDTCがデフォルト下限として使われ、クランプが効かなくなる)
+  if (mhRegistration) {
+    let mhRegistrationReclampData = injectDmRfstdtc(mhRegistration, { DM: dm }).data;
+    if (dm[0] && "BRTHDTC" in dm[0] && !("BRTHDTC" in (mhRegistrationReclampData[0] || {}))) {
+      const brthdtcByUsubjid = {};
+      dm.forEach((row) => {
+        if (!(row.USUBJID in brthdtcByUsubjid)) brthdtcByUsubjid[row.USUBJID] = row.BRTHDTC;
+      });
+      mhRegistrationReclampData = mhRegistrationReclampData.map((row) => ({ ...row, BRTHDTC: brthdtcByUsubjid[row.USUBJID] }));
+    }
+    const mhRegistrationDateVars = [...new Set(mhRegistrationSpec.filter((r) => r.field_type === "date").map((r) => r.cdisc_variable))];
+    const mhRegistrationDateRefBounds = dateRefBounds.filter((r) => mhRegistrationSpec.some((s) => s.cdisc_variable === r.cdisc_variable));
+    const mhRegistrationPresenceConditions = presenceConditions.filter((r) => mhRegistrationSpec.some((s) => s.cdisc_variable === r.cdisc_variable));
+    mhRegistration = clampDatesToDiscontinuation(
+      mhRegistrationReclampData,
+      mhRegistrationDateVars,
+      registrationStartDate,
+      discontinuationDate,
+      mhRegistrationDateRefBounds,
+      null,
+      mhRegistrationPresenceConditions
+    ).map((row) => {
+      const { RFSTDTC, BRTHDTC, ...rest } = row;
+      return rest;
+    });
+  }
+
   // DM/AE/DS以外のドメイン(CM/MH/EG等)。dsのalias_name/labelは、DDがDSの特定ブロック(例: discon)を
   // 参照する際の突き合わせキーとして使うため、ここではまだ取り除かない
-  const activeSheetTable = buildActiveSheetTable(dmResult.activeSheets);
   const multiRecordAliasNames = (edcSpec.sheets || [])
     .filter((s) => s.category === "ae_report" || s.category === "multiple")
     .map((s) => s.alias_name);
@@ -346,6 +398,8 @@ document.getElementById("generate-btn").addEventListener("click", async () => {
     ageBounds,
     multiRecordAliasNames,
     activeSheetTable,
+    preBuiltDomains: { MH: mhRegistration },
+    preBuiltAliasNames: { MH: ["registration"] },
     whoDrugIdf,
     visitLookup,
     discontinuationDate,

@@ -1718,6 +1718,8 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
   const visitLookup = opts.visitLookup || null;
   const discontinuationDate = opts.discontinuationDate || null;
   const dateRefBounds = opts.dateRefBounds || [];
+  const preBuiltDomains = opts.preBuiltDomains || {};
+  const preBuiltAliasNames = opts.preBuiltAliasNames || {};
 
   const prefixes = [...new Set(cdiscVariableValues.map((r) => r.prefix))].filter((p) => !excludePrefixes.has(p));
   const cdiscVariableToPrefix = buildCdiscVariableToPrefix(cdiscVariableValues);
@@ -1747,10 +1749,21 @@ function buildOtherDomains(dm, cdiscVariableValues, registrationStartDate, meddr
       : buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData, presenceConditions, requiredVarInstances, numericBounds, fieldRefBounds, buildOptions);
   };
 
-  // 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)
+  // 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)。
+  // preBuiltDomains(呼び出し元がこの関数より前に一部のaliasNameだけ先行生成済みのprefix。例: AEの
+  // AESTDTCが参照するMH(registration)ブロック。MHSTDTCが他ドメインに依存せず、AEより前に単独で
+  // 生成できるため)が指定されている場合、そのaliasNameをspecから除いた上でexistingData(=
+  // preBuiltDomains[prefix])に続けて残りのaliasNameを生成する(先行生成済みの値をそのまま使い、
+  // 二重生成による値の食い違いを避ける)
   orderedPrefixes.forEach((prefix) => {
-    const spec = cdiscVariableValues.filter((r) => r.prefix === prefix);
-    builtDomains[prefix] = buildOnePrefix(prefix, spec);
+    let spec = cdiscVariableValues.filter((r) => r.prefix === prefix);
+    if (preBuiltDomains[prefix]) {
+      const excludeAliases = new Set(preBuiltAliasNames[prefix] || []);
+      spec = spec.filter((r) => !excludeAliases.has(r.alias_name));
+      builtDomains[prefix] = buildOnePrefix(prefix, spec, preBuiltDomains[prefix], true);
+    } else {
+      builtDomains[prefix] = buildOnePrefix(prefix, spec);
+    }
   });
 
   // 循環に関与するprefix(leftoverPrefixes)は、prefix単位ではなくシート(aliasName)単位で依存関係を

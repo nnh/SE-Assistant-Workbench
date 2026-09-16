@@ -69,6 +69,25 @@ list2env(other_domains, envir = .GlobalEnv)
 
 # test3個別チェック
 
+# AE
+# sae_report(重篤な有害事象報告)シート。category="ae_report"のためAEドメインに直接マッピングされ、
+# AESPIDは"sae_report"+USUBJID内連番(sae_report1, sae_report2, ...)になる。全14項目とも
+# presence_conditionsが無く無条件必須。AESTDTCは診断日(MH registrationのMHSTDTC)以降、
+# AEENDTCは同じ行のAESTDTC以降であることが期待される(date_ref_bounds。以前は生成ロジック側が
+# AE自身の日付項目でdate_ref_boundsを一切考慮しておらず、AESTDTCが診断日より前になり得るバグが
+# あったが、MH(registration)の先行生成+date_ref_bounds反映により修正済み)
+tmp_ae_sae <- ae %>% filter(str_detect(AESPID, "^sae_report"))
+c(
+  "AETERM", "AETOXGR", "AESTDTC", "AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG",
+  "AESMIE", "AESER", "AEACN", "AEREL", "AEOUT", "AEENDTC"
+) %>% check_required_vars(tmp_ae_sae, ., domain_name = "AE")
+c("AEREL", "AEOUT", "AEACN", "AETOXGR", "AESDTH", "AESLIFE", "AESHOSP", "AESDISAB", "AESCONG", "AESMIE", "AESER") %>%
+  walk(~ run_value_equals_checks_from_csv(tmp_ae_sae, "AE", .x, fixed_value_checks_csv_path))
+tmp_ae_diag <- mh %>% filter(MHCAT == "PRIMARY DIAGNOSIS") %>% select(USUBJID, diag_dtc = MHSTDTC)
+tmp_ae_sae %>% inner_join(tmp_ae_diag, by = "USUBJID") %>%
+  check_date_after_var_before_today("AESTDTC", "diag_dtc", domain_name = "AE")
+tmp_ae_sae %>% check_date_after_var_before_today("AEENDTC", "AESTDTC", domain_name = "AE")
+
 # CE
 # relapse(再発報告)シートのCE(再発の種類・再発日)。presenceのゲート元であるfield141(再発の有無、
 # Y/N)はCDISC変数にマッピングされていないフィールドのため、presence_conditionsには反映されず

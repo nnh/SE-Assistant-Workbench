@@ -2629,7 +2629,7 @@ has_repeated_labels <- function(spec) {
 # 参照先のprefixを先に生成してから参照元を生成するよう順序を並べ替え、既に生成済みのドメイン(built_domains、
 # 引数built_domainsでDM/AE/DSなどを追加で渡せる)の値を結合してから条件判定する
 build_other_domains <- function(dm, cdisc_variable_values, registration_start_date, meddra, presence_conditions, required_var_instances = NULL, numeric_bounds = NULL, field_ref_bounds = NULL,
-                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), exclusive_prefixes = c("DD"), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL) {
+                                 exclude_prefixes = c("DM", "AE", "DS"), coding_block_prefixes = c("MH"), repeated_prefixes = character(0), exclusive_prefixes = c("DD"), built_domains = list(), age_bounds = NULL, multi_record_alias_names = character(0), who_drug_idf = NULL, active_sheet_table = NULL, visit_lookup = NULL, discontinuation_date = NULL, date_ref_bounds = NULL, pre_built_domains = list(), pre_built_alias_names = list()) {
   prefixes <- setdiff(unique(cdisc_variable_values[["prefix"]]), exclude_prefixes)
 
   cdisc_variable_to_prefix <- build_cdisc_variable_to_prefix(cdisc_variable_values)
@@ -2660,10 +2660,20 @@ build_other_domains <- function(dm, cdisc_variable_values, registration_start_da
     }
   }
 
-  # 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)
+  # 循環に関与しないprefix(大多数)は、従来通り1回の呼び出しでビルドする(コードパス・挙動とも変更なし)。
+  # pre_built_domains(呼び出し元がこの関数より前に一部のalias_nameだけ先行生成済みのprefix。例: AEの
+  # AESTDTCが参照するMH(registration)ブロック。MHSTDTCが他ドメインに依存せず、AEより前に単独で
+  # 生成できるため)が指定されている場合、そのalias_nameをspecから除いた上でexisting_data(=
+  # pre_built_domains[[px]])に続けて残りのalias_nameを生成する(先行生成済みの値をそのまま使い、
+  # 二重生成による値の食い違いを避ける)
   for (px in ordered_prefixes) {
     spec <- cdisc_variable_values %>% filter(prefix == px)
-    built_domains[[px]] <- build_one_prefix(px, spec)
+    if (px %in% names(pre_built_domains) && !is.null(pre_built_domains[[px]])) {
+      spec <- spec %>% filter(!(alias_name %in% pre_built_alias_names[[px]]))
+      built_domains[[px]] <- build_one_prefix(px, spec, existing_data = pre_built_domains[[px]], finalize = TRUE)
+    } else {
+      built_domains[[px]] <- build_one_prefix(px, spec)
+    }
   }
 
   # 循環に関与するprefix(leftover_prefixes)は、prefix単位ではなくシート(alias_name)単位で
