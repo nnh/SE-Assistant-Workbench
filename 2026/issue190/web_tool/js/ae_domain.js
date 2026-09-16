@@ -134,7 +134,7 @@ function populateAeDateFields(ae, aeSpec, registrationStartDate, dateRefBoundsAl
   // 呼んで修復しているが、AEはこの時点でDS/中止日情報をまだ持たないため、その簡易版
   // (reclampAeDatesToRefBounds、discon超過は扱わずmin_date違反のみ対象)で修復する。参照列
   // (MHSTDTC等)が必要なため、injectedColsを取り除くのはこの後にする
-  ae = reorderDatesBySheetSeq(ae, dateVars, aeSpec, registrationStartDate);
+  ae = reorderDatesBySheetSeq(ae, dateVars, aeSpec, registrationStartDate, null, aeDateRefBounds);
   ae = reclampAeDatesToRefBounds(ae, dateVars, aeDateRefBounds);
   injected.injectedCols.forEach((col) => {
     ae.forEach((row) => delete row[col]);

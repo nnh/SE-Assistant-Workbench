@@ -1171,7 +1171,7 @@ function buildGenericDomain(dm, spec, prefix, registrationStartDate, meddraData,
   // 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
   // alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
   // (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
-  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
+  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate, scopedDateRefBounds);
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、他ドメイン参照
   // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)
@@ -1610,7 +1610,7 @@ function buildRepeatedDomain(dm, spec, prefix, registrationStartDate, meddraData
   // シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。alias内の関係
   // (同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上のregenerateDateChain()・
   // clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
-  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate);
+  data = reorderDatesBySheetSeq(data, dateVars, spec, registrationStartDate, discontinuationDate, scopedDateRefBounds);
   // reorderDatesBySheetSeqは同一alias内の複数labelをまとめて一律にシフトするため、参照関係
   // (scopedDateRefBounds)の下限/上限が再び崩れる場合がある。ここでもう一度clampして修復する
   // (discon超過判定は既に満たされているはずなので実質ref違反判定のみ効く)

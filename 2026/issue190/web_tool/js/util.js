@@ -209,7 +209,7 @@ function sortBySeq(data, prefix) {
 // その処理がシフト結果を独立に書き換えてalias間の順序を崩してしまう可能性がある)。
 // alias_name列を持たない、またはdateVarsが複数aliasにまたがらないドメインでは何もしない
 // (R版reorder_dates_by_sheet_seq()に対応)
-function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registrationStartDate, discontinuationDate) {
+function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registrationStartDate, discontinuationDate, dateRefBounds) {
   if (!data[0] || !("alias_name" in data[0]) || !("USUBJID" in data[0])) return data;
   dateVars = dateVars.filter((v) => v in data[0]);
   if (dateVars.length === 0) return data;
@@ -270,8 +270,24 @@ function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registratio
   });
   if (Object.keys(deltaByUsubjidAlias).length === 0) return data;
 
+  // RFSTDTC(症例登録日)は、明示的なref()参照(dateRefBounds)を持たない行にのみ、
+  // populateGenericDateFields/buildRepeatedDomain内の日付生成ループと同じくデフォルトの下限として
+  // 適用する。以前はこのシフトでRFSTDTCが一切考慮されておらず、同一被験者が複数alias(シート)を
+  // 持つ場合にシフトでRFSTDTCより前の日付になってしまうバグがあった(例: 維持療法シートの開始日が
+  // 症例登録日より前になる)。同じcdisc_variable名を複数のalias(シート)が定義しており、一部の
+  // aliasだけが明示的な参照を持つ場合があるため(例: ECSTDTCはerwaspチェーンでは参照を持つが
+  // maintenance6mpでは持たない)、cdisc_variable名単位ではなく、resolveDateRefBoundVals()で
+  // 行(alias)単位に判定する
+  const hasRfstdtc = !!data[0] && "RFSTDTC" in data[0];
+  const minRefValsByVar = {};
+  if (hasRfstdtc) {
+    dateVars.forEach((v) => {
+      minRefValsByVar[v] = resolveDateRefBoundVals(data, dateRefBounds, v, "min_date");
+    });
+  }
+
   const oneDay = 24 * 60 * 60 * 1000;
-  data.forEach((row) => {
+  data.forEach((row, rowIndex) => {
     const deltaMap = deltaByUsubjidAlias[row.USUBJID];
     const delta = deltaMap ? deltaMap[row.alias_name] : null;
     if (delta == null) return;
@@ -287,6 +303,12 @@ function reorderDatesBySheetSeq(data, dateVars, cdiscVariableValues, registratio
       if (row.BRTHDTC != null) {
         const brthTime = new Date(row.BRTHDTC).getTime();
         if (t < brthTime) t = brthTime;
+      }
+      const minRefVals = minRefValsByVar[v];
+      const hasExplicitRef = minRefVals != null && minRefVals[rowIndex] != null;
+      if (hasRfstdtc && !hasExplicitRef && row.RFSTDTC != null) {
+        const rfstdtcTime = new Date(row.RFSTDTC).getTime();
+        if (t < rfstdtcTime) t = rfstdtcTime;
       }
       if (t > upperTime) t = upperTime;
       row[v] = new Date(t).toISOString().slice(0, 10);

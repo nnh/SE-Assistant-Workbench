@@ -80,7 +80,7 @@ populate_ds_domain <- function(ds, cdisc_variable_values, registration_start_dat
     populate_date_fields(ds_spec, target_vars, registration_start_date, date_ref_bounds) %>%
     # DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
     # (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
-    reorder_dates_by_sheet_seq(ds_date_vars, ds_spec, registration_start_date) %>%
+    reorder_dates_by_sheet_seq(ds_date_vars, ds_spec, registration_start_date, date_ref_bounds = ds_date_ref_bounds) %>%
     populate_dummy_fields(target_vars) %>%
     select(-any_of(date_injected[["injected_cols"]]))
 

@@ -1493,7 +1493,7 @@ resolve_preferred_alias_name <- function(candidates, presence_conditions, built_
 # シフトが中止日を超えないようこの関数自身で保証するため、これより後に他の日付再生成処理を
 # 挟むと、その処理がシフト結果を独立に書き換えてalias間の順序を崩してしまう可能性がある)。
 # alias_name列を持たない、またはdate_varsが複数aliasにまたがらないドメインでは何もしない
-reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, registration_start_date, discontinuation_date = NULL) {
+reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, registration_start_date, discontinuation_date = NULL, date_ref_bounds = NULL) {
   if (!("alias_name" %in% colnames(data)) || !("USUBJID" %in% colnames(data))) {
     return(data)
   }
@@ -1560,14 +1560,30 @@ reorder_dates_by_sheet_seq <- function(data, date_vars, cdisc_variable_values, r
   # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
   # シフト後もこれより前にならないようにする(乳児コホート等ではBRTHDTCがregistration_start_dateより
   # 後になり得るため、registration_start_dateだけでは生年月日より前の日付になり得る)
-  row_lower_bound <- rep(reg_start, nrow(data))
+  row_lower_bound_base <- rep(reg_start, nrow(data))
   if ("BRTHDTC" %in% colnames(data)) {
-    row_lower_bound <- pmax(row_lower_bound, as.Date(data[["BRTHDTC"]]), na.rm = TRUE)
+    row_lower_bound_base <- pmax(row_lower_bound_base, as.Date(data[["BRTHDTC"]]), na.rm = TRUE)
   }
+  # RFSTDTC(症例登録日)は、明示的なref()参照(date_ref_bounds)を持たない行にのみ、
+  # populate_date_fields/build_repeated_domain内の日付生成ループと同じくデフォルトの下限として
+  # 適用する。以前はこのシフトでRFSTDTCが一切考慮されておらず、同一被験者が複数alias(シート)を
+  # 持つ場合にシフトでRFSTDTCより前の日付になってしまうバグがあった(例: 維持療法シートの開始日が
+  # 症例登録日より前になる)。同じcdisc_variable名を複数のalias(シート)が定義しており、一部の
+  # aliasだけが明示的な参照を持つ場合があるため(例: ECSTDTCはerwaspチェーンでは参照を持つが
+  # maintenance6mpでは持たない)、cdisc_variable名単位ではなく、resolve_date_ref_bound_vals()で
+  # 行(alias)単位に判定する
+  has_rfstdtc <- "RFSTDTC" %in% colnames(data)
 
   for (var_name in date_vars) {
     has_val <- !is.na(data[[var_name]]) & !is.na(data[["delta"]])
     if (!any(has_val)) next
+    row_lower_bound <- row_lower_bound_base
+    if (has_rfstdtc) {
+      min_ref_vals <- if (!is.null(date_ref_bounds)) resolve_date_ref_bound_vals(data, date_ref_bounds, var_name, "min_date") else NULL
+      no_explicit_ref <- if (is.null(min_ref_vals)) rep(TRUE, nrow(data)) else is.na(min_ref_vals)
+      rfstdtc_vals <- as.Date(data[["RFSTDTC"]])
+      row_lower_bound[no_explicit_ref] <- pmax(row_lower_bound[no_explicit_ref], rfstdtc_vals[no_explicit_ref], na.rm = TRUE)
+    }
     new_dates <- as.Date(data[[var_name]][has_val]) + data[["delta"]][has_val]
     new_dates <- pmin(pmax(new_dates, row_lower_bound[has_val]), row_upper_bound[has_val])
     data[[var_name]][has_val] <- as.character(new_dates)
@@ -1662,11 +1678,18 @@ clamp_dates_to_discontinuation <- function(data, date_vars, registration_start_d
       }
 
       lower <- rep(reg_start, sum(over))
-      # RFSTDTC(症例登録日)は、この変数に明示的なmin_date参照(min_ref_vals)が無い場合の
-      # デフォルト下限としてのみ使う。明示的な参照(例: MHSTDTCのBRTHDTC基準)がある変数にまで
-      # 一律にRFSTDTCを下限に加えると、その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため
-      if (is.null(min_ref_vals) && "RFSTDTC" %in% colnames(data)) {
-        lower <- pmax(lower, as.Date(as.character(data[["RFSTDTC"]][over])), na.rm = TRUE)
+      # RFSTDTC(症例登録日)は、この変数のこの行に明示的なmin_date参照(min_ref_vals)が無い場合の
+      # デフォルト下限としてのみ使う。明示的な参照(例: MHSTDTCのBRTHDTC基準)がある行にまで
+      # 一律にRFSTDTCを下限に加えると、その変数本来の(RFSTDTCより前を許容する)意味を壊してしまうため。
+      # 同じcdisc_variable名を複数のalias(シート)が共有し、一部のaliasだけが明示的な参照を持つ場合が
+      # あるため(例: ECSTDTCはerwaspチェーンでは参照を持つがmaintenance6mpでは持たない)、
+      # min_ref_vals全体がNULLかどうかではなく、行ごとにNAかどうかで判定する(以前はmin_ref_vals
+      # 全体がNULLの場合しかRFSTDTCを適用しておらず、参照を持たない他aliasの行に一切RFSTDTCが
+      # 適用されず、再クランプで登録日より前の日付が生成されてしまうバグがあった)
+      if ("RFSTDTC" %in% colnames(data)) {
+        no_explicit_ref <- if (is.null(min_ref_vals)) rep(TRUE, sum(over)) else is.na(min_ref_vals[over])
+        rfstdtc_vals_over <- as.Date(as.character(data[["RFSTDTC"]][over]))
+        lower[no_explicit_ref] <- pmax(lower[no_explicit_ref], rfstdtc_vals_over[no_explicit_ref], na.rm = TRUE)
       }
       # BRTHDTC(生年月日)は、明示的なref()参照の有無によらず常に守るべき生物学的な下限のため、
       # RFSTDTCと異なり全行に適用する(build_repeated_domain内の日付生成ループと同じ理由)
@@ -2004,7 +2027,7 @@ build_generic_domain <- function(dm, spec, prefix, registration_start_date, medd
     # 同じcdisc_variableが複数alias(シート)にまたがる場合、シートの本来の並び順(sheet_seq)に沿うよう
     # alias単位でまとめて日付をシフトする。clampより後に行うことで、シフト結果を最終的な値として保つ
     # (この関数自体が被験者の中止日を上限にするため、clampが先に行った中止日調整と矛盾しない)
-    reorder_dates_by_sheet_seq(date_vars, spec, registration_start_date, discontinuation_date) %>%
+    reorder_dates_by_sheet_seq(date_vars, spec, registration_start_date, discontinuation_date, date_ref_bounds) %>%
     # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
     # 他ドメイン参照(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
     # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)
@@ -2375,7 +2398,7 @@ build_repeated_domain <- function(dm, spec, prefix, registration_start_date, med
   # シートの本来の並び順(sheet_seq)に沿うようalias単位でまとめて日付をシフトする。
   # alias内の関係(同じ行の開始日<=終了日、labelを跨ぐ連鎖)は保ったまま動くため、上の
   # regenerate_date_chain()・clampより後に行う(この関数自体が中止日を上限にするため矛盾しない)
-  data <- reorder_dates_by_sheet_seq(data, date_vars, spec, registration_start_date, discontinuation_date)
+  data <- reorder_dates_by_sheet_seq(data, date_vars, spec, registration_start_date, discontinuation_date, date_ref_bounds)
   # reorder_dates_by_sheet_seqは同一alias内の複数labelをまとめて一律にシフトするため、
   # 参照関係(date_ref_bounds)の下限/上限が再び崩れる場合がある。ここでもう一度
   # clampして修復する(discon_over判定は既に満たされているはずなので実質ref_violationのみ効く)

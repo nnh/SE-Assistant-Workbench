@@ -248,7 +248,7 @@ function populateDsDomain(ds, cdiscVariableValues, registrationStartDate, meddra
   ds = populateDsDateFields(ds, dsSpec, registrationStartDate, dateRefBounds);
   // DSが複数のalias(シート、例: "discon"/"withdrawal")にまたがる場合、シートの本来の並び順
   // (sheet_seq)に沿うようalias単位でまとめて日付をシフトする
-  ds = reorderDatesBySheetSeq(ds, dsDateVars, dsSpec, registrationStartDate);
+  ds = reorderDatesBySheetSeq(ds, dsDateVars, dsSpec, registrationStartDate, null, dsDateRefBounds);
   ds = populateDsDummyFields(ds, dsSpec);
   if (dateInjected.injectedCols.length > 0) {
     ds.forEach((row) => {

@@ -801,6 +801,22 @@ check_reinduction3_ec_drug("CYCLOPHOSPHAMIDE HYDRATE", "_2")
 check_reinduction3_ec_drug("MERCAPTOPURINE HYDRATE", "_2")
 check_reinduction3_ec_drug("METHOTREXATE/CYTARABINE/PREDNISOLONE SODIUM SUCCINATE", "_5", has_route = TRUE)
 
+# maintenance6mp(維持療法における6-MP経口投与)。category="multiple"のため被験者ごとに0件以上の
+# レコードを持ちうる(ECSPIDは"maintenance6mp"+USUBJID内連番)。ECOCCUR(投与有無、Y/N)が"Y"の
+# ときのみECDOSE(用量、固定選択肢ではなく汎用のダミー数値)が必須(presence_conditions:
+# ECDOSE<-ECOCCUR=="Y")。ECSTDTCに明示的なref()参照は無いため、登録日(RFSTDTC)以降・今日以前で
+# あることのみ確認する
+tmp_ec_maint <- ec %>% filter(str_detect(ECSPID, "^maintenance6mp"))
+c("ECOCCUR", "ECSTDTC") %>% check_required_vars(tmp_ec_maint, ., domain_name = "EC")
+suffix <- "_10"
+ec_maint_target_cols <- c("ECOCCUR", "ECDOSU", "ECMOOD", "ECPRESP", "ECTRT", "VISITNUM")
+tmp_ec_maint <- tmp_ec_maint %>% rename_with(~ str_c(.x, suffix), all_of(ec_maint_target_cols))
+str_c(ec_maint_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_ec_maint, "EC", .x, fixed_value_checks_csv_path))
+tmp_ec_maint %>% filter(.data[[str_c("ECOCCUR", suffix)]] == "Y") %>% check_required_vars("ECDOSE", domain_name = "EC")
+tmp_ec_maint %>% filter(.data[[str_c("ECOCCUR", suffix)]] != "Y") %>% check_blank_vars("ECDOSE", domain_name = "EC")
+tmp_ec_maint %>% inner_join(dm %>% select(USUBJID, RFSTDTC), by = "USUBJID") %>%
+  check_date_before_today("ECSTDTC", domain_name = "EC")
+
 # FA(Findings About)関連チェックはtools/validate_datasets_test3_fa.Rに切り出してある
 source(here("tools/validate_datasets_test3_fa.R"))
 

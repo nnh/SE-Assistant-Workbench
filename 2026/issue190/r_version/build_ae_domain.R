@@ -67,7 +67,7 @@ populate_ae_domain <- function(ae, cdisc_variable_values, registration_start_dat
   # 再度呼んで修復しているが、AEはこの時点でDS/中止日情報をまだ持たないため、その簡易版
   # (reclamp_ae_dates_to_ref_bounds、discon超過は扱わずdate_ref_boundsのmin_date違反のみ対象)で
   # 修復する。参照列(MHSTDTC等)が必要なため、injected_colsを取り除くのはこの後にする
-  ae <- reorder_dates_by_sheet_seq(ae, ae_date_vars, ae_spec, registration_start_date)
+  ae <- reorder_dates_by_sheet_seq(ae, ae_date_vars, ae_spec, registration_start_date, date_ref_bounds = ae_date_ref_bounds)
   ae <- reclamp_ae_dates_to_ref_bounds(ae, ae_date_vars, ae_date_ref_bounds)
   ae <- ae %>% select(-any_of(date_injected[["injected_cols"]]))
 
