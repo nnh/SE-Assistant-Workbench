@@ -1629,3 +1629,72 @@ tmp_sv %>% check_date_after_var_before_today("SVENDTC", "SVSTDTC", domain_name =
 suffix <- "_15"
 tmp_sv_x <- tmp_sv %>% rename_with(~ str_c(.x, suffix), all_of(sv_target_cols))
 str_c(sv_target_cols, suffix) %>% walk(~ run_value_equals_checks_from_csv(tmp_sv_x, "SV", .x, fixed_value_checks_csv_path))
+
+# 割り付け(allocation)確認
+# allocation1(PCR-MRD(TP2)結果返却状況報告1)でY(TP2の結果返却あり)が選択された被験者は、
+# sheet_groups(TP2-Returned)によりpcrmrdtp2シートが有効化されるため、全員が実際にpcrmrdtp2の
+# LBレコードを持つはずである。allocation1の割り付けコード自体はCDISC変数にマッピングされていない
+# (allocation1の実体フィールドはNote/Headingのみ)が、defaultグループに属する唯一の割り付けシートの
+# ためDM.ARMにそのままコードが記録される(build_dm_domain.Rのbuild_subject_active_sheets参照)。
+# 逆方向(Y以外の被験者にpcrmrdtp2レコードが無いこと)は確認しない。TP2結果が未返却(L/S/I/H)の
+# 被験者も、allocation10(暫定リスク後のTP2結果再確認シート)で改めて"A"(結果あり)を選ぶと
+# 同じくpcrmrdtp2が有効化されるため、Y以外でも正当にpcrmrdtp2を持ちうる
+usubjid_arm_y <- dm %>% filter(ARM == "Y") %>% pull(USUBJID) %>% unique()
+usubjid_pcrmrdtp2 <- lb %>% filter(str_detect(LBSPID, "^pcrmrdtp2")) %>% pull(USUBJID) %>% unique()
+missing_pcrmrdtp2 <- setdiff(usubjid_arm_y, usubjid_pcrmrdtp2)
+if (length(missing_pcrmrdtp2) > 0) {
+  stop(str_c(
+    "割り付け確認: allocation1=Y(", length(usubjid_arm_y), "名)のうちpcrmrdtp2レコードが無い被験者がいます: ",
+    paste(missing_pcrmrdtp2, collapse = ", ")
+  ))
+}
+cat("割り付け確認: allocation1=Y(", length(usubjid_arm_y), "名)は全員pcrmrdtp2レコードあり: OK\n", sep = "")
+
+# allocation1でL(TP2結果返却なし、暫定リスクLR)が選択された被験者は、sheet_groups
+# (TP2-NotReturned-LR)によりallocation4(低リスク自動割付)が有効化される。allocation4自体は
+# CDISC変数を持たないが、その割り付け結果であるarm-JACLS-02SR/arm-B12SRのどちらかに必ず
+# 割り付けられ(build_subject_active_sheetsはallocation4到達時に必ずcodeを1つsampleする)、
+# それぞれの下流シート(erwasp_jacls02sr/erwasp_lrsrir、いずれもEC)が有効化されるため、
+# 全員がそのどちらかのECレコードを持つはずである
+usubjid_arm_l <- dm %>% filter(ARM == "L") %>% pull(USUBJID) %>% unique()
+usubjid_lr_arm <- ec %>% filter(str_detect(ECSPID, "^erwasp_jacls02sr") | str_detect(ECSPID, "^erwasp_lrsrir")) %>%
+  pull(USUBJID) %>% unique()
+missing_lr_arm <- setdiff(usubjid_arm_l, usubjid_lr_arm)
+if (length(missing_lr_arm) > 0) {
+  stop(str_c(
+    "割り付け確認: allocation1=L(", length(usubjid_arm_l), "名)のうちerwasp_jacls02sr/erwasp_lrsrirレコードが無い被験者がいます: ",
+    paste(missing_lr_arm, collapse = ", ")
+  ))
+}
+cat("割り付け確認: allocation1=L(", length(usubjid_arm_l), "名)は全員erwasp_jacls02sr/erwasp_lrsrirいずれかのレコードあり: OK\n", sep = "")
+
+# allocation1でH(TP2結果返却なし、暫定リスクHR)が選択された被験者は、sheet_groups
+# (TP2-NotReturned-HR)によりallocation3(高リスク対象アーム報告)が有効化される。allocation3の
+# 3つの割り付け結果(R→allocation5→arm-Block/arm-BLIN、HS、CD=arm-Blockと同一シート)は
+# いずれも下流にhr1fisrt(SV等)を含むため、hr1fisrtはallocation3のどの結果になっても
+# 共通して現れる、経路によらない指標として使える
+usubjid_arm_h <- dm %>% filter(ARM == "H") %>% pull(USUBJID) %>% unique()
+usubjid_hr1fisrt <- sv %>% filter(str_detect(SVSPID, "^hr1fisrt")) %>% pull(USUBJID) %>% unique()
+missing_hr1fisrt <- setdiff(usubjid_arm_h, usubjid_hr1fisrt)
+if (length(missing_hr1fisrt) > 0) {
+  stop(str_c(
+    "割り付け確認: allocation1=H(", length(usubjid_arm_h), "名)のうちhr1fisrtレコードが無い被験者がいます: ",
+    paste(missing_hr1fisrt, collapse = ", ")
+  ))
+}
+cat("割り付け確認: allocation1=H(", length(usubjid_arm_h), "名)は全員hr1fisrtレコードあり: OK\n", sep = "")
+
+# allocation1のDC(試験治療中止)は検証しない。discon(DS)シートはdefault(全員共通)グループに
+# 属しており、ARMに関わらず全被験者がdiscon由来のDSレコード(DSTERM込み)を持つため、
+# 「DCならdiscon(DS)レコードがある」というチェックはDCかどうかに関係なく常にPASSしてしまい、
+# 意味を成さない(実際に検証した結果、DSTERM=="COMPLETED"(正常終了)の割合もARM=DCと他のARMで
+# 有意差が無く、生成ロジック上ARMのコードとDS側の中止理由は無関係な別々の乱数で決まっている)。
+# これはallocation2の暫定/確定リスク不一致と同じ根本原因(割り付けグループのif条件を評価しない)
+# によるもので、修正しない方針のため、DCについても検証を行わない
+
+# allocation1のS(暫定リスクSR)・I(暫定リスクIR)は、sheet_groups上はallocation10
+# (TP2結果の再確認シート、CDISC変数マッピング無し)しか有効化しないため、確認可能な直接の
+# 後続シートが無い(L/HのようにS/I自身から直接分岐するarm固有シートは存在しない)。allocation10で
+# 後から"A"(結果返却あり)が選ばれれば他のARMと同じくpcrmrdtp2やその先の各リスク群シートに
+# 進みうるが、この分岐はSDTM出力からは観測できないため、S/Iについては検証を行わない
+
