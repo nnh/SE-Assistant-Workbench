@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>File System Access API 動作検証 (issue #202)</title>
+<style>
+  body { font-family: sans-serif; max-width: 780px; margin: 2em auto; line-height: 1.6; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: 1em; margin-bottom: 1.2em; }
+  h2 { margin-top: 0; font-size: 1.05em; }
+  button { padding: 0.4em 1em; margin-right: 0.5em; }
+  .ok { color: #0a7d00; font-weight: bold; }
+  .ng { color: #c00; font-weight: bold; }
+  .warn { color: #b36b00; font-weight: bold; }
+  ul#file-list { max-height: 200px; overflow-y: auto; background: #f7f7f7; padding: 0.5em 1.5em; }
+  #log { white-space: pre-wrap; background: #111; color: #0f0; font-family: monospace; font-size: 0.85em;
+         padding: 0.8em; height: 220px; overflow-y: auto; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>File System Access API 動作検証 (issue #202)</h1>
+<p>このページは file:// で開いて使うことを想定した検証専用ツールです。issue190のコードには影響しません。</p>
+
+<section>
+  <h2>0. API対応状況(自動チェック)</h2>
+  <div id="api-check">確認中...</div>
+</section>
+
+<section>
+  <h2>1〜3. フォルダ選択 → 一覧表示 → 書き込み</h2>
+  <button id="btn-pick">① フォルダを選択 (showDirectoryPicker)</button>
+  <button id="btn-write" disabled>③ テストファイルを書き込む</button>
+  <p id="pick-status"></p>
+  <ul id="file-list"></ul>
+</section>
+
+<section>
+  <h2>4〜5. 権限の永続化確認(IndexedDB)</h2>
+  <p>フォルダ選択時に自動でハンドルをIndexedDBへ保存します。ページをリロード、あるいはブラウザを再起動してから
+  下のボタンで権限が残っているか確認してください(ピッカーを開き直さずに再アクセスできるかがポイントです)。</p>
+  <button id="btn-check-permission">保存済みハンドルの権限を確認</button>
+  <button id="btn-request-permission" disabled>権限を再要求 (requestPermission)</button>
+  <button id="btn-clear-handle">保存済みハンドルを削除</button>
+  <p id="permission-status"></p>
+</section>
+
+<section>
+  <h2>ログ</h2>
+  <div id="log"></div>
+</section>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${time}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(msg);
+}
+
+// --- 0. API対応状況チェック ---
+const apiCheckEl = document.getElementById('api-check');
+(function checkApis() {
+  const results = [
+    ['showDirectoryPicker', typeof window.showDirectoryPicker === 'function'],
+    ['indexedDB', typeof window.indexedDB !== 'undefined'],
+    ['structuredClone (ハンドル保存に必要)', typeof window.structuredClone === 'function'],
+    ['isSecureContext', window.isSecureContext],
+    ['location.protocol', location.protocol],
+  ];
+  apiCheckEl.innerHTML = results.map(([name, val]) => {
+    if (typeof val === 'boolean') {
+      return `<div>${name}: <span class="${val ? 'ok' : 'ng'}">${val}</span></div>`;
+    }
+    return `<div>${name}: <span class="warn">${val}</span></div>`;
+  }).join('');
+  log('API対応状況チェック完了: ' + JSON.stringify(results));
+})();
+
+// --- IndexedDB ヘルパー (ディレクトリハンドル保存用) ---
+const DB_NAME = 'fsa-test-db';
+const STORE_NAME = 'handles';
+const HANDLE_KEY = 'dir';
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE_NAME);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveHandle(handle) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(handle, HANDLE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadHandle() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).get(HANDLE_KEY);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function clearHandle() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(HANDLE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+let currentDirHandle = null;
+
+// --- 1. フォルダ選択 ---
+document.getElementById('btn-pick').addEventListener('click', async () => {
+  const statusEl = document.getElementById('pick-status');
+  try {
+    const handle = await window.showDirectoryPicker();
+    currentDirHandle = handle;
+    statusEl.innerHTML = `<span class="ok">選択成功:</span> ${handle.name}`;
+    log(`showDirectoryPicker成功: name=${handle.name}`, 'ok');
+    document.getElementById('btn-write').disabled = false;
+
+    await listEntries(handle);
+
+    try {
+      await saveHandle(handle);
+      log('ディレクトリハンドルをIndexedDBに保存しました', 'ok');
+    } catch (e) {
+      log('IndexedDBへの保存に失敗: ' + e, 'ng');
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span class="ng">失敗/キャンセル:</span> ${e}`;
+    log('showDirectoryPickerエラー: ' + e, 'ng');
+  }
+});
+
+// --- 2. フォルダ内容の列挙 ---
+async function listEntries(dirHandle) {
+  const listEl = document.getElementById('file-list');
+  listEl.innerHTML = '';
+  try {
+    let count = 0;
+    for await (const [name, entry] of dirHandle.entries()) {
+      const li = document.createElement('li');
+      li.textContent = `${entry.kind === 'directory' ? '[dir] ' : '[file] '}${name}`;
+      listEl.appendChild(li);
+      count++;
+    }
+    log(`entries()列挙成功: ${count}件`, 'ok');
+  } catch (e) {
+    log('entries()列挙エラー: ' + e, 'ng');
+  }
+}
+
+// --- 3. ファイル書き込み ---
+document.getElementById('btn-write').addEventListener('click', async () => {
+  if (!currentDirHandle) return;
+  const statusEl = document.getElementById('pick-status');
+  const fileName = `fsa-test-${Date.now()}.txt`;
+  try {
+    const fileHandle = await currentDirHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(`FSA test write at ${new Date().toISOString()}\n`);
+    await writable.close();
+    statusEl.innerHTML = `<span class="ok">書き込み成功:</span> ${fileName}`;
+    log(`ファイル書き込み成功: ${fileName}`, 'ok');
+    await listEntries(currentDirHandle);
+  } catch (e) {
+    statusEl.innerHTML = `<span class="ng">書き込み失敗:</span> ${e}`;
+    log('ファイル書き込みエラー: ' + e, 'ng');
+  }
+});
+
+// --- 4〜5. 保存済みハンドルの権限確認 ---
+let loadedHandle = null;
+
+document.getElementById('btn-check-permission').addEventListener('click', async () => {
+  const statusEl = document.getElementById('permission-status');
+  try {
+    const handle = await loadHandle();
+    if (!handle) {
+      statusEl.innerHTML = '<span class="warn">保存されたハンドルがありません(まだフォルダを選択していないか、削除済みです)</span>';
+      log('保存済みハンドルなし', 'warn');
+      return;
+    }
+    loadedHandle = handle;
+    // ピッカーを開かずに権限状態だけを確認する
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    statusEl.innerHTML = `保存ハンドル名: ${handle.name} / queryPermission結果: <span class="${perm === 'granted' ? 'ok' : 'warn'}">${perm}</span>`;
+    log(`queryPermission結果: ${perm} (name=${handle.name})`, perm === 'granted' ? 'ok' : 'warn');
+    document.getElementById('btn-request-permission').disabled = false;
+
+    if (perm === 'granted') {
+      currentDirHandle = handle;
+      document.getElementById('btn-write').disabled = false;
+      await listEntries(handle);
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span class="ng">確認失敗:</span> ${e}`;
+    log('権限確認エラー: ' + e, 'ng');
+  }
+});
+
+document.getElementById('btn-request-permission').addEventListener('click', async () => {
+  const statusEl = document.getElementById('permission-status');
+  if (!loadedHandle) return;
+  try {
+    const perm = await loadedHandle.requestPermission({ mode: 'readwrite' });
+    statusEl.innerHTML = `requestPermission結果: <span class="${perm === 'granted' ? 'ok' : 'ng'}">${perm}</span>`;
+    log(`requestPermission結果: ${perm}`, perm === 'granted' ? 'ok' : 'ng');
+    if (perm === 'granted') {
+      currentDirHandle = loadedHandle;
+      document.getElementById('btn-write').disabled = false;
+      await listEntries(loadedHandle);
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<span class="ng">再要求失敗:</span> ${e}`;
+    log('requestPermissionエラー: ' + e, 'ng');
+  }
+});
+
+document.getElementById('btn-clear-handle').addEventListener('click', async () => {
+  await clearHandle();
+  loadedHandle = null;
+  document.getElementById('permission-status').textContent = '保存済みハンドルを削除しました';
+  log('保存済みハンドルを削除しました');
+});
+
+// ページロード時に自動で保存済みハンドルの有無だけ軽くログ
+(async () => {
+  try {
+    const handle = await loadHandle();
+    log(handle ? `起動時チェック: 保存済みハンドルあり (name=${handle.name})` : '起動時チェック: 保存済みハンドルなし');
+  } catch (e) {
+    log('起動時チェックエラー: ' + e, 'ng');
+  }
+})();
+</script>
+</body>
+</html>
