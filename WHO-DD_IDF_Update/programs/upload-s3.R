@@ -13,6 +13,7 @@ source(here("programs", "functions", "s3-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "unzip-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "whodd-idf-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "download-box.R"), encoding = "UTF-8")
+source(here("programs", "functions", "forge-dictionary-functions.R"), encoding = "UTF-8")
 # ------ main ------
 # download the ZIP file from BOX.
 whodd_zip <- whoddDownloadFilesFromBox()
@@ -33,3 +34,5 @@ copyTargetList <- BuildWhoddIdfCopyTargetList(idfUnzipDir, whoddUnzipDir, idfBox
 copyFiles <- GetCopyFileInfo(copyTargetList)
 UploadToS3(copyFiles)
 UploadToBox(copyFiles, kBoxExtractedDirId)
+# create FORGE dictionary data file.
+WriteForgeWhoDrugJs(copyFiles, unZipDirName)

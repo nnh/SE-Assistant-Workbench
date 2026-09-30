@@ -3,6 +3,7 @@
 #' This script downloads a WHO-DD/IDF pair and/or a MedDRA zip file by name from their existing
 #' BOX storage folders (under kCodingDirId), unzips them, and uploads the extracted target files
 #' to BOX (kBoxExtractedDirId). Files are not uploaded to S3.
+#' FORGE dictionary data files are also created in kForgeDataDir.
 #' Run programs/list-box-zip-files.R first to see available ZIP file names.
 #'
 #' @file upload-box-extracted.R
@@ -16,6 +17,7 @@ source(here("programs", "functions", "common.R"), encoding = "UTF-8")
 source(here("programs", "functions", "unzip-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "whodd-idf-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "download-box.R"), encoding = "UTF-8")
+source(here("programs", "functions", "forge-dictionary-functions.R"), encoding = "UTF-8")
 # ------ constants ------
 # 対象とするZIPファイルのファイル名を指定する（kCodingDirId配下の圧縮ファイルフォルダにあるもの）。対象がない場合は空文字のままにする。
 # ファイル名一覧は programs/list-box-zip-files.R で確認できる。
@@ -30,10 +32,14 @@ meddraBoxDirInfo <- GetTargetDirInfo(kMeddraBoxDirName, kMeddra)
 if (nchar(whodd_zip_filename) > 0) {
   copyFiles <- GetWhoddIdfCopyFiles(whodd_zip_filename, whoddBoxDirInfo)
   UploadToBox(copyFiles, kBoxExtractedDirId)
+  # boxDir is c(kAwsParentDirName, <version folder name>, "WHODD" or "IDF")
+  WriteForgeWhoDrugJs(copyFiles, copyFiles[[1]]$boxDir[2])
 }
 
 # MedDRA
 if (nchar(meddra_zip_filename) > 0) {
   copyFiles <- GetMeddraCopyFiles(meddra_zip_filename, meddraBoxDirInfo)
   UploadToBox(copyFiles, kBoxExtractedDirId)
+  # boxDir is c(kMeddraBoxDirName, <version>)
+  WriteForgeMeddraJs(copyFiles, copyFiles[[1]]$boxDir[2])
 }

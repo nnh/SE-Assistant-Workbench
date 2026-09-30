@@ -13,6 +13,7 @@ source(here("programs", "functions", "s3-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "unzip-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "whodd-idf-functions.R"),  encoding="UTF-8")
 source(here("programs", "functions", "download-box.R"),  encoding="UTF-8")
+source(here("programs", "functions", "forge-dictionary-functions.R"),  encoding="UTF-8")
 # ------ main ------
 # download the ZIP file from BOX.
 meddra_zip <- GetMeddraDownloadFilesInfoFromBox()
@@ -30,3 +31,5 @@ meddraBoxDir <- c(kMeddraBoxDirName, version)
 copyFiles <- BuildMeddraCopyFiles(targetFiles, meddraBoxDir, aws_dir)
 UploadToS3(copyFiles)
 UploadToBox(copyFiles, kBoxExtractedDirId)
+# create FORGE dictionary data file.
+WriteForgeMeddraJs(copyFiles, version)
