@@ -27,6 +27,8 @@ import {
   EVENT_ROUND_COLUMN,
   EVENT_SHEET_NAME,
   EVENT_TRIAL_COLUMN,
+  README_SHEET_NAME,
+  README_URL,
   RESEARCH_SYSTEM_URL_DUMMY,
   RESEARCH_SYSTEM_URL_PROPERTY,
   SCHEDULE_BASE_COLUMN,
@@ -231,6 +233,19 @@ function setupTrialInfoSheet_(ss: Spreadsheet): Sheet {
 }
 
 /**
+ * README へのリンクを置いたシートを、一番左に作成する。
+ */
+function setupReadmeSheet_(ss: Spreadsheet): void {
+  const sheet = getOrCreateSheet_(ss, README_SHEET_NAME);
+  sheet
+    .getRange('A1')
+    .setFormula(`=HYPERLINK("${README_URL}","README（使い方）")`);
+  // 一番左に移動する（moveActiveSheet はアクティブなシートを動かすため、先にアクティブにする）
+  ss.setActiveSheet(sheet);
+  ss.moveActiveSheet(1);
+}
+
+/**
  * 各シートを作成し、ヘッダー・初期データ・入力規則を設定する。
  * 既に内容があるシートのデータは上書きしない（入力規則・書式は設定し直す）。
  */
@@ -238,6 +253,9 @@ export function setupSheets_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   // 日付計算がずれないよう、スクリプトと同じタイムゾーンに揃える
   ss.setSpreadsheetTimeZone('Asia/Tokyo');
+
+  // README へのリンク
+  setupReadmeSheet_(ss);
 
   // 試験情報マスタ（研究管理システムから取り込み）
   const trialInfo = setupTrialInfoSheet_(ss);
