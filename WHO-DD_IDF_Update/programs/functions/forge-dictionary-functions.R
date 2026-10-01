@@ -1,6 +1,6 @@
 #' FORGE Dictionary Functions
 #'
-#' Description: This script includes functions to create FORGE(stat-forge) web_tool dictionary data files
+#' Description: This script includes functions to create FORGE(stat-forge) dictionary data files
 #' (<kForgeDataDir>/meddra/<version>.js, <kForgeDataDir>/who_drug/<version>.js) from the extracted files,
 #' and to register the version in <kForgeDataDir>/versions.js.
 #' The output is the same as the drag & drop import in the FORGE web_tool (meddra_import.js / who_drug_import.js).

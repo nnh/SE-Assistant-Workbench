@@ -61,7 +61,7 @@ WHO-DD・IDFの`<バージョンフォルダ名>`はS3格納時と同じ（WHO-D
 
 ## FORGE用辞書データファイルの出力
 
-`upload-s3.R`・`upload-meddra-s3.R`・`upload-box-extracted.R`の最後に、S3・BOXへのアップロード対象と同じ展開ファイルから、FORGE(stat-forge)のWeb版が読み込む辞書データファイルを作成する。出力先はconfig.txtの`kForgeDataDir`で指定したフォルダ（FORGEの`web_tool/data`）。出力内容はFORGEのWeb版でバージョンフォルダをドラッグ&ドロップした場合と同じ。
+`upload-s3.R`・`upload-meddra-s3.R`・`upload-box-extracted.R`の最後に、S3・BOXへのアップロード対象と同じ展開ファイルから、FORGE(stat-forge)のWeb版が読み込む辞書データファイルを作成する。出力先はconfig.txtの`kForgeDataDir`で指定したフォルダ（FORGEの`dictionary_data`）。出力内容はFORGEのWeb版でバージョンフォルダをドラッグ&ドロップした場合と同じ。
 
 | 対象 | 出力ファイル | 使用するファイル | 出力列 |
 |---|---|---|---|
