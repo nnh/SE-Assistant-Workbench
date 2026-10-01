@@ -27,7 +27,10 @@
 "kAwsDefaultRegion", "AWSリージョン"
 "kAwsBucketName", "AWSバケット名"
 "kBoxExtractedDirId", "展開ファイルの格納先BOXフォルダID"
+"kForgeDataDir", "FORGEのdictionary_dataフォルダのパス"
 ```
+
+`kForgeDataDir`には、FORGE(stat-forge)の辞書データ格納先（`dictionary_data`フォルダ）のパスを指定します。`upload-s3.R`・`upload-meddra-s3.R`・`upload-box-extracted.R`の最後に、このフォルダへFORGE用の辞書データファイルが出力されます。
 
 ### スクリプトの実行方法
 

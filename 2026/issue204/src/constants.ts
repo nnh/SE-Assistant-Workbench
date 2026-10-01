@@ -15,6 +15,13 @@
  */
 // ---- シート名 ----
 
+// README へのリンクを置くシート名（一番左に置く）
+export const README_SHEET_NAME = 'README';
+
+// README のURL（master ブランチ）
+export const README_URL =
+  'https://github.com/nnh/SE-Assistant-Workbench/blob/master/2026/issue204/README.md';
+
 // 研究管理システムから取り込んだ試験情報を置くシート名
 export const TRIAL_INFO_SHEET_NAME = '試験情報マスタ';
 
