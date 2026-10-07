@@ -43,12 +43,9 @@ function splitLines(text) {
   return text.split(/\r\n|\r|\n/).filter((line) => line.length > 0);
 }
 
-// タブ区切り・ヘッダー無しファイルをパースする(IDMapping.csv・WHODDsGenericNames.csv用)
-function parseTsv(text) {
-  return splitLines(text).map((line) => line.split("\t"));
-}
-
-// カンマ区切り(クォート囲み)・ヘッダー無しファイルをパースする(full_en.txt・data.txt用)
+// カンマ区切り(クォート囲み)・ヘッダー無しファイルをパースする
+// (IDMapping.csv・WHODDsGenericNames.csv・full_en.txt・data.txt用。
+//  IDMapping.csv・WHODDsGenericNames.csvは値自体にカンマを含む場合があり、その値はダブルクォートで囲まれている)
 function parseQuotedCsv(text) {
   return splitLines(text).map(parseCsvLine);
 }
@@ -71,8 +68,8 @@ async function buildWhoDrugHierarchy(dirHandle) {
   const utf8Decoder = new TextDecoder("utf-8");
   const latin1Decoder = new TextDecoder("iso-8859-1");
 
-  const idMappingRows = parseTsv(await readTextFile(dirHandle, "WHODD/IDMapping.csv", utf8Decoder));
-  const genericNameRows = parseTsv(await readTextFile(dirHandle, "WHODD/WHODDsGenericNames.csv", utf8Decoder));
+  const idMappingRows = parseQuotedCsv(await readTextFile(dirHandle, "WHODD/IDMapping.csv", utf8Decoder));
+  const genericNameRows = parseQuotedCsv(await readTextFile(dirHandle, "WHODD/WHODDsGenericNames.csv", utf8Decoder));
   const fullEnRows = parseQuotedCsv(await readTextFile(dirHandle, "IDF/full_en.txt", utf8Decoder));
   const dataRows = parseQuotedCsv(await readTextFile(dirHandle, "IDF/data.txt", latin1Decoder));
 

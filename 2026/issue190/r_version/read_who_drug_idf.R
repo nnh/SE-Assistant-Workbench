@@ -10,15 +10,15 @@ build_who_drug_idf <- function(who_drug_idf_parent_dir, who_drug_idf_version_fol
   idf_dir <- file.path(version_dir, "IDF")
 
   # WHODD: DDDRCODE(WHO Drug Dictionary側の薬剤コード)とIDFCODE(IDF側のコード)の対応表。
-  # タブ区切り・ヘッダー無し。5列目(note)は"WHO Global"などの注記で、無い行もある
-  id_mapping <- read_tsv(
+  # カンマ区切り・ヘッダー無し。5列目(note)は"WHO Global"などの注記で、無い行もある
+  id_mapping <- read_csv(
     file.path(whodd_dir, "IDMapping.csv"),
     col_names = c("ddd_label", "ddd_code", "idf_label", "idf_code", "note"),
     col_types = cols(.default = "c")
   )
 
-  # WHODD: DDDRCODEごとの一般名(英語)。タブ区切り・ヘッダー無し
-  whodd_generic_names <- read_tsv(
+  # WHODD: DDDRCODEごとの一般名(英語)。カンマ区切り・ヘッダー無し
+  whodd_generic_names <- read_csv(
     file.path(whodd_dir, "WHODDsGenericNames.csv"),
     col_names = c("ddd_code", "generic_name_en"),
     col_types = cols(.default = "c")

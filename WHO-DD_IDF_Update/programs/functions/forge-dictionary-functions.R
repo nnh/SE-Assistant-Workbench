@@ -37,13 +37,17 @@ GetForgeSourcePath <- function(copyFiles, filename) {
 
 #' Read a delimited file without header as character columns (X1, X2, ...)
 #'
-#' Quotes are not interpreted and whitespace is not trimmed, same as the FORGE web_tool.
+#' Whitespace is not trimmed, same as the FORGE web_tool. Quotes are not interpreted by
+#' default (same as the FORGE web_tool's tab-delimited parsing), but can be enabled via
+#' `quote` for comma-delimited files whose values may themselves contain commas
+#' (e.g. WHODDsGenericNames.csv's generic_name_en).
 #' @param path The file path.
 #' @param delim The delimiter.
+#' @param quote The quote character, or "" to disable quote interpretation.
 #' @return A tibble.
-ReadForgeDelimFile <- function(path, delim) {
+ReadForgeDelimFile <- function(path, delim, quote = "") {
   read_delim(path, delim = delim, col_names = FALSE, col_types = cols(.default = "c"),
-             quote = "", trim_ws = FALSE, na = character(), progress = FALSE)
+             quote = quote, trim_ws = FALSE, na = character(), progress = FALSE)
 }
 
 #' Read a comma separated (double quoted) file without header as character columns (X1, X2, ...)
@@ -97,10 +101,15 @@ BuildForgeMeddraTable <- function(copyFiles) {
 #' @param copyFiles A list from GetCopyFileInfo() (WHO-DD and IDF).
 #' @return A tibble with kForgeWhoDrugColumns.
 BuildForgeWhoDrugTable <- function(copyFiles) {
-  # IDMapping.csv: ddd_label, ddd_code, idf_label, idf_code, note (tab separated)
-  idMapping <- copyFiles |> GetForgeSourcePath("IDMapping.csv") |> ReadForgeDelimFile("\t") |>
+  # IDMapping.csv: ddd_label, ddd_code, idf_label, idf_code, note
+  # WHODDsGenericNames.csv: ddd_code, generic_name_en
+  # いずれもヘッダー無し。WHO-DD提供元の仕様変更(2026 Mar 1版以降)で区切り文字がタブからカンマに
+  # 変更されたため、新旧どちらのバージョンのWHO-DDでも処理できるよう自動判定する。
+  idMappingPath <- copyFiles |> GetForgeSourcePath("IDMapping.csv")
+  idMapping <- idMappingPath |> ReadForgeDelimFile(idMappingPath |> DetectDelimiter(), quote = '"') |>
     select(ddd_code = X2, idf_code = X4)
-  genericNames <- copyFiles |> GetForgeSourcePath("WHODDsGenericNames.csv") |> ReadForgeDelimFile("\t") |>
+  genericNamesPath <- copyFiles |> GetForgeSourcePath("WHODDsGenericNames.csv")
+  genericNames <- genericNamesPath |> ReadForgeDelimFile(genericNamesPath |> DetectDelimiter(), quote = '"') |>
     select(ddd_code = X1, generic_name_en = X2) |>
     mutate(generic_name_en = na_if(generic_name_en, "")) |>
     distinct(ddd_code, .keep_all = TRUE)
