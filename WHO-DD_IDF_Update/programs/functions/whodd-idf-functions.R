@@ -104,13 +104,16 @@ FindMatchingIdfUnzipDir <- function(version) {
 #' @param whoddDir The S3 destination prefix for WHO-DD files, or NULL if not uploading to S3.
 #' @return A list suitable for GetCopyFileInfo().
 BuildWhoddIdfCopyTargetList <- function(idfUnzipDir, whoddUnzipDir, idfBoxDir, whoddBoxDir, idfDir = NULL, whoddDir = NULL) {
+  # WHO-DD提供元の仕様変更(2026 Mar 1版以降)で"Version.txt"から"Version.csv"に変更された。
+  # 新旧どちらのバージョンのWHO-DDでも処理できるよう、存在する方を使う。
+  versionFileName <- whoddUnzipDir |> FindFirstExistingFile(c("Version.csv", "Version.txt"))
   list(
     list(fromName = "全件.txt", toName = "data.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
     list(fromName = "英名＜可変長＞.txt", toName = "full_en.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
     list(fromName = "全件＜可変長＞.txt", toName = "full_ja.txt", toDir = idfDir, fromDir = idfUnzipDir, boxDir = idfBoxDir),
     list(fromName = "IDMapping.csv", toName = "IDMapping.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
     list(fromName = "WHODDsGenericNames.csv", toName = "WHODDsGenericNames.csv", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir),
-    list(fromName = "Version.txt", toName = "Version.txt", toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir)
+    list(fromName = versionFileName, toName = versionFileName, toDir = whoddDir, fromDir = whoddUnzipDir, boxDir = whoddBoxDir)
   )
 }
 

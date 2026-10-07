@@ -25,7 +25,7 @@ ZIP内を展開せず、ダウンロードしたZIPファイル自体をその�
 |---|---|
 | `IDMapping.csv` | `IDMapping.csv`（変更なし） |
 | `WHODDsGenericNames.csv` | `WHODDsGenericNames.csv`（変更なし） |
-| `Version.txt` | `Version.txt`（変更なし） |
+| `Version.csv`または`Version.txt` | 同名（変更なし） |
 
 ### IDF（`IDF/`配下）
 

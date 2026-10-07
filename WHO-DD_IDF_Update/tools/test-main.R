@@ -23,7 +23,6 @@ kTestZenkenKahen <- "full_ja.txt"
 kTestEimei <- "full_en.txt"
 kWhoddFolder <- "WHODD"
 kIdfFolder <- "IDF"
-kVersionFile <- "Version.txt"
 # ------ functions ------
 source(here("programs", "functions", "s3-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "unzip-functions.R"), encoding = "UTF-8")
@@ -113,6 +112,9 @@ ExecUnzip(boxWhoddZipFile, testBoxWhoddDir)
 testBoxWhoddDir2 <- file.path(testBoxWhoddDir, "testBoxWhodd")
 CreateDir(testBoxWhoddDir2)
 list.files(testBoxWhoddDir, pattern = "*.zip", full.names = T) |> ExecUnzip(testBoxWhoddDir2)
+# WHO-DD提供元の仕様変更(2026 Mar 1版以降)で"Version.txt"から"Version.csv"に変更された。
+# 新旧どちらのバージョンのWHO-DDでも処理できるよう、存在する方を使う。
+kVersionFile <- testBoxWhoddDir2 |> FindFirstExistingFile(c("Version.csv", "Version.txt"))
 ## idf box
 idfFileId <- GetTestTarget(idfZipId, kIdfTargetZipName)
 boxIdfZipFile <- idfFileId |> box_dl(testBoxDir, overwrite = T)
@@ -173,7 +175,10 @@ if (nrow(zenkenTxt) != nrow(zenkenkahenTxt) | nrow(zenkenTxt) != nrow(eimeiKahen
   cat("test3:OK\n")
 }
 ## テスト４：IDFで新規追加された項目がWHODDのidMappingにも存在することを確認する
-idMappingTxt <- file.path(testAwsDir, kTestIdMapping) |> read_tsv(col_names = F, show_col_types = F)
+# WHO-DD提供元の仕様変更(2026 Mar 1版以降)で区切り文字がタブからカンマに変更されたため、
+# 新旧どちらのバージョンのWHO-DDでも処理できるよう自動判定する。
+idMappingPath <- file.path(testAwsDir, kTestIdMapping)
+idMappingTxt <- idMappingPath |> read_delim(delim = idMappingPath |> DetectDelimiter(), col_names = F, show_col_types = F)
 checkIdMapping <- inner_join(idMappingTxt, shinkiTxt, by = c("X4" = "V1")) |> nrow()
 if (checkIdMapping == 0) {
   stop("error:test4")
@@ -188,7 +193,8 @@ idMappingRow <- whoddTableTotal |>
 whoddsGenericNamesRow <- whoddTableTotal |>
   filter(Table == kTestWHODDsGenericNames) %>%
   .[1, "No of rows", drop = T]
-whoddsGenericNames <- file.path(testAwsDir, kTestWHODDsGenericNames) |> read_tsv(col_names = F, show_col_types = F)
+whoddsGenericNamesPath <- file.path(testAwsDir, kTestWHODDsGenericNames)
+whoddsGenericNames <- whoddsGenericNamesPath |> read_delim(delim = whoddsGenericNamesPath |> DetectDelimiter(), col_names = F, show_col_types = F)
 if (nrow(idMappingTxt) != idMappingRow | nrow(whoddsGenericNames) != whoddsGenericNamesRow) {
   stop("error:test5")
 } else {

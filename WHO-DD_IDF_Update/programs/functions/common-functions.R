@@ -249,3 +249,34 @@ GetCopyFileInfo <- function(targetList) {
   })
   return(copyFiles)
 }
+#' Find which of several candidate file names exists in a directory
+#'
+#' Tries each candidate in order and returns the first one found in the directory.
+#' Used to support both the old and new WHO-DD file naming (e.g. "Version.txt" vs "Version.csv").
+#'
+#' @param directory The path to the directory.
+#' @param candidates A character vector of candidate file names, in priority order.
+#' @return The matching file name (not the full path).
+FindFirstExistingFile <- function(directory, candidates) {
+  for (candidate in candidates) {
+    if (length(FindFiles(directory, candidate)) > 0) {
+      return(candidate)
+    }
+  }
+  stop(str_c("None of the candidate files exist: ", str_c(candidates, collapse = ", ")))
+}
+#' Detect whether a file is tab-delimited or comma-delimited
+#'
+#' Sniffs the first line of the file for a tab character. Used to support both the old
+#' (tab-delimited) and new (comma-delimited) WHO-DD file formats (e.g. IDMapping.csv).
+#'
+#' @param path The file path.
+#' @return "\t" if a tab is found in the first line, otherwise ",".
+DetectDelimiter <- function(path) {
+  firstLine <- read_lines(path, n_max = 1)
+  if (str_detect(firstLine, "\t")) {
+    return("\t")
+  } else {
+    return(",")
+  }
+}
