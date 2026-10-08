@@ -14,7 +14,6 @@ library(jsonlite)
 versions <- here("ext", "version.json") |> read_json()
 idfVersion <- versions$version$IDF
 kIdfTargetZipName <- str_c("mtlt", idfVersion, "_all.zip")
-kIdfPasswordFilename <- kIdfTargetZipName |> str_replace(".zip", "_pw.txt")
 kTestIdMapping <- "IDMapping.csv"
 kTestWHODDsGenericNames <- "WHODDsGenericNames.csv"
 kTestOutputFolder <- "output"
@@ -26,6 +25,7 @@ kIdfFolder <- "IDF"
 # ------ functions ------
 source(here("programs", "functions", "s3-functions.R"), encoding = "UTF-8")
 source(here("programs", "functions", "unzip-functions.R"), encoding = "UTF-8")
+source(here("programs", "functions", "download-box.R"), encoding = "UTF-8")
 GetTestTarget <- function(parentDirId, targetName) {
   targetList <- parentDirId |> box_ls()
   for (i in 1:length(targetList)) {
@@ -118,8 +118,10 @@ kVersionFile <- testBoxWhoddDir2 |> FindFirstExistingFile(c("Version.csv", "Vers
 ## idf box
 idfFileId <- GetTestTarget(idfZipId, kIdfTargetZipName)
 boxIdfZipFile <- idfFileId |> box_dl(testBoxDir, overwrite = T)
-idfPasswordFileId <- GetTestTarget(idfZipId, kIdfPasswordFilename)
-password <- box_read_tsv(idfPasswordFileId, header = F) %>% .[1, 1, drop = T]
+## パスワードファイルの中身が空(改行のみ)の場合があり、その場合はパスワード無しとして扱う。
+## download-box.RのGetIdfPassword()は同じ状況をtryCatchでNAにフォールバックする実装のため、それを再利用する。
+## (GetIdfPassword()はzipファイル名を受け取り、内部で"_pw.txt"に変換するため、kIdfTargetZipNameを渡す)
+password <- GetIdfPassword(list(zipId = idfZipId), kIdfTargetZipName)
 testBoxIdfDir <- file.path(testBoxDir, "testBoxIdf")
 CreateDir(testBoxIdfDir)
 ExecUnzipByPassword(boxIdfZipFile, testBoxIdfDir, password)

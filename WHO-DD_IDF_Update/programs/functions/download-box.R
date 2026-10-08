@@ -33,8 +33,11 @@ GetTargetIdfFile <- function(idfBoxDirInfo, version) {
   targetIdfFiles$month <- targetIdfFiles$ym |> str_sub(5, 6) |> as.numeric()
   targetYear <- version |> str_sub(1, 4) |> as.numeric()
   target <- targetIdfFiles |> filter((targetYear - 1) <= year & year <= targetYear)
+  if (nrow(target) == 0) {
+    stop("対応する年代のIDFファイルが見つかりません。")
+  }
   target$password <- NA
-  for (i in 1:nrow(target)) {
+  for (i in seq_len(nrow(target))) {
     filename <- target[i, "name", drop=T] |> flatten_chr()
     target[i, "password"] <- GetIdfPassword(idfBoxDirInfo, filename)
   }
