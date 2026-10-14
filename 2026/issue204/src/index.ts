@@ -15,52 +15,28 @@
  */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // エントリポイント（トリガー関数・メニューから呼ぶ関数）
-import {
-  EVENT_SHEET_NAME,
-  SCHEDULE_SHEET_NAME,
-  TASK_TEMPLATE_SHEET_NAME,
-  TRIAL_MASTER_SHEET_NAME,
-} from './constants';
-import {refreshAll_, setupSheets_} from './sheet-service';
-
-// 編集されたら更新処理を行うシート
-const WATCHED_SHEETS = [
-  TRIAL_MASTER_SHEET_NAME,
-  TASK_TEMPLATE_SHEET_NAME,
-  SCHEDULE_SHEET_NAME,
-  EVENT_SHEET_NAME,
-];
+import {colorTrialNamesOnEdit_, setupSheets_} from './sheet-service';
 
 /**
  * スプレッドシートを開いたときにメニューを追加する（シンプルトリガー）。
  */
 function onOpen(): void {
   SpreadsheetApp.getUi()
-    .createMenu('スケジュール管理')
-    .addItem('初期設定', 'setupSheets')
-    .addItem('表示を更新', 'refreshView')
+    .createMenu('初期設定')
+    .addItem('初期設定を実行', 'setupSheets')
     .addToUi();
 }
 
 /**
- * セルを編集したときに、作業の追加・日付の計算・タイムライン用データの更新・行の表示切り替えを行う（シンプルトリガー）。
+ * セルを編集したときに、試験一覧の試験名に淡い色を付ける（シンプルトリガー）。
  */
 function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
-  if (WATCHED_SHEETS.includes(e.range.getSheet().getName())) {
-    refreshAll_();
-  }
+  colorTrialNamesOnEdit_(e);
 }
 
 /**
- * メニュー「初期設定」: シートの作成と書式設定を行う。
+ * メニュー「初期設定」: シートの作成と書式・数式の設定を行う。
  */
 function setupSheets(): void {
   setupSheets_();
-}
-
-/**
- * メニュー「表示を更新」: 作業の追加・日付の計算・タイムライン用データの更新・行の表示切り替えを行う。
- */
-function refreshView(): void {
-  refreshAll_();
 }

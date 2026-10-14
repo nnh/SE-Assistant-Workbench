@@ -25,155 +25,75 @@ export const README_URL =
 // 研究管理システムから取り込んだ試験情報を置くシート名
 export const TRIAL_INFO_SHEET_NAME = '試験情報マスタ';
 
-// 試験の一覧（略称・表示状態・LPO・データロック・備考）
+// 試験の一覧（タイムライン表示の元データも兼ねる）
 export const TRIAL_MASTER_SHEET_NAME = '試験一覧';
-
-// 作業の標準期間と並べ方のルール
-export const TASK_TEMPLATE_SHEET_NAME = '作業テンプレート';
-
-// 試験ごとの作業と期間（開始日・完了日は自動計算）
-export const SCHEDULE_SHEET_NAME = 'スケジュール';
-
-// イベント名の一覧（イベントシートのプルダウン用）
-export const EVENT_MASTER_SHEET_NAME = 'イベント一覧';
-
-// 試験ごとのイベントの日付（手入力）
-export const EVENT_SHEET_NAME = 'イベント';
-
-// タイムライン表示の元データを書き出すシート名（スクリプトが自動生成する）
-export const TIMELINE_SHEET_NAME = 'タイムライン用データ';
 
 // ---- 試験一覧シート ----
 
+// 終了日が空欄のとき、開始日から何か月分のバーを引くか（カレンダー上の月数）
+export const TIMELINE_MONTHS = 4;
+
+// A〜D 列は手入力、E〜G 列は数式で自動計算
+// 開始日・終了日は手入力（記録として残す）、タイムライン開始・終了はタイムライン表示用（非表示なら空欄）
 export const TRIAL_MASTER_HEADERS = [
-  '略称',
+  '試験名',
   '表示状態',
-  'LPO',
-  'データロック',
-  '備考',
+  '開始日',
+  // 空欄でもよいこと・空欄のときの扱いが分かるよう、見出しに書いておく
+  `終了日（空欄なら開始日+${TIMELINE_MONTHS}か月）`,
+  '表示名',
+  'タイムライン開始',
+  'タイムライン終了',
 ];
 
 // 列（1始まり）
 export const TRIAL_NAME_COLUMN = 1;
 export const TRIAL_VISIBILITY_COLUMN = 2;
-export const TRIAL_LPO_COLUMN = 3;
-export const TRIAL_DATA_LOCK_COLUMN = 4;
+export const TRIAL_START_COLUMN = 3;
+export const TRIAL_END_COLUMN = 4;
+export const TRIAL_DISPLAY_NAME_COLUMN = 5;
+export const TRIAL_TIMELINE_START_COLUMN = 6;
+export const TRIAL_TIMELINE_END_COLUMN = 7;
+
+// 終了日のセルを選んだときに表示する説明（入力規則のヘルプテキスト）
+export const END_DATE_HELP_TEXT = `日付を入力してください。空欄の場合、タイムラインには開始日の${TIMELINE_MONTHS}か月後まで表示されます。`;
+
+// 開始日が空欄の試験の表示名（タイムラインのカードのタイトル）に付ける文字
+export const SCHEDULE_UNDECIDED_SUFFIX = '（スケジュール未定）';
+
+// 試験名があり非表示でないのに開始日が空欄のとき、開始日のセルに付ける背景色（条件付き書式）
+export const MISSING_START_BACKGROUND = '#fff2cc';
+
+// 自動計算の列（表示名〜タイムライン終了）にかける保護（編集時に警告を表示）の説明。
+// 初期設定の再実行時に同じ保護を探して付け直すのにも使う
+export const AUTO_COLUMNS_PROTECTION_DESCRIPTION =
+  'この列は数式で自動計算しています。直接編集しないでください。';
+
+// 以前の版でかけた保護の説明（初期設定の再実行時に外すため）
+export const LEGACY_PROTECTION_DESCRIPTIONS = [
+  '開始日・終了日は数式で自動計算しています。直接編集しないでください。',
+  '開始日・終了日・表示名は数式で自動計算しています。直接編集しないでください。',
+];
 
 // 表示状態の選択肢（空欄は「表示」として扱う）
 export const VISIBILITY_SHOWN = '表示';
 export const VISIBILITY_HIDDEN = '非表示';
 
-// タイムラインに出す基準日のイベント名
-export const LPO_LABEL = 'LPO';
-export const DATA_LOCK_LABEL = 'データロック';
-
-// ---- 作業テンプレートシート ----
-
-export const TASK_TEMPLATE_HEADERS = [
-  '作業',
-  '基準',
-  '順番',
-  '標準期間',
-  '単位',
+// 試験名のセルに付ける背景色（淡い色）。行番号に応じて順番に割り当て、足りなければ繰り返す
+// タイムライン表示の「カードの色」に試験名の列を指定すると、バーの色になる
+export const TRIAL_COLORS = [
+  '#fde2e4',
+  '#dcecc8',
+  '#cfe8f3',
+  '#fff1c1',
+  '#e6dcf5',
+  '#d4f0e2',
+  '#ffe2cc',
+  '#dde5fb',
 ];
 
-// 基準は「〇〇前」「〇〇後」の形（〇〇は LPO・データロック・イベント一覧のイベント）
-// 〇〇前: 基準日の前営業日から順番の降順に逆算して詰める（同じ順番は完了日を揃える）
-// 〇〇後: 基準日の翌営業日から順番の昇順に前向きに詰める（同じ順番は開始日を揃える）
-export const BASE_SUFFIX_BEFORE = '前';
-export const BASE_SUFFIX_AFTER = '後';
-export const BASE_AFTER_LPO = `${LPO_LABEL}${BASE_SUFFIX_AFTER}`;
-export const BASE_BEFORE_DATA_LOCK = `${DATA_LOCK_LABEL}${BASE_SUFFIX_BEFORE}`;
-export const BASE_AFTER_DATA_LOCK = `${DATA_LOCK_LABEL}${BASE_SUFFIX_AFTER}`;
-
-// 期間の単位と、1単位あたりの営業日数（1人が専任で担当する前提）
-export const UNIT_PERSON_DAY = '人日';
-export const UNIT_PERSON_MONTH = '人月';
-export const BUSINESS_DAYS_PER_UNIT: Record<string, number> = {
-  [UNIT_PERSON_DAY]: 1,
-  [UNIT_PERSON_MONTH]: 20,
-};
-
-// 初期設定時に作業テンプレートシートへ書き込む標準の作業（作業, 基準, 順番, 標準期間, 単位）
-// 期間は仮の目安。シート上で調整する
-export const DEFAULT_TASK_TEMPLATES: (string | number)[][] = [
-  ['SDTMマッピング仕様書作成', BASE_BEFORE_DATA_LOCK, 1, 10, UNIT_PERSON_DAY],
-  ['SDTM作成', BASE_BEFORE_DATA_LOCK, 2, 1, UNIT_PERSON_MONTH],
-  ['SDTM QC', BASE_BEFORE_DATA_LOCK, 2, 10, UNIT_PERSON_DAY],
-  ['SDTMバリデーション', BASE_BEFORE_DATA_LOCK, 3, 3, UNIT_PERSON_DAY],
-  ['ADaM仕様書作成', BASE_BEFORE_DATA_LOCK, 4, 10, UNIT_PERSON_DAY],
-  ['ADaM作成', BASE_BEFORE_DATA_LOCK, 5, 1, UNIT_PERSON_MONTH],
-  ['ADaM QC', BASE_BEFORE_DATA_LOCK, 5, 10, UNIT_PERSON_DAY],
-  ['TLF作成', BASE_BEFORE_DATA_LOCK, 6, 1, UNIT_PERSON_MONTH],
-  ['TLF QC', BASE_BEFORE_DATA_LOCK, 6, 10, UNIT_PERSON_DAY],
-  ['症例検討会用資料作成', BASE_AFTER_LPO, 1, 10, UNIT_PERSON_DAY],
-  ['ドライラン', BASE_AFTER_LPO, 2, 5, UNIT_PERSON_DAY],
-  ['最終解析', BASE_AFTER_DATA_LOCK, 1, 5, UNIT_PERSON_DAY],
-  ['統計解析報告書作成', BASE_AFTER_DATA_LOCK, 2, 1, UNIT_PERSON_MONTH],
-];
-
-// ---- スケジュールシート ----
-
-export const SCHEDULE_HEADERS = [
-  '略称',
-  '作業',
-  '回',
-  '基準',
-  '順番',
-  '期間',
-  '単位',
-  '開始日',
-  '完了日',
-  '警告',
-];
-
-// 列（1始まり）。略称〜単位が入力、開始日〜警告は自動計算
-export const SCHEDULE_TRIAL_COLUMN = 1;
-export const SCHEDULE_TASK_COLUMN = 2;
-export const SCHEDULE_ROUND_COLUMN = 3;
-export const SCHEDULE_BASE_COLUMN = 4;
-export const SCHEDULE_ORDER_COLUMN = 5;
-export const SCHEDULE_PERIOD_COLUMN = 6;
-export const SCHEDULE_UNIT_COLUMN = 7;
-export const SCHEDULE_START_COLUMN = 8;
-export const SCHEDULE_INPUT_WIDTH = 7;
-export const SCHEDULE_OUTPUT_WIDTH = 3;
-
-// データロック前に終わるべき作業（〇〇前の作業と LPO後の作業）がデータロック日以降にかかるときの警告
-export const WARNING_OVER_DATA_LOCK = 'データロック日を超過';
-
-// ---- イベント一覧・イベントシート ----
-
-export const EVENT_MASTER_HEADERS = ['イベント'];
-
-// LPO・データロックは試験一覧から取るため含めない
-export const DEFAULT_EVENTS = [
-  'FPI',
-  '症例登録開始',
-  '症例登録終了',
-  'LPI',
-  '中間解析データ固定',
-  '効果安全性評価委員会',
-  '追跡終了',
-  '症例検討会',
-];
-
-export const EVENT_HEADERS = ['略称', 'イベント', '回', '日付'];
-
-// 列（1始まり）
-export const EVENT_TRIAL_COLUMN = 1;
-export const EVENT_NAME_COLUMN = 2;
-export const EVENT_ROUND_COLUMN = 3;
-export const EVENT_DATE_COLUMN = 4;
-
-// ---- タイムライン用データシート ----
-
-export const TIMELINE_HEADERS = ['略称', '作業', '開始日', '終了日'];
-
-// タイムライン用データの背景色。タイムライン表示の「カードの色」にこのシートの列を指定すると、バーの色になる
-// 作業は白、イベント（LPO・データロックを含む）は淡い色
-export const TASK_BACKGROUND = '#ffffff';
-export const EVENT_BACKGROUND = '#fde2e4';
+// 未着色とみなす背景色（白）
+export const NO_BACKGROUND = '#ffffff';
 
 // 日付セルの表示形式
 export const DATE_FORMAT = 'yyyy/mm/dd';

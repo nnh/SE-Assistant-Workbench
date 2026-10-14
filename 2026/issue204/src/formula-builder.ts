@@ -21,7 +21,15 @@ import {
   RESEARCH_SYSTEM_RANGE,
   RESEARCH_SYSTEM_STATUS_COL,
   STAT_COLUMNS,
+  SCHEDULE_UNDECIDED_SUFFIX,
+  TIMELINE_MONTHS,
+  TRIAL_END_COLUMN,
   TRIAL_INFO_SORT_KEYS,
+  TRIAL_NAME_COLUMN,
+  TRIAL_START_COLUMN,
+  TRIAL_TIMELINE_START_COLUMN,
+  TRIAL_VISIBILITY_COLUMN,
+  VISIBILITY_HIDDEN,
 } from './constants';
 
 /**
@@ -70,4 +78,69 @@ export function buildTrialInfoFormula_(url: string): string {
     `IMPORTRANGE("${escapedUrl}","${DATACENTER_RANGE}"),{${joinColumns}},FALSE),"")),` +
     `VSTACK({${headerLiteral}},SORT(HSTACK(stat,joined),${sortArgs})))`
   );
+}
+
+/**
+ * 列番号（1始まり）を列記号（A, B, ... Z）に変換する。26列以内のみ対応。
+ */
+function toColumnLetter_(column: number): string {
+  return String.fromCharCode(64 + column);
+}
+
+/**
+ * 試験一覧のタイムライン開始列（2行目）に入れる数式を作る。
+ * - 試験名が空欄、または表示状態が「非表示」なら空欄（タイムラインに出さない）
+ * - 開始日が入力済みなら開始日、空欄なら今日
+ */
+export function buildTimelineStartFormula_(): string {
+  const name = toColumnLetter_(TRIAL_NAME_COLUMN);
+  const visibility = toColumnLetter_(TRIAL_VISIBILITY_COLUMN);
+  const start = toColumnLetter_(TRIAL_START_COLUMN);
+  return (
+    `=ARRAYFORMULA(IF((${name}2:${name}="")+` +
+    `(${visibility}2:${visibility}="${VISIBILITY_HIDDEN}"),"",` +
+    `IF(${start}2:${start}="",TODAY(),${start}2:${start})))`
+  );
+}
+
+/**
+ * 試験一覧のタイムライン終了列（2行目）に入れる数式を作る。
+ * - タイムライン開始が空欄なら空欄
+ * - 終了日が入力済みなら終了日
+ * - 終了日が空欄で開始日が入力済みなら、開始日の TIMELINE_MONTHS か月後（カレンダー上）
+ * - どちらも空欄ならタイムライン開始と同じ（今日）
+ */
+export function buildTimelineEndFormula_(): string {
+  const timelineStart = toColumnLetter_(TRIAL_TIMELINE_START_COLUMN);
+  const start = toColumnLetter_(TRIAL_START_COLUMN);
+  const end = toColumnLetter_(TRIAL_END_COLUMN);
+  return (
+    `=ARRAYFORMULA(IF(${timelineStart}2:${timelineStart}="","",` +
+    `IF(${end}2:${end}<>"",${end}2:${end},` +
+    `IF(${start}2:${start}="",${timelineStart}2:${timelineStart},` +
+    `EDATE(${start}2:${start},${TIMELINE_MONTHS})))))`
+  );
+}
+
+/**
+ * 試験一覧の表示名列（2行目）に入れる数式を作る（タイムラインのカードのタイトルに使う）。
+ * 試験名に、開始日が空欄なら「（スケジュール未定）」を付ける。
+ */
+export function buildDisplayNameFormula_(): string {
+  const name = toColumnLetter_(TRIAL_NAME_COLUMN);
+  const start = toColumnLetter_(TRIAL_START_COLUMN);
+  return (
+    `=ARRAYFORMULA(IF(${name}2:${name}="","",` +
+    `${name}2:${name}&IF(${start}2:${start}="","${SCHEDULE_UNDECIDED_SUFFIX}","")))`
+  );
+}
+
+/**
+ * 試験名があり、表示状態が「非表示」でなく、開始日が空欄のときに真になる条件付き書式の数式を作る（2行目基準）。
+ */
+export function buildMissingStartCondition_(): string {
+  const name = toColumnLetter_(TRIAL_NAME_COLUMN);
+  const visibility = toColumnLetter_(TRIAL_VISIBILITY_COLUMN);
+  const start = toColumnLetter_(TRIAL_START_COLUMN);
+  return `=AND($${name}2<>"",$${visibility}2<>"${VISIBILITY_HIDDEN}",$${start}2="")`;
 }

@@ -21,7 +21,7 @@
     "src/ui/.angular",
     "src/ui/.prettierrc",
     "node_modules",
-    "README.md",
+    "*.md",
     "license-config.json"
   ],
   "license": "license-header.txt",

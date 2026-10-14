@@ -13,7 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {buildTrialInfoFormula_} from '../src/formula-builder';
+import {
+  buildDisplayNameFormula_,
+  buildMissingStartCondition_,
+  buildTimelineEndFormula_,
+  buildTimelineStartFormula_,
+  buildTrialInfoFormula_,
+} from '../src/formula-builder';
 
 describe('buildTrialInfoFormula_', () => {
   it('Stat の取り込み・Datacenter の left join・追跡終了→登録終了の昇順ソートを1つの数式で行う', () => {
@@ -31,5 +37,28 @@ describe('buildTrialInfoFormula_', () => {
   });
   it('URL 内のダブルクォートをエスケープする', () => {
     expect(buildTrialInfoFormula_('a"b')).toContain('IMPORTRANGE("a""b"');
+  });
+});
+
+describe('試験一覧の自動計算の列', () => {
+  it('タイムライン開始は開始日（空欄なら今日）。試験名が空欄・非表示なら空欄', () => {
+    expect(buildTimelineStartFormula_()).toBe(
+      '=ARRAYFORMULA(IF((A2:A="")+(B2:B="非表示"),"",IF(C2:C="",TODAY(),C2:C)))',
+    );
+  });
+  it('タイムライン終了は終了日を優先し、空欄なら開始日の4か月後（開始日も空欄ならタイムライン開始と同じ）', () => {
+    expect(buildTimelineEndFormula_()).toBe(
+      '=ARRAYFORMULA(IF(F2:F="","",IF(D2:D<>"",D2:D,IF(C2:C="",F2:F,EDATE(C2:C,4)))))',
+    );
+  });
+  it('表示名は試験名に、開始日が空欄なら「（スケジュール未定）」を付ける', () => {
+    expect(buildDisplayNameFormula_()).toBe(
+      '=ARRAYFORMULA(IF(A2:A="","",A2:A&IF(C2:C="","（スケジュール未定）","")))',
+    );
+  });
+  it('試験名があり非表示でなく開始日が空欄のときに真になる条件', () => {
+    expect(buildMissingStartCondition_()).toBe(
+      '=AND($A2<>"",$B2<>"非表示",$C2="")',
+    );
   });
 });
