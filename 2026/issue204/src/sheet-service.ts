@@ -15,67 +15,39 @@
  */
 // スプレッドシート操作（GAS API に依存する部分）
 import {
+  AUTO_COLUMNS_PROTECTION_DESCRIPTION,
   DATE_FORMAT,
-  EVENT_BACKGROUND,
-  DEFAULT_EVENTS,
-  DEFAULT_TASK_TEMPLATES,
-  EVENT_DATE_COLUMN,
-  EVENT_HEADERS,
-  EVENT_MASTER_HEADERS,
-  EVENT_MASTER_SHEET_NAME,
-  EVENT_NAME_COLUMN,
-  EVENT_ROUND_COLUMN,
-  EVENT_SHEET_NAME,
-  EVENT_TRIAL_COLUMN,
+  END_DATE_HELP_TEXT,
+  LEGACY_PROTECTION_DESCRIPTIONS,
+  MISSING_START_BACKGROUND,
   README_SHEET_NAME,
   README_URL,
   RESEARCH_SYSTEM_URL_DUMMY,
   RESEARCH_SYSTEM_URL_PROPERTY,
-  SCHEDULE_BASE_COLUMN,
-  SCHEDULE_HEADERS,
-  SCHEDULE_INPUT_WIDTH,
-  SCHEDULE_ORDER_COLUMN,
-  SCHEDULE_OUTPUT_WIDTH,
-  SCHEDULE_PERIOD_COLUMN,
-  SCHEDULE_ROUND_COLUMN,
-  SCHEDULE_SHEET_NAME,
-  SCHEDULE_START_COLUMN,
-  SCHEDULE_TASK_COLUMN,
-  SCHEDULE_TRIAL_COLUMN,
-  SCHEDULE_UNIT_COLUMN,
-  TASK_BACKGROUND,
-  TASK_TEMPLATE_HEADERS,
-  TASK_TEMPLATE_SHEET_NAME,
-  TIMELINE_HEADERS,
-  TIMELINE_SHEET_NAME,
-  TRIAL_DATA_LOCK_COLUMN,
+  TRIAL_COLORS,
+  TRIAL_DISPLAY_NAME_COLUMN,
+  TRIAL_TIMELINE_END_COLUMN,
+  TRIAL_TIMELINE_START_COLUMN,
+  TRIAL_END_COLUMN,
   TRIAL_INFO_DATE_FIRST_COLUMN,
   TRIAL_INFO_DATE_LAST_COLUMN,
   TRIAL_INFO_SHEET_NAME,
-  TRIAL_LPO_COLUMN,
   TRIAL_MASTER_HEADERS,
   TRIAL_MASTER_SHEET_NAME,
   TRIAL_NAME_COLUMN,
+  TRIAL_START_COLUMN,
   TRIAL_VISIBILITY_COLUMN,
-  UNIT_PERSON_DAY,
-  UNIT_PERSON_MONTH,
   VISIBILITY_HIDDEN,
   VISIBILITY_SHOWN,
 } from './constants';
-import {buildTrialInfoFormula_} from './formula-builder';
 import {
-  buildBaseOptions_,
-  buildTimelineRows_,
-  EventRow,
-  findHiddenRowRuns_,
-  findMissingTaskRows_,
-  isDate_,
-  scheduleTrialTasks_,
-  TaskDates,
-  TaskRow,
-  TaskTemplate,
-  Trial,
-} from './schedule-logic';
+  buildDisplayNameFormula_,
+  buildMissingStartCondition_,
+  buildTimelineEndFormula_,
+  buildTimelineStartFormula_,
+  buildTrialInfoFormula_,
+} from './formula-builder';
+import {pickTrialColor_} from './schedule-logic';
 
 type Sheet = GoogleAppsScript.Spreadsheet.Sheet;
 type Spreadsheet = GoogleAppsScript.Spreadsheet.Spreadsheet;
@@ -90,100 +62,10 @@ function getOrCreateSheet_(ss: Spreadsheet, name: string): Sheet {
 }
 
 /**
- * シートが空ならヘッダー行（と初期データ）を書き込む。既に内容があるシートは上書きしない。
- */
-function writeHeaderIfEmpty_(
-  sheet: Sheet,
-  headers: string[],
-  initialRows: (string | number)[][] = [],
-): void {
-  if (sheet.getLastRow() !== 0) {
-    return;
-  }
-  sheet
-    .getRange(1, 1, 1, headers.length)
-    .setValues([headers])
-    .setFontWeight('bold');
-  if (initialRows.length > 0) {
-    sheet
-      .getRange(2, 1, initialRows.length, headers.length)
-      .setValues(initialRows);
-  }
-  sheet.setFrozenRows(1);
-}
-
-/**
  * ヘッダー行を除いた、指定列（から width 列分）の最終行までの範囲を返す（入力規則・書式の設定用）。
  */
 function getColumnBody_(sheet: Sheet, column: number, width = 1) {
   return sheet.getRange(2, column, sheet.getMaxRows() - 1, width);
-}
-
-/**
- * ヘッダー行を除いたデータ行をまとめて読み込む（空のシートなら空配列）。
- */
-function readBody_(sheet: Sheet | null): unknown[][] {
-  if (!sheet || sheet.getLastRow() < 2) {
-    return [];
-  }
-  return sheet.getDataRange().getValues().slice(1);
-}
-
-/**
- * 選択肢から選ぶ入力規則を設定する。
- */
-function setListValidation_(
-  range: GoogleAppsScript.Spreadsheet.Range,
-  values: string[],
-): void {
-  range.setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInList(values)
-      .setAllowInvalid(false)
-      .build(),
-  );
-}
-
-/**
- * 別シートの範囲から選ぶプルダウンの入力規則を設定する。
- */
-function setRangeValidation_(
-  range: GoogleAppsScript.Spreadsheet.Range,
-  source: GoogleAppsScript.Spreadsheet.Range,
-  allowInvalid: boolean,
-): void {
-  range.setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireValueInRange(source, true)
-      .setAllowInvalid(allowInvalid)
-      .build(),
-  );
-}
-
-/**
- * 日付の入力規則と表示形式を設定する。
- */
-function setDateValidation_(range: GoogleAppsScript.Spreadsheet.Range): void {
-  range
-    .setNumberFormat(DATE_FORMAT)
-    .setDataValidation(
-      SpreadsheetApp.newDataValidation()
-        .requireDate()
-        .setAllowInvalid(false)
-        .build(),
-    );
-}
-
-/**
- * 回（1以上の数）の入力規則を設定する。
- */
-function setRoundValidation_(range: GoogleAppsScript.Spreadsheet.Range): void {
-  range.setDataValidation(
-    SpreadsheetApp.newDataValidation()
-      .requireNumberGreaterThanOrEqualTo(1)
-      .setAllowInvalid(false)
-      .build(),
-  );
 }
 
 // ---- 初期設定 ----
@@ -246,338 +128,216 @@ function setupReadmeSheet_(ss: Spreadsheet): void {
 }
 
 /**
- * 各シートを作成し、ヘッダー・初期データ・入力規則を設定する。
- * 既に内容があるシートのデータは上書きしない（入力規則・書式は設定し直す）。
+ * 試験一覧の自動計算の列（表示名〜タイムライン終了）に、編集しようとすると警告を表示する保護をかける（編集自体は可能）。
+ * 初期設定を再実行しても重複しないよう、以前にかけた同じ保護（以前の版の保護を含む）は外してからかけ直す。
+ */
+function protectAutoColumns_(sheet: Sheet): void {
+  const descriptions = [
+    AUTO_COLUMNS_PROTECTION_DESCRIPTION,
+    ...LEGACY_PROTECTION_DESCRIPTIONS,
+  ];
+  sheet
+    .getProtections(SpreadsheetApp.ProtectionType.RANGE)
+    .filter(protection => descriptions.includes(protection.getDescription()))
+    .forEach(protection => protection.remove());
+  sheet
+    .getRange(
+      1,
+      TRIAL_DISPLAY_NAME_COLUMN,
+      sheet.getMaxRows(),
+      TRIAL_TIMELINE_END_COLUMN - TRIAL_DISPLAY_NAME_COLUMN + 1,
+    )
+    .protect()
+    .setDescription(AUTO_COLUMNS_PROTECTION_DESCRIPTION)
+    .setWarningOnly(true);
+}
+
+/**
+ * 試験名があり非表示でないのに開始日が空欄のとき、開始日のセルに色を付ける条件付き書式を設定する。
+ * 初期設定を再実行しても重複しないよう、同じ数式の既存ルールは置き換える。
+ */
+function highlightMissingStart_(sheet: Sheet): void {
+  const condition = buildMissingStartCondition_();
+  const rules = sheet
+    .getConditionalFormatRules()
+    .filter(
+      rule => rule.getBooleanCondition()?.getCriteriaValues()[0] !== condition,
+    );
+  rules.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(condition)
+      .setBackground(MISSING_START_BACKGROUND)
+      .setRanges([getColumnBody_(sheet, TRIAL_START_COLUMN)])
+      .build(),
+  );
+  sheet.setConditionalFormatRules(rules);
+}
+
+/**
+ * 以前の版で2行目に入れていた ARRAYFORMULA が残っていれば、その列の2行目以降を空にする。
+ * （列の構成を変えたため、手入力の列や使わなくなった列に古い数式が残らないようにする）
+ */
+function clearLegacyArrayFormula_(sheet: Sheet, column: number): void {
+  if (sheet.getRange(2, column).getFormula().startsWith('=ARRAYFORMULA')) {
+    getColumnBody_(sheet, column).clearContent();
+  }
+}
+
+/**
+ * 試験一覧シートを作成し、ヘッダー・入力規則・自動計算の列（表示名〜タイムライン終了）の数式を設定する。
+ * 既に入力されたデータは上書きしない（ヘッダーと自動計算の列の数式は設定し直す）。
+ */
+function setupTrialSheet_(ss: Spreadsheet, trialInfo: Sheet): void {
+  const sheet = getOrCreateSheet_(ss, TRIAL_MASTER_SHEET_NAME);
+  sheet
+    .getRange(1, 1, 1, TRIAL_MASTER_HEADERS.length)
+    .setValues([TRIAL_MASTER_HEADERS])
+    .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  // 以前の版の数式が、手入力の終了日列や使わなくなった右側の列に残っていれば消す
+  clearLegacyArrayFormula_(sheet, TRIAL_END_COLUMN);
+  clearLegacyArrayFormula_(sheet, TRIAL_TIMELINE_END_COLUMN + 1);
+
+  // 試験名は試験情報マスタのプロトコルIDを候補に出す（マスタにない値も入力できる）
+  getColumnBody_(sheet, TRIAL_NAME_COLUMN).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInRange(trialInfo.getRange('A2:A'), true)
+      .setAllowInvalid(true)
+      .build(),
+  );
+  getColumnBody_(sheet, TRIAL_VISIBILITY_COLUMN).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList([VISIBILITY_SHOWN, VISIBILITY_HIDDEN])
+      .setAllowInvalid(false)
+      .build(),
+  );
+  // 開始日・終了日は手入力の日付
+  getColumnBody_(sheet, TRIAL_START_COLUMN)
+    .setNumberFormat(DATE_FORMAT)
+    .setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireDate()
+        .setAllowInvalid(false)
+        .build(),
+    );
+  // 終了日は任意入力。セルを選んだときに、空欄のときの扱いを説明として表示する
+  getColumnBody_(sheet, TRIAL_END_COLUMN)
+    .setNumberFormat(DATE_FORMAT)
+    .setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireDate()
+        .setAllowInvalid(false)
+        .setHelpText(END_DATE_HELP_TEXT)
+        .build(),
+    );
+  getColumnBody_(
+    sheet,
+    TRIAL_TIMELINE_START_COLUMN,
+    TRIAL_TIMELINE_END_COLUMN - TRIAL_TIMELINE_START_COLUMN + 1,
+  ).setNumberFormat(DATE_FORMAT);
+
+  // 表示名〜タイムライン終了は数式で自動計算する（ARRAYFORMULA が下に展開されるよう、2行目以降は空にしてから書き込む）
+  const autoBody = getColumnBody_(
+    sheet,
+    TRIAL_DISPLAY_NAME_COLUMN,
+    TRIAL_TIMELINE_END_COLUMN - TRIAL_DISPLAY_NAME_COLUMN + 1,
+  );
+  autoBody.clearContent();
+  // 自動計算の列には入力規則を付けない（以前の版で付けた日付の入力規則が残っていれば外す）
+  autoBody.clearDataValidations();
+  sheet
+    .getRange(2, TRIAL_DISPLAY_NAME_COLUMN)
+    .setFormula(buildDisplayNameFormula_());
+  sheet
+    .getRange(2, TRIAL_TIMELINE_START_COLUMN)
+    .setFormula(buildTimelineStartFormula_());
+  sheet
+    .getRange(2, TRIAL_TIMELINE_END_COLUMN)
+    .setFormula(buildTimelineEndFormula_());
+  protectAutoColumns_(sheet);
+
+  // タイムライン用の列は普段見る必要がないので、列ごと非表示にする
+  // （以前の版で非表示にした列が別の位置にあるため、右側の列をいったん表示してから非表示にし直す）
+  sheet.showColumns(
+    TRIAL_TIMELINE_START_COLUMN,
+    sheet.getMaxColumns() - TRIAL_TIMELINE_START_COLUMN + 1,
+  );
+  sheet.hideColumns(
+    TRIAL_TIMELINE_START_COLUMN,
+    TRIAL_TIMELINE_END_COLUMN - TRIAL_TIMELINE_START_COLUMN + 1,
+  );
+
+  // 開始日が未入力の試験を目立たせる
+  highlightMissingStart_(sheet);
+
+  // 既に入力済みの試験名にも色を付ける
+  colorTrialNames_(sheet, 2, sheet.getMaxRows() - 1);
+}
+
+/**
+ * README・試験情報マスタ・試験一覧の各シートを作成し、書式と数式を設定する。
  */
 export function setupSheets_(): void {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   // 日付計算がずれないよう、スクリプトと同じタイムゾーンに揃える
   ss.setSpreadsheetTimeZone('Asia/Tokyo');
 
-  // README へのリンク
   setupReadmeSheet_(ss);
-
-  // 試験情報マスタ（研究管理システムから取り込み）
   const trialInfo = setupTrialInfoSheet_(ss);
-
-  // 試験一覧
-  const trials = getOrCreateSheet_(ss, TRIAL_MASTER_SHEET_NAME);
-  writeHeaderIfEmpty_(trials, TRIAL_MASTER_HEADERS);
-  // 略称は試験情報マスタのプロトコルIDを候補に出す（マスタにない値も入力できる）
-  setRangeValidation_(
-    getColumnBody_(trials, TRIAL_NAME_COLUMN),
-    trialInfo.getRange('A2:A'),
-    true,
-  );
-  setListValidation_(getColumnBody_(trials, TRIAL_VISIBILITY_COLUMN), [
-    VISIBILITY_SHOWN,
-    VISIBILITY_HIDDEN,
-  ]);
-  setDateValidation_(getColumnBody_(trials, TRIAL_LPO_COLUMN, 2));
-
-  // イベント一覧（基準の選択肢にも使うため先に作る）
-  const eventMaster = getOrCreateSheet_(ss, EVENT_MASTER_SHEET_NAME);
-  writeHeaderIfEmpty_(
-    eventMaster,
-    EVENT_MASTER_HEADERS,
-    DEFAULT_EVENTS.map(name => [name]),
-  );
-  // 基準の選択肢（LPO・データロック・イベント一覧の各イベントに「前」「後」を付けたもの）
-  const baseOptions = buildBaseOptions_(
-    readBody_(eventMaster)
-      .map(row => String(row[0]))
-      .filter(name => name !== ''),
-  );
-
-  // 作業テンプレート
-  const templates = getOrCreateSheet_(ss, TASK_TEMPLATE_SHEET_NAME);
-  writeHeaderIfEmpty_(templates, TASK_TEMPLATE_HEADERS, DEFAULT_TASK_TEMPLATES);
-  setListValidation_(getColumnBody_(templates, 2), baseOptions);
-  setListValidation_(getColumnBody_(templates, 5), [
-    UNIT_PERSON_DAY,
-    UNIT_PERSON_MONTH,
-  ]);
-
-  // スケジュール（作業ごとの期間。開始日〜警告は自動計算）
-  const schedule = getOrCreateSheet_(ss, SCHEDULE_SHEET_NAME);
-  writeHeaderIfEmpty_(schedule, SCHEDULE_HEADERS);
-  setRangeValidation_(
-    getColumnBody_(schedule, SCHEDULE_TRIAL_COLUMN),
-    trials.getRange('A2:A'),
-    false,
-  );
-  setRangeValidation_(
-    getColumnBody_(schedule, SCHEDULE_TASK_COLUMN),
-    templates.getRange('A2:A'),
-    // 作業テンプレートにない作業も入力できる（警告表示のみ）
-    true,
-  );
-  setRoundValidation_(getColumnBody_(schedule, SCHEDULE_ROUND_COLUMN));
-  setListValidation_(
-    getColumnBody_(schedule, SCHEDULE_BASE_COLUMN),
-    baseOptions,
-  );
-  setListValidation_(getColumnBody_(schedule, SCHEDULE_UNIT_COLUMN), [
-    UNIT_PERSON_DAY,
-    UNIT_PERSON_MONTH,
-  ]);
-  getColumnBody_(schedule, SCHEDULE_START_COLUMN, 2).setNumberFormat(
-    DATE_FORMAT,
-  );
-
-  // イベント
-  const events = getOrCreateSheet_(ss, EVENT_SHEET_NAME);
-  writeHeaderIfEmpty_(events, EVENT_HEADERS);
-  setRangeValidation_(
-    getColumnBody_(events, EVENT_TRIAL_COLUMN),
-    trials.getRange('A2:A'),
-    false,
-  );
-  setRangeValidation_(
-    getColumnBody_(events, EVENT_NAME_COLUMN),
-    eventMaster.getRange('A2:A'),
-    // イベント一覧にないイベントも入力できる（警告表示のみ）
-    true,
-  );
-  setRoundValidation_(getColumnBody_(events, EVENT_ROUND_COLUMN));
-  setDateValidation_(getColumnBody_(events, EVENT_DATE_COLUMN));
-
-  // タイムライン用データ（自動生成）
-  const timeline = getOrCreateSheet_(ss, TIMELINE_SHEET_NAME);
-  writeHeaderIfEmpty_(timeline, TIMELINE_HEADERS);
-
-  refreshAll_();
+  setupTrialSheet_(ss, trialInfo);
 }
 
-// ---- 読み込み ----
+// ---- 編集時の処理 ----
 
 /**
- * 試験一覧を読み込む（略称が空の行は除く）。
+ * 試験名のセルのうち、まだ色が付いていないものに淡い色を付ける（タイムラインのバーの色になる）。
+ * 既に色が付いているセル（手動で変えた色を含む）は変えない。
  */
-function readTrials_(ss: Spreadsheet): Trial[] {
-  return readBody_(ss.getSheetByName(TRIAL_MASTER_SHEET_NAME))
-    .map(row => {
-      const lpo = row[TRIAL_LPO_COLUMN - 1];
-      const dataLock = row[TRIAL_DATA_LOCK_COLUMN - 1];
-      return {
-        name: String(row[TRIAL_NAME_COLUMN - 1]),
-        hidden: String(row[TRIAL_VISIBILITY_COLUMN - 1]) === VISIBILITY_HIDDEN,
-        lpo: isDate_(lpo) ? lpo : null,
-        dataLock: isDate_(dataLock) ? dataLock : null,
-      };
-    })
-    .filter(trial => trial.name !== '');
-}
-
-/**
- * 作業テンプレートを読み込む（作業名が空の行は除く）。
- */
-function readTaskTemplates_(ss: Spreadsheet): TaskTemplate[] {
-  return readBody_(ss.getSheetByName(TASK_TEMPLATE_SHEET_NAME))
-    .map(([task, base, order, period, unit]) => ({
-      task: String(task),
-      base: String(base),
-      order: Number(order),
-      period: Number(period),
-      unit: String(unit),
-    }))
-    .filter(template => template.task !== '');
-}
-
-/**
- * スケジュールシートの入力部分（略称〜単位）を読み込む。空行も含め行の並びを保つ。
- */
-function readTaskRows_(sheet: Sheet): TaskRow[] {
-  return readBody_(sheet).map(row => ({
-    trial: String(row[SCHEDULE_TRIAL_COLUMN - 1]),
-    task: String(row[SCHEDULE_TASK_COLUMN - 1]),
-    round: String(row[SCHEDULE_ROUND_COLUMN - 1]),
-    base: String(row[SCHEDULE_BASE_COLUMN - 1]),
-    order: Number(row[SCHEDULE_ORDER_COLUMN - 1]),
-    period: Number(row[SCHEDULE_PERIOD_COLUMN - 1]),
-    unit: String(row[SCHEDULE_UNIT_COLUMN - 1]),
-  }));
-}
-
-/**
- * イベントシートを読み込む。
- */
-function readEvents_(ss: Spreadsheet): EventRow[] {
-  return readBody_(ss.getSheetByName(EVENT_SHEET_NAME)).map(row => {
-    const date = row[EVENT_DATE_COLUMN - 1];
-    return {
-      trial: String(row[EVENT_TRIAL_COLUMN - 1]),
-      name: String(row[EVENT_NAME_COLUMN - 1]),
-      round: String(row[EVENT_ROUND_COLUMN - 1]),
-      date: isDate_(date) ? date : null,
-    };
-  });
-}
-
-// ---- 更新処理 ----
-
-/**
- * LPO とデータロックが入力された試験について、足りない作業の行をスケジュールシートの末尾に追加する。
- * 既にある行は変更しない。追加後の全行を返す。
- */
-function appendMissingTaskRows_(
-  schedule: Sheet,
-  trials: Trial[],
-  templates: TaskTemplate[],
-): TaskRow[] {
-  const rows = readTaskRows_(schedule);
-  const missing = findMissingTaskRows_(trials, rows, templates);
-  if (missing.length > 0) {
-    schedule
-      .getRange(
-        schedule.getLastRow() + 1,
-        1,
-        missing.length,
-        SCHEDULE_INPUT_WIDTH,
-      )
-      .setValues(
-        missing.map(row => [
-          row.trial,
-          row.task,
-          row.round,
-          row.base,
-          row.order,
-          row.period,
-          row.unit,
-        ]),
-      );
-  }
-  return [...rows, ...missing];
-}
-
-/**
- * スケジュールシートの開始日・完了日・警告を計算して書き込む。計算結果を行の並びで返す。
- */
-function writeTaskDates_(
-  schedule: Sheet,
-  trials: Trial[],
-  rows: TaskRow[],
-  events: EventRow[],
-): TaskDates[] {
-  const results: TaskDates[] = rows.map(() => ({
-    start: null,
-    end: null,
-    warning: '',
-  }));
-
-  // 試験ごとに行を集めて計算する
-  trials.forEach(trial => {
-    const indexes = rows
-      .map((row, index) => index)
-      .filter(index => rows[index].trial === trial.name);
-    const dates = scheduleTrialTasks_(
-      trial,
-      indexes.map(index => rows[index]),
-      events,
+function colorTrialNames_(sheet: Sheet, startRow: number, numRows: number) {
+  const range = sheet.getRange(startRow, TRIAL_NAME_COLUMN, numRows, 1);
+  const names = range.getValues();
+  const backgrounds = range.getBackgrounds();
+  let changed = false;
+  const next = backgrounds.map((row, i) => {
+    const color = pickTrialColor_(
+      startRow + i,
+      String(names[i][0]),
+      row[0],
+      TRIAL_COLORS,
     );
-    indexes.forEach((rowIndex, i) => (results[rowIndex] = dates[i]));
+    if (color) {
+      changed = true;
+      return [color];
+    }
+    return row;
   });
-
-  if (rows.length > 0) {
-    schedule
-      .getRange(2, SCHEDULE_START_COLUMN, rows.length, SCHEDULE_OUTPUT_WIDTH)
-      .setValues(results.map(r => [r.start ?? '', r.end ?? '', r.warning]));
+  // 変更があるときだけまとめて書き込む
+  if (changed) {
+    range.setBackgrounds(next);
   }
-  return results;
 }
 
 /**
- * タイムライン用データシートを作り直す。
+ * 試験一覧で試験名が入力されたとき、そのセルに淡い色を付ける。
  */
-function writeTimeline_(
-  ss: Spreadsheet,
-  trials: Trial[],
-  rows: TaskRow[],
-  dates: TaskDates[],
-  events: EventRow[],
+export function colorTrialNamesOnEdit_(
+  e: GoogleAppsScript.Events.SheetsOnEdit,
 ): void {
-  const timeline = ss.getSheetByName(TIMELINE_SHEET_NAME);
-  if (!timeline) {
+  const range = e.range;
+  const sheet = range.getSheet();
+  if (sheet.getName() !== TRIAL_MASTER_SHEET_NAME) {
     return;
   }
-  const entries = buildTimelineRows_(
-    trials,
-    rows.map((row, index) => ({row, dates: dates[index]})),
-    events,
-  );
-
-  // ヘッダー以外の値と背景色を消してから書き込む
-  if (timeline.getMaxRows() > 1) {
-    getColumnBody_(timeline, 1, TIMELINE_HEADERS.length)
-      .clearContent()
-      .setBackground(null);
-  }
-  if (entries.length > 0) {
-    const body = timeline.getRange(
-      2,
-      1,
-      entries.length,
-      TIMELINE_HEADERS.length,
-    );
-    body.setValues(entries.map(entry => entry.row));
-    // 作業は白、イベントは色付きで行の背景を塗る（タイムライン表示の「カードの色」に使う）
-    body.setBackgrounds(
-      entries.map(entry =>
-        TIMELINE_HEADERS.map(() =>
-          entry.isEvent ? EVENT_BACKGROUND : TASK_BACKGROUND,
-        ),
-      ),
-    );
-    timeline.getRange(2, 3, entries.length, 2).setNumberFormat(DATE_FORMAT);
-  }
-}
-
-/**
- * 非表示の試験の行を隠し、それ以外の行を表示する（A列が略称のシートが対象）。
- */
-function applyRowVisibility_(
-  sheet: Sheet | null,
-  hiddenTrials: Set<string>,
-): void {
-  if (!sheet || sheet.getLastRow() < 2) {
+  // 編集範囲が試験名の列（2行目以降）を含むときだけ処理する
+  const lastRow = range.getLastRow();
+  const firstRow = Math.max(range.getRow(), 2);
+  if (
+    lastRow < 2 ||
+    range.getColumn() > TRIAL_NAME_COLUMN ||
+    range.getLastColumn() < TRIAL_NAME_COLUMN
+  ) {
     return;
   }
-  const lastRow = sheet.getLastRow();
-  const names = sheet
-    .getRange(2, 1, lastRow - 1, 1)
-    .getValues()
-    .map(row => String(row[0]));
-  // いったん全行を表示してから、非表示の試験の行を連続範囲ごとにまとめて隠す
-  sheet.showRows(2, lastRow - 1);
-  findHiddenRowRuns_(names, hiddenTrials).forEach(([start, count]) => {
-    sheet.hideRows(start + 2, count);
-  });
-}
-
-/**
- * すべてを最新の状態にする。
- * 1. LPO・データロックが入った試験の作業の行を追加
- * 2. 作業の開始日・完了日・警告を計算
- * 3. タイムライン用データを作り直す
- * 4. 非表示の試験の行を隠す
- */
-export function refreshAll_(): void {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const schedule = ss.getSheetByName(SCHEDULE_SHEET_NAME);
-  if (!schedule) {
-    return;
-  }
-  const trials = readTrials_(ss);
-  const templates = readTaskTemplates_(ss);
-
-  const rows = appendMissingTaskRows_(schedule, trials, templates);
-  const events = readEvents_(ss);
-  const dates = writeTaskDates_(schedule, trials, rows, events);
-  writeTimeline_(ss, trials, rows, dates, events);
-
-  const hiddenTrials = new Set(
-    trials.filter(trial => trial.hidden).map(trial => trial.name),
-  );
-  applyRowVisibility_(schedule, hiddenTrials);
-  applyRowVisibility_(ss.getSheetByName(EVENT_SHEET_NAME), hiddenTrials);
+  colorTrialNames_(sheet, firstRow, lastRow - firstRow + 1);
 }
